@@ -1,0 +1,83 @@
+# Changelog
+
+Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
+
+## What's in v0.7
+- **Doors.** Every door can be opened and closed (E). Only the master key (the basement key) locks them. Mom and Dad open doors on their way and close them behind them. The man walks through closed doors and kicks in locked ones. Doggo can't open doors at all.
+- **Basement and Dad's cabinet.** Unlock the basement with the key and it stays unlocked. The same key opens Dad's cabinet: swap the key for a VHS tape and play it on the old TV in the basement. The medicine fridge explains the juice.
+- **Parents react to how the day went.** Normal day: they hand you over (they don't know they're part of the clean-up). Dark day: they want him gone. All five chores and nothing dark this loop: they fight for you. Dad goes at him with a lamp, Mom sits on the floor next to him crying.
+- **Convince them.** On a befriended day, tell Mom or Dad about the loop with proof (the phone call or the files) and they'll run with you. False Hope ending.
+- **The man runs out of patience.** If he can't find you, he warns you at 16:57 and hurts Dad at 16:58 and Mom at 16:59 (dark points each time). Stay hidden to 17:00 and you get They Paid. Keep running instead and you get Tired Out.
+- **Doggo.** "Sit! Stay!" keeps him out of it (or shut him behind a door). If you hurt the man, Doggo is the first thing he hurts back. If Doggo is in the room when he grabs you, he jumps in front: Good Boy, a really bad ending.
+- **The secret ending** now leaves you at maximum darkness.
+- 5 new memories (42 in total), 3 new endings (7 in total).
+
+## What's in v0.6
+- **Held items.** The kid holds one thing at a time: keys, knife, stick, trash, dog food or a flashlight. Grabbing something new means putting the old thing back first. "Put it back" works on the spot it came from. The HUD shows IN HANDS and the kid carries it.
+- **Pantry** (dog food, flashlight) and **sink** (dishes). Doggo's bowl now needs food from the pantry.
+- **Stick** from the woodpile: for throwing with Doggo, or swing it at the visitor (+1 dark, knife is now +2). **Flashlight** blinds him for a few seconds during the power cut.
+- **5 chores, 100 kr.** Doggo, trash, room, dishes and firewood (20 minutes). All done by 16:40 gives the allowance. It's tight on purpose.
+- **Zulda: Flute of Time.** The kid needs his last 100 kr for the remake on his Fliptendo Fold 2. Buy it after the allowance. The Fliptendo also runs a tiny Flappy Plane mini game.
+- **Screen Time** joke ending: play the Fliptendo 3 times in a row (10 min each).
+- **Memory recap.** At the end of a loop, every new memory shows up one at a time with a chime.
+- **Memory log** scrolls and has an Endings tab with hints.
+- **The clock keeps running in the chase.** Survive until 17:00 and you run and hide until you're too tired (Tired Out).
+- **No more repeated dialogue** from fast clicks.
+
+## What's in v0.5.1
+- **Game speed** in the debug panel (1.0x to 2.0x in 0.2 steps) to playtest shorter loops.
+- **Act 2 starts later.** The eerie music now starts when you find out about the handlers (or from loop 8), not automatically at loop 4.
+
+## What's in v0.5
+- **New look, same open floor plan.** Plank floors, tiled kitchen and bathroom, 3/4 view walls with wallpaper, a red log cabin outside, furniture shadows and detail, outlined characters, a real light map (lamps at dusk, stove and TV glow, headlights, a dark power cut), rain in the storm, dust when you run.
+- **Casio with seconds**, F-91W style. It rolls forward through skipped time.
+- **Faster waiting.** Hold T for 2 game minutes per second, ramping up to 5.
+- **Parents react to big choices.** Pull a knife, tell them about the loop or interrogate Dad and they lock into a state for the rest of the loop (scared, cold or broken). No more small talk about dinner after the knife.
+- **Interaction fixes.** E picks whatever is closest in front of you. People stop and face you while you talk. Announcements no longer fire late after a time skip.
+
+## What's in v0.4.2
+- **Rarer reality shifts.** Never two within 5 loops, one guaranteed within 10 (by default). The first one is always the 45 minute toilet so that memory stays findable.
+- **Debug panel** (`O` with ?debug) to tune all of that live, plus quick test tools.
+- **Phone mode**: touch controls, fullscreen + landscape on first tap, a "turn your phone sideways" screen in portrait.
+
+## What's in v0.4.1
+
+- **Sharp on scaled displays.** The canvas is sized in real device pixels (Windows 125% / 150% scaling made the browser stretch it with nearest-neighbour, so text and the logo looked blocky).
+- **F for fullscreen**, version number in the corner of the title screen.
+- **Debug hard reset** (Shift+R twice on the title screen).
+- **More Doggo.** "Sit!", play with his ball (indoors), and "Find it, boy!": normally junk, at 3+ dark points he digs a syringe out of the bins (new memory "The syringe", 37 total), and once you're tainted he digs up the basement key from the flagpole.
+
+## What's in v0.4
+
+- **Cleaner audio.** The music is now pulled by the audio device (callback) at 44.1 kHz instead of being topped up once per frame at 22 kHz, every note gets a short fade in and out, the square lead is band-limited, and there's a gentle low-pass and soft clip on the master. Sound effects got the same treatment. This is what was crackling.
+- **Speech bubbles.** Mom's chore list, Dad heading to the shed, Doggo at the door and the visitor muttering now pop up over their heads instead of stopping the game with a dialogue box.
+- **Shift to run** and a slightly faster walk.
+- **Softer text and a crisp logo.** UI font is Poppins (OFL, see `assets/ui-font-OFL.txt`), mipmapped so it stays smooth at any size. The logo is redrawn as vector art at 2048x1024. The splash dissolve is slower.
+- **The visitor has to find you.** He searches room by room (living room, kitchen, hallway, bedrooms, bathroom, then the shed and the yard), checks some hiding spots and not others, and sees you in a cone with walls blocking his view. If he sees you he runs (faster than you walk, slower than you run). Break line of sight and he loses you, then searches that room again. Each sweep he gets more thorough. If he sees you hide, he walks straight to it.
+- **More panic time.** After Dad runs, the visitor walks back in from the yard before the search starts.
+- **You still can't win by running.** Past the fence: headlights, carried back.
+- **Killing him takes you with him.** First time: a dead man's switch on his belt, something behind your ear, white, loop. That gives a new memory ("He takes me with him"). Knowing it, you can take the box off his belt first, which is the only way to the Monster and End of the Program endings now.
+
+## What's in v0.3
+
+- **Soundtrack.** Procedural synth, one mood per act: cute and bouncy, then a wrong-sounding music box, then a slow hopeless drone. A heartbeat during the collection. No audio files, it's all generated in code.
+- **Dark points are a soft counter (0 to 15).** 0 to 5 is just a weird kid (planks, bolts). Tainted at 6. Doggo is worth 10 on his own.
+- **Calmer weirdness.** No glitches in act 1. Shivering furniture, scanlines and barking fits start in act 2 (after the handlers clue or a few failed loops) and are rarer.
+- **Doggo at half volume.**
+- **Sund Origin Studio splash and a MADE WITH AI badge** on the splash, title screen and memory log.
+
+## What's in v0.2
+
+Everything from v0.1, plus:
+
+- **Interactive 16:50.** The visitor walks in for real. Stand still and he walks. Run and he's twice your speed. Hide in the wardrobe, under a bed, behind the couch or in the toolbox (v0.4: he has to search for you now). Walk up to him and press E to talk, fight or use what you know. If Dad is free he yells RUN and bolts first. The visitor chases him down on screen. Off screen bang.
+- **The dark route.** The knife needs 5 confirmations (2 once you're dark). Dark points are saved forever, even through New Game. The kid, the narrator, the title screen and Mom and Dad all change once you're tainted.
+- **Arsenal** at 3 dark points: marbles, tripwire, paint can. Realistic results. Two traps put him on the floor.
+- **Dad's key.** Dark route: interrogate Dad in the shed at 6 dark points (off screen). Clean route: very obscure, and the narrator accuses you of looking it up.
+- **The basement.** Screens, files, the chair, the medicine fridge and the program's radio.
+- **Fortress.** Lock the front door and keep Mom and Dad from unlocking it. He comes through the window instead.
+- **Endings.** Monster, End of the Program, and the secret ending (100% memory log, mash E in the trunk).
+- **Act break 2:** Mirror Lag. Narrator stages 3 and 4.
+- **More stuff to poke:** photo album, calendar, bookshelf, wardrobe, woodpile, new dialogue for everyone, the visitor at the gate.
+- **4 frame walk** with arms and blinking. Doggo trots.
+- 35 memories in 8 topics, 18 achievements.

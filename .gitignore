@@ -1,0 +1,7 @@
+build/
+sim
+sim.exe
+*.exe
+*.o
+.vs/
+.idea/

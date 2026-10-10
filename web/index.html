@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>600 Seconds (prototype)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #06060a; color: #ccc; font-family: monospace; overflow: hidden; }
+  #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; letter-spacing: 2px; }
+  #fs { position: fixed; right: 10px; bottom: 10px; background: #222; color: #ddd; border: 1px solid #555; padding: 4px 8px; font: 12px monospace; cursor: pointer; opacity: .5; }
+  #fs:hover { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="canvas" tabindex="1" oncontextmenu="event.preventDefault()"></canvas></div>
+<div id="loading">LOADING 16:00...</div>
+<button id="fs" onclick="toggleFS(); canvas.focus();">fullscreen (F)</button>
+<script>
+  var canvas = document.getElementById('canvas');
+  // v0.4.1: size the canvas in real device pixels, so Windows display scaling (125%, 150%...)
+  // doesn't stretch a smaller image and make the text blocky
+  function px(v) { return Math.round(v * (window.devicePixelRatio || 1)); }
+  function fit() { canvas.width = px(window.innerWidth); canvas.height = px(window.innerHeight); }
+  fit();
+  window.addEventListener('resize', function () {
+    fit();
+    if (Module.ccall) { try { Module.ccall('OnResize', null, ['number', 'number'], [canvas.width, canvas.height]); } catch (e) {} }
+  });
+  // v0.4.1: F toggles fullscreen (works inside the website iframe too)
+  function toggleFS() {
+    var d = document;
+    if (d.fullscreenElement || d.webkitFullscreenElement) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+    var el = d.documentElement; var rq = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (rq) { try { var p = rq.call(el); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
+  }
+  window.addEventListener('keydown', function (e) {
+    if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].indexOf(e.key) >= 0) e.preventDefault();
+    if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) toggleFS();
+  });
+  var Module = {
+    canvas: canvas,
+    onRuntimeInitialized: function () {
+      document.getElementById('loading').style.display = 'none';
+      canvas.focus();
+    },
+    print: function (t) { console.log(t); },
+    printErr: function (t) { console.warn(t); }
+  };
+  canvas.addEventListener('click', function () { canvas.focus(); });
+</script>
+<script src="index.js"></script>
+</body>
+</html>
