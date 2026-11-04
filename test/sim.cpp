@@ -247,10 +247,19 @@ int main(int argc, char** argv) {
     FinishLoop("c_fight");
 
     CleanLoop();
-    Header("LOOP 5b: big footprints by the house, then the snow gets you");
+    Header("LOOP 5b: he looks through the window, his footprints, then the snow gets you");
     assert(!s.hasCoat);
-    At(14, 22); WaitUntil(29);
+    At(22, 24); WaitUntil(42);
+    assert(!s.CarHere() && !s.Knows("prints"));
+    WaitUntil(44);
+    { NpcState v = s.Visitor(); assert(v.visible && v.x == 25 && v.y == 21 && v.facingWall); }
+    WaitUntil(46);
     assert(s.Knows("prints"));
+    { NpcState v = s.Visitor(); assert(v.visible && v.x == 25); }
+    WaitUntil(47);
+    { NpcState v = s.Visitor(); assert(!v.visible); }
+    WaitUntil(49);
+    { NpcState v = s.Visitor(); assert(v.visible && v.x == 20 && v.y == 21); }
     FinishLoop("cold");
     assert(s.Knows("cold"));
 
@@ -264,6 +273,16 @@ int main(int argc, char** argv) {
     WaitUntil(41);
     assert(s.PowerOut() && !s.collection && s.achievements.count("Weather Report"));
     FinishLoop("caught");
+
+    CleanLoop();
+    Header("LOOP 5d: talk to him early and the knock comes sooner");
+    At(20, 28); WaitUntil(44);
+    { int was = s.visitorTime; Use("visitor", {"v_who"}); assert(s.visitorTime < was); }
+    assert(s.visitorTime - (int)s.t == Story::VISIT_BACK && !s.collection);
+    { NpcState v = s.Visitor(); assert(v.visible && v.x == 20 && v.y == 30); }
+    { int was = s.visitorTime; Use("visitor", {"v_leave"}); assert(s.visitorTime == was); }
+    FinishLoop("caught");
+    assert(s.visitorTime == 50 * 60);
 
     CleanLoop();
     Header("LOOP 6: meet him at the gate with Doggo");

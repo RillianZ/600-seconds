@@ -154,6 +154,9 @@ public:
     bool allowanceChecked = false;
     bool grounded = false;
     int visitorTime = 50 * 60;
+    // v0.9.2: his routine, in game seconds before the knock
+    static constexpr int VISIT_ARRIVE = 420, VISIT_WALK = 400, VISIT_LOOK = 340, VISIT_BACK = 210, VISIT_IN_CAR = 180, VISIT_OUT = 60;
+    bool visitorLooked = false;   // he got to the window this loop, so his tracks are out there
     bool collection = false;
     bool phoneAnswered = false;
     bool helpedDad = false;
@@ -209,6 +212,7 @@ public:
     Shift RollShift();       // decides this loop's reality (uses gShiftCfg)
     void DebugSetDark(int v);
     void DebugAllMemories();
+    void DebugToBasement();   // v0.9.3: go down with the tape in your hand
     void DebugClearMemories();
     void EndLoop();
 
@@ -244,10 +248,11 @@ public:
     void BreakDoor(int x, int y);          // he doesn't use handles
     bool Befriended() const;
     Stance CurrentStance() const;
+    void VisitorNoticesYou();              // v0.9.2: talking to him brings the knock closer
     void DoggoSacrifice();                 // the presentation calls this when he jumps in front of you
     bool PowerOut() const { return collection || t >= visitorTime || (shift == Shift::EarlyStorm && t >= 40 * 60); }
     bool Storm() const { return t >= (shift == Shift::EarlyStorm ? 37 : 47) * 60; }
-    bool CarHere() const { return t >= visitorTime - 120 || collection; }
+    bool CarHere() const { return t >= visitorTime - VISIT_ARRIVE || collection; }
     bool DoggoExists() const { return shift != Shift::NoDoggo && !doggoGone && !doggoDead; }
     bool MomHere() const { return !momLocked; }
     bool DadFree() const { return !dadLocked && !dadDown; }
