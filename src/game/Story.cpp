@@ -150,7 +150,7 @@ const std::vector<MemoryEntry>& AllMemories() {
          "I locked everything. He just came through the window. Locks only make him angrier.",
          "Lock him out. Keep it locked."},
         {"prints", "The visitor", "Someone was here",
-         "Big footprints in the new snow, all along the house, long before he comes. They stop under the living room window.",
+         "Big footprints in the new snow, from the gate to the living room window. He looks in at us before he knocks.",
          "Look at the snow outside. Before the storm covers it."},
         // ---- The basement
         {"basement_open", "The basement", "Mom goes down at 16:30",
@@ -582,8 +582,21 @@ NpcState Story::Visitor() const {
         if (frontLocked) { n.x = 25; n.y = 18; } else { n.x = 20; n.y = 19; }
         return n;
     }
-    n.x = 20; n.y = 29;
+    // v0.9.2: his last minutes, counted back from the knock
+    int left = visitorTime - (int)t;
+    if (left > VISIT_WALK) { n.x = 20; n.y = 30; }                                   // getting out of the car
+    else if (left > VISIT_BACK) { n.x = 25; n.y = 21; n.facingWall = true; }         // at the living room window
+    else if (left > VISIT_IN_CAR) { n.x = 20; n.y = 30; }                            // back to the car
+    else if (left > VISIT_OUT) { n.x = 20; n.y = 30; n.visible = false; }            // inside it
+    else { n.x = 20; n.y = 21; }                                                     // the front step
     return n;
+}
+
+// v0.9.2: he has seen you. No reason to wait any longer
+void Story::VisitorNoticesYou() {
+    if (collection || visitorTime - (int)t <= VISIT_BACK) return;
+    visitorTime = (int)t + VISIT_BACK;
+    Say("", "(He looks at you a moment longer. Then he checks his watch and walks back to his car.)");
 }
 
 // ============================================================ loop
@@ -606,6 +619,7 @@ void Story::BeginLoop() {
     closedDoors.clear(); lockedDoors.clear(); brokenDoors.clear();
     basementUnlocked = drawerOpen = keyInDrawer = false;
     doggoStay = doggoDead = false; doggoDeadX = doggoDeadY = -1;
+    visitorLooked = false;
     darkThisLoop = 0; parentsAllied = false; stance = Stance::Normal; threats = 0;
     dadOnFloor = momOnFloor = kidHidden = doggoWithKid = false;
     momAtt = dadAtt = Attitude::Normal;
@@ -703,10 +717,10 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
     t = std::min<float>((float)HOUR, t + realDt * scale);
     CheckEvents(prev, t, px, py);
 
-    // v0.8: somebody has been walking around the house
-    if (!Tutorial() && !collection && t >= 28 * 60 && t < 47 * 60 && world.RoomAt(px, py) == Room::Outside &&
-        py >= 21 && py <= 24 && px >= 6 && px <= 18 && Once("prints")) {
-        Say("You", "(Footprints in the new snow. Big ones. They go all along the house and stop under the living room window.)");
+    // v0.9.2: he walked up to the window. His tracks are there until the storm takes them
+    if (!Tutorial() && !collection && visitorLooked && !Storm() && world.RoomAt(px, py) == Room::Outside &&
+        py >= 21 && py <= 29 && px >= 19 && px <= 26 && Once("prints")) {
+        Say("You", "(Footprints in the new snow. Big ones. They come from the gate and stop right under the living room window.)");
         Say("You", "(Dad's boots aren't that big.)");
         AddClue("prints");
     }
@@ -851,9 +865,27 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
     if (Crossed(prev, now, 47) && Once("storm")) {
         Say("", "(The snowstorm hits. The lights flicker. You can't see the gate any more.)");
     }
-    if (prev < visitorTime - 120 && now >= visitorTime - 120 && Once("car")) {
+    if (now >= visitorTime - VISIT_ARRIVE && Once("car")) {
         if (here == Room::Outside || here == Room::KidsRoom)
             Say("", "(Headlights at the gate. A black car. No plates.)");
+    }
+    // v0.9.2: he has a look at the family first, then fetches what he came with
+    if (!collection) {
+        int left = visitorTime - (int)now;
+        if (left <= VISIT_LOOK && left > VISIT_BACK) {
+            visitorLooked = true;
+            if (here == Room::LivingRoom && Once("face"))
+                Say("", Tutorial() ? "(A big shape outside the window. Julenissen is early!)"
+                                   : "(A face at the window, close to the glass. It's looking right at you. Then it's gone.)");
+        }
+        if (left <= VISIT_IN_CAR && left > VISIT_OUT && Once("car_in") && here == Room::Outside) {
+            Sound("thud");
+            Say("", "(He gets back into the car. The door shuts. The engine keeps running.)");
+        }
+        if (left <= VISIT_OUT && Once("car_out") && here == Room::Outside) {
+            Sound("thud");
+            Say("", "(The car door opens. There's something under his coat that wasn't there before.)");
+        }
     }
     if (now >= visitorTime && !collection) {
         t = (float)visitorTime;
@@ -1915,9 +1947,13 @@ void Story::Choose(const std::string& id, int px, int py) {
     else if (id == "v_who") {
         Say("You", "Who are you?");
         Say("The visitor", "Just a man whose car broke down. Go inside, kid. It's cold.");
+        VisitorNoticesYou();
     } else if (id == "v_program") {
         Say("You", "You're from the program.");
         Say("The visitor", "(he smiles) Go inside, 06. I'll be right there.");
+        VisitorNoticesYou();
+    } else if (id == "v_leave") {
+        VisitorNoticesYou();
     } else if (id == "v_stab") {
         Say("", "(You go for him. He catches your wrist like he's been expecting it.)");
         AddDark(1);
@@ -2408,8 +2444,8 @@ void Story::Interact(const std::string& id, int px, int py) {
         std::vector<ChoiceOpt> o = {{"v_who", "Who are you?"}};
         if (Stage() >= 2) o.push_back({"v_program", "You're from the program.", true});
         if (hasKnife) o.push_back({"v_stab", "Go for him. Now.", false, true});
-        o.push_back({"none", "(Back away.)"});
-        Choice("A big man in a black coat. Waiting by his car.", o);
+        o.push_back({"v_leave", "(Back away.)"});
+        Choice("A big man in a black coat.", o);
     } else {
         Say("You", "(Huh.)");
     }

@@ -2,6 +2,12 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.9.2
+- **He has a look first.** The car comes at 16:43 now. He walks up to the living room window and looks in, goes back and sits in the car, then gets out with something under his coat and walks to the door.
+- **Footprints are his.** The big prints are the real tracks he leaves on the way to the window, so they only show up after he arrives. The storm takes them at 16:47.
+- **A face at the window.** Be in the living room while he looks in. In loop 1 it's Julenissen, early.
+- **Talking to him brings it closer.** Walk up to him before he goes back to the car and he checks his watch and goes straight there. The knock comes sooner.
+
 ## What's in v0.9.1
 - **Fullscreen in the exe.** F now works there too, and the picture scales when you resize or maximize the window.
 

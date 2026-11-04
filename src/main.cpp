@@ -106,7 +106,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.9.1";
+static const char* kVersion = "v0.9.2";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -1449,12 +1449,6 @@ static void DrawPrints() {
         else if (p.who == 2) DrawRectangle((int)p.p.x + ox / 2, (int)p.p.y, 1, 1, Fade(c, a));
         else DrawRectangle((int)p.p.x + ox, (int)p.p.y, 2, 1, Fade(c, a));
     }
-    // somebody big walked along the house, long before the car came. The storm takes them
-    if (story.t >= 28 * 60 && story.t < 47 * 60 && !story.Tutorial())
-        for (int i = 0; i < 26; ++i) {
-            int fx = 6 * TS + i * 10, fy = 22 * TS + 2 + (i % 2) * 5 + (int)(Hash(i, 9) % 3);
-            DrawRectangle(fx, fy, 4, 2, Fade(c, 0.75f));
-        }
 }
 struct Puff { Vector2 p; float t; };
 static std::vector<Puff> puffs;
@@ -2895,7 +2889,13 @@ static void UpdateDrawFrame() {
             if (!story.collection) humanDoors(dad, dadDoor, "Dad");
             if (scene != SceneMode::Chase) {
                 visitor.visible = vs.visible;
-                if (!story.collection) MoveActor(visitor, vs.x, vs.y, 50, dt, false);
+                if (!story.collection) {
+                    bool visitorTalking = beatActive && talkingTo == "visitor";
+                    if (!vs.visible) Snap(visitor, vs.x, vs.y);               // v0.9.2: he's in the car
+                    else if (visitorTalking) face(visitor);
+                    else MoveActor(visitor, vs.x, vs.y, 50, dt, false);
+                    if (vs.facingWall && !visitorTalking && TX(visitor.pos.x) == vs.x && TX(visitor.pos.y) == vs.y) visitor.dir = 1;
+                }
             }
         }
         if (story.collection && !beatActive && (story.dadOnFloor || story.momOnFloor) && scene == SceneMode::Chase) {
