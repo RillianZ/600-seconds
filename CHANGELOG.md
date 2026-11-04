@@ -2,6 +2,9 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.7.2
+- **The watch is its own thing now.** It's an Origin Model 06: new name on the face, an origin mark, a colder case and an ice blue screen. The kid calls it his watch.
+
 ## What's in v0.7.1
 - **The flag is Norwegian now.** It was red with a white cross, which is Denmark. It got its blue cross.
 

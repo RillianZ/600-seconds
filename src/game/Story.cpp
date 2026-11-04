@@ -46,8 +46,8 @@ const std::vector<MemoryEntry>& AllMemories() {
     static const std::vector<MemoryEntry> m = {
         // ---- The hour
         {"loop", "The hour", "The hour repeats",
-         "16:00 to 17:00. Then the Casio beeps and I'm back in bed. Nobody else notices.",
-         "Something about the Casio."},
+         "16:00 to 17:00. Then the watch beeps and I'm back in bed. Nobody else notices.",
+         "Something about the watch."},
         {"poop45", "The hour", "The 45 minute toilet",
          "Some days the toilet takes 45 minutes. No matter what. Reality is NOT the same every time.",
          "Some days are... different."},
@@ -1010,7 +1010,7 @@ void Story::SecretEnding() {
     Black("Two hours of gravel. Then asphalt. Then a gate. A voice: \"Subject 06, delivered.\"");
     Black("Finse. A building that isn't on any map.");
     Black("You've never been here. You know every hallway anyway. You've had a lot of practice dying.");
-    Black("Rooms with kids in them. Twelve years old, all of them. All wearing Casios.");
+    Black("Rooms with kids in them. Twelve years old, all of them. All wearing the same watch.");
     Black("You find the machine. It hums like the basement.");
     Sound("glass");
     Black("You break it. Then you break everything else. You don't stop for a long time.");
@@ -1021,7 +1021,7 @@ void Story::SecretEnding() {
     Flash();
     Sound("beep");
     Black("BEEP BEEP.");
-    Black("16:00. Your bed. Your room. Your Casio.");
+    Black("16:00. Your bed. Your room. Your watch.");
     Black("You scream until there's no sound left. Downstairs, Mom calls your name.");
     Narrate("Whatever was still soft in me stayed in that building. Only the dark came back.");
     Narrate("The longest surviving version of me is still in that bed. He always will be.");
@@ -1334,8 +1334,8 @@ void Story::Choose(const std::string& id, int px, int py) {
     if (id == "vt_play") {
         FadeFor(0, "");
         Black("The tape crackles. The basement. This basement. The same chair.");
-        Black("A boy in the chair. Six, maybe. A Casio that's much too big for his wrist.");
-        Black("You know the Casio. You know the boy.");
+        Black("A boy in the chair. Six, maybe. A watch that's much too big for his wrist.");
+        Black("You know the watch. You know the boy.");
         Black("Dad's voice, off camera, bored. \"Session one, week three. Subject is resisting.\"");
         Black("You don't watch the next part. You can't. You hear it anyway.");
         Black("You hear yourself. You didn't know you could make that sound.");
@@ -1853,7 +1853,7 @@ void Story::Interact(const std::string& id, int px, int py) {
             seenToilet45 = true;
         }
     } else if (id == "mirror") {
-        if (Stage() == 0) Say("You", "(That's me. Messy hair. Casio. Looking cool.)");
+        if (Stage() == 0) Say("You", "(That's me. Messy hair. Origin watch. Looking cool.)");
         else if (Stage() == 1) Say("You", "(That's me. Right? Yeah. That's me.)");
         else if (Stage() == 2) Say("You", "(My reflection blinks a little late. I'm sure it does.)");
         else {
@@ -2127,7 +2127,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         FadeFor(1, "Back up the stairs", 27, 11);
     } else if (id == "screens") {
         Say("", "(Every room. Every angle. Your bed. The toilet. The yard. The shed.)");
-        Say("", "(One small screen in the corner just shows a Casio. Counting. " + ClockText() + ".)");
+        Say("", "(One small screen in the corner just shows a watch. Counting. " + ClockText() + ".)");
         AddClue("basement_screens");
     } else if (id == "files") {
         FadeFor(5, "Reading the files");

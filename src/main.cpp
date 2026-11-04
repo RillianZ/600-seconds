@@ -79,7 +79,7 @@ static bool miniOpen = false; static float miniY = 0, miniV = 0, miniT = 0, mini
 struct MiniPipe { float x, gapY; bool scored; };
 static std::vector<MiniPipe> miniPipes;
 static std::string lastTalkId; static float lastTalkT = 0;   // v0.6: no instant re-talk after a conversation
-static float fadeFromT = 0, fadeToT = 0;   // v0.5: the Casio rolls between these
+static float fadeFromT = 0, fadeToT = 0;   // v0.5: the watch rolls between these
 // v0.7
 static int gMover = 0;                 // who is pathfinding: 0 grown-up, 1 the visitor, 2 Doggo (can't open doors)
 static float vDoorT = 0;               // the visitor kicking in a locked door
@@ -102,7 +102,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.7.1";
+static const char* kVersion = "v0.7.2";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -205,7 +205,7 @@ static void InitSounds() {
     audioOk = IsAudioDeviceReady();
     if (!audioOk) return;
     sBeep = MakeSound(SFX_SR * 0.32f, [](float t, int) {
-        // Casio beep: two short blips, band-limited so it doesn't fizz
+        // Watch beep: two short blips, band-limited so it doesn't fizz
         auto gate = [](float t, float a, float b) { return std::max(0.0f, std::min(1.0f, std::min((t - a) / 0.003f, (b - t) / 0.003f))); };
         float g = gate(t, 0.0f, 0.09f) + gate(t, 0.16f, 0.25f);
         float ph = 2 * PI * 2000.0f * t;
@@ -1454,7 +1454,7 @@ static void DrawWorld(Camera2D cam) {
                 }
             }
         }
-            // Casio glint
+            // Watch glint
             DrawRectangle((int)d.a->pos.x + 4, (int)d.a->pos.y - 2, 2, 2, Color{ 180, 220, 160, 255 });
             break;
         case 2: {
@@ -1512,24 +1512,28 @@ static void Seg(float x, float y, float s, int digit, Color on) {
     V(x, y + s, m & 16); V(x, y, m & 32); H(x, y + s, m & 64);
 }
 
-// v0.5: an F-91W style Casio. "HH:MM" big, ":SS" small like the real watch.
-static float CasioWidth(float s) { return s * 6.6f + s * 0.35f + s * 0.62f * 3.0f + 22; }
-static void DrawCasio(const std::string& clock, float x, float y, float s) {
+// v0.7.2: the Origin Model 06. The kid's watch and the series mark. "HH:MM" big, ":SS" small.
+static float WatchWidth(float s) { return s * 6.6f + s * 0.35f + s * 0.62f * 3.0f + 22; }
+static void DrawWatch(const std::string& clock, float x, float y, float s) {
     // x, y = top-left of the first big digit
     bool hasSec = clock.size() >= 8;
-    float w = hasSec ? CasioWidth(s) : s * 6.6f + 22;
+    float w = hasSec ? WatchWidth(s) : s * 6.6f + 22;
     float bx = x - 9, by = y - 11, bh = s * 2 + 22;
-    // case
-    Panel(bx, by, w, bh, Color{ 24, 25, 27, 255 }, Color{ 70, 72, 76, 255 });
+    // case: blue-black, cold, with the origin mark (a ring with a dot in it) next to the name
+    Panel(bx, by, w, bh, Color{ 20, 26, 34, 255 }, Color{ 74, 88, 104, 255 });
     DrawRectangle((int)((bx + 2) * US), (int)((by + 2) * US), (int)((w - 4) * US), (int)(1 * US), Fade(WHITE, 0.08f));
-    UIText("CASIO", bx + 5, by + 2, 5, Color{ 214, 196, 140, 255 });
-    const char* sub = "ALARM CHRONOGRAPH";
-    UIText(sub, bx + w - 5 - UIMeasure(sub, 3.2f), by + 3.4f, 3.2f, Color{ 150, 150, 150, 255 });
-    // LCD
+    Color ice = { 196, 216, 228, 255 };
+    Vector2 mark = { (bx + 7.5f) * US, (by + 4.8f) * US };
+    DrawRing(mark, 1.8f * US, 2.3f * US, 0, 360, 32, ice);
+    DrawCircleV(mark, 0.8f * US, Color{ 214, 70, 56, 255 });
+    UIText("ORIGIN", bx + 11.5f, by + 2, 5, ice);
+    const char* sub = "MODEL 06";
+    UIText(sub, bx + w - 5 - UIMeasure(sub, 3.2f), by + 3.4f, 3.2f, Color{ 136, 150, 164, 255 });
+    // LCD: colder than a normal watch, ice blue instead of green
     float lx = x - 4, ly = y - 3, lw = w - 10, lh = s * 2 + 7;
-    DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(lh * US), Color{ 146, 166, 136, 255 });
+    DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(lh * US), Color{ 150, 178, 186, 255 });
     DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(std::max(1.0f, 1.2f * US)), Fade(BLACK, 0.18f));
-    Color on = { 28, 38, 30, 255 };
+    Color on = { 22, 32, 44, 255 };
     float cx = x;
     size_t bigEnd = hasSec ? 5 : clock.size();
     for (size_t i = 0; i < bigEnd; ++i) {
@@ -1658,7 +1662,7 @@ static void DrawFade() {
         int tt = (int)(fadeFromT + (fadeToT - fadeFromT) * e);
         char cb[16]; std::snprintf(cb, sizeof cb, "%02d:%02d:%02d", 16 + tt / 3600, (tt / 60) % 60, tt % 60);
         std::string clock = cb;
-        DrawCasio(clock, VW / 2.0f - CasioWidth(9) / 2 + 9, VH / 2.0f - 26, 9);
+        DrawWatch(clock, VW / 2.0f - WatchWidth(9) / 2 + 9, VH / 2.0f - 26, 9);
         if (!cur.text.empty()) UIText(cur.text.c_str(), VW / 2.0f - UIMeasure(cur.text.c_str(), 10) / 2, VH / 2.0f + 14, 10, Color{ 220, 220, 220, 255 });
         if (cur.minutes > 0) {
             std::string plus = "+" + std::to_string(cur.minutes) + " min";
@@ -1796,8 +1800,8 @@ static void DrawToasts(float dt) {
 }
 
 static void DrawHUD() {
-    // Casio
-    DrawCasio(story.ClockTextSec(), VW - 8 - CasioWidth(8) + 9, 16, 8);
+    // Watch
+    DrawWatch(story.ClockTextSec(), VW - 8 - WatchWidth(8) + 9, 16, 8);
     // Room + loop
     Room r = story.world.RoomAt(TX(player.pos.x), TX(player.pos.y));
     Panel(6, 6, UIMeasure(RoomName(r), 10) + 12, 15, Fade(BLACK, 0.6f), Fade(WHITE, 0.3f));
@@ -2194,7 +2198,7 @@ static void DrawTitle() {
     {
         // the title watch counts down the last seconds before the knock, forever
         char tb[16]; std::snprintf(tb, sizeof tb, "16:49:%02d", 50 + ((int)globalT) % 10);
-        DrawCasio(tb, VW / 2.0f - CasioWidth(9) / 2 + 9, 112, 9);
+        DrawWatch(tb, VW / 2.0f - WatchWidth(9) / 2 + 9, 112, 9);
     }
     if (story.tainted) {
         // the title remembers

@@ -18,12 +18,12 @@ enum class BeatType {
     Say,         // speaker + text in the dialogue box (kid font)
     Narrate,     // the narrator, adult font, over a dimmed screen
     Black,       // text on a black screen (off-screen events)
-    Fade,        // fade to black, Casio jumps `minutes`, optional teleport
+    Fade,        // fade to black, the watch jumps `minutes`, optional teleport
     Choice,      // pick one option, presentation calls Story::Choose(id)
     Achievement, // popup
     Clue,        // "new memory" popup (id = memory entry id)
     Sound,       // id = beep, knock, bang, bark, ring, thud, glass, crack
-    EndLoop,     // Casio beep, Story::EndLoop() is called, new loop starts
+    EndLoop,     // Watch beep, Story::EndLoop() is called, new loop starts
     Card,        // big title card (speaker = title)
     Scene,       // real-time scene, id = dad_runs | chase. Presentation calls SceneDone(id)
     QTE,         // mash E. Presentation calls QTEResult(bool)
@@ -251,7 +251,7 @@ public:
     NpcState Dad() const;
     NpcState Visitor() const;
     std::string ClockText() const;
-    std::string ClockTextSec() const;   // v0.5: HH:MM:SS for the Casio
+    std::string ClockTextSec() const;   // v0.5: HH:MM:SS for the watch
     int ChoresDone() const { return (fed ? 1 : 0) + (trashDone ? 1 : 0) + (roomClean ? 1 : 0) + (dishesDone ? 1 : 0) + (firewoodDone ? 1 : 0); }
     static constexpr int CHORES = 5;
     void Hold(Item it, bool quiet = false);   // v0.6: one thing at a time, the old one goes back
