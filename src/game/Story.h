@@ -22,7 +22,7 @@ enum class BeatType {
     Choice,      // pick one option, presentation calls Story::Choose(id)
     Achievement, // popup
     Clue,        // "new memory" popup (id = memory entry id)
-    Sound,       // id = beep, knock, bang, bark, ring, thud, glass, crack
+    Sound,       // id = beep, knock, bang, bark, ring, thud, glass, crack, bells
     EndLoop,     // Watch beep, Story::EndLoop() is called, new loop starts
     Card,        // big title card (speaker = title)
     Scene,       // real-time scene, id = dad_runs | chase. Presentation calls SceneDone(id)
@@ -162,7 +162,7 @@ public:
     Item held = Item::None;
     bool hasStick = false, hasFood = false, hasLight = false;
     bool dishesDone = false, firewoodDone = false;
-    bool gotAllowance = false, zuldaBought = false, knifeTakenLoop = false;
+    bool earnedPresent = false, zuldaOpened = false, knifeTakenLoop = false;
     int playStreak = 0;        // Fliptendo sessions in a row (3 = Screen Time)
     bool lightUsed = false;    // flashlight in his eyes, once per loop
     float visitorStun = 0;     // seconds the visitor is blinded (main counts it down)
@@ -193,6 +193,9 @@ public:
     bool kidHidden = false;                    // set by the presentation every frame of the chase
     bool doggoWithKid = false;
     bool visitorChasing = false;               // he can see you right now: the threats wait                 // same: Doggo is in the room with you and not told to stay
+    // v0.8 per loop
+    bool hasCoat = false, openedEarly = false;
+    float cold = 0;                            // 0 to 1 outside in the storm during the chase. 1 = the snow gets you
     std::string pendingKnifeAct;
     int knifeChecks = 0;
 
@@ -277,6 +280,8 @@ private:
     bool Once(const std::string& id);
     void StartCollection(const std::string& how);
     void CollectionScript();
+    void TutorialCollection();
+    void ColdOut();
     void TrunkScript();
     void SecretEnding();
     void MonsterEnding();

@@ -2,6 +2,19 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.8
+- **It's Christmas Eve.** The hour now happens on 24 December. Snow on the yard, the vidda, the roofs and the fence. Blue dusk at 16:00, night by about 16:25, warm light from the windows until the power goes.
+- **The house is ready for Christmas.** A tree with lights that die as things go wrong, advent candles in the windows, a wreath, an advent calendar with PICKUP behind door 24, and a little nisse who turns to face the wall.
+- **Presents instead of 100 kroner.** All five chores earn one present before dinner, and that's where Zulda is. Read the tags, shake them, or open one early and find out what's in the others (new memory).
+- **Loop 1 is the happiest day of his year.** The family is waiting for Julenissen at ten to five. When he knocks, the kid runs to the door. No chase in loop 1.
+- **"Has he been good?"** The visitor asks, and Mom answers based on how the day went.
+- **The snow stops you.** Run for it and you walk in a circle back to your own footprints. Tired Out, Monster and False Hope changed to match. The road closes behind him at 16:50.
+- **The snow gets you.** Stay out in the storm during the chase and you freeze, faster with no jacket. The jacket is on the coat rack (new memory, achievement Snow Angel).
+- **Footprints.** You, Doggo and the visitor leave tracks. Outside he can follow yours, and the storm fills them in. Big prints along the house at 16:28 are a clue (new memory).
+- **Bells.** Christmas is rung in at 17:00, so the kid never reaches it.
+- Ribbe replaces fiskesuppe. It's always ribbe now.
+- 3 new memories (45 in total).
+
 ## What's in v0.7.2
 - **The watch is its own thing now.** It's an Origin Model 06: new name on the face, an origin mark, a colder case and an ice blue screen. The kid calls it his watch.
 

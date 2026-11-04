@@ -17,6 +17,7 @@ static std::vector<std::string> endingsSeen;
 
 // What to do when the real-time chase starts: "caught", "found", or a visitor choice id
 static std::string chasePlan = "caught";
+static void At(int x, int y);
 static bool qteWin = true;
 static std::vector<std::string> pickQueue; // choice ids to prefer, consumed in order
 
@@ -53,6 +54,7 @@ static void Drain() {
                 else if (chasePlan == "run") s.kidHidden = false;        // keep running until 17:00
                 else if (chasePlan == "doggo") { s.doggoWithKid = true; s.OnCaught(); }
                 else if (chasePlan == "found") s.OnFound();
+                else if (chasePlan == "cold") { At(25, 25); s.kidHidden = false; }   // stand out in the storm, no jacket
                 else if (chasePlan == "outside") s.OnLeftPremises();
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
             }
@@ -75,7 +77,7 @@ static void Drain() {
     }
 }
 
-static void At(int x, int y) { px = x; py = y; }
+void At(int x, int y) { px = x; py = y; }
 static void WaitUntil(int minute) {
     int startLoop = s.loop;
     while (s.loop == startLoop && s.t < minute * 60 && !s.collection) { s.Tick(0.5f, false, px, py); s.Tick(0.5f, false, px, py); Drain(); }
@@ -166,7 +168,7 @@ static void ItemTest() {
     for (auto& b : c.beats) if (b.type == BeatType::Achievement && b.text == "Tired Out") tired = true;
     assert(tired && !c.chase);
     // two games, then anything else, breaks the Screen Time streak
-    Story g; g.loop = 3; g.BeginLoop(); g.beats.clear(); g.zuldaBought = true;
+    Story g; g.loop = 3; g.BeginLoop(); g.beats.clear(); g.zuldaOpened = true;
     g.Choose("ft_zulda", 8, 7); g.MinigameDone(2); assert(g.playStreak == 2);
     g.Interact("sink", 8, 14); assert(g.playStreak == 0);
     std::printf("Held items + 17:00 + streak: OK\n");
@@ -208,13 +210,15 @@ int main(int argc, char** argv) {
     At(5, 18); Use("bowl");
     assert(s.ChoresDone() == 3 && !s.hasFood);
     FinishLoop("caught");
-    assert(s.loop == 2 && !s.Knows("dad_ran") && s.Knows("he_runs_fast"));   // v0.7: a normal day, Dad hands you over
+    assert(s.loop == 2 && !s.Knows("dad_ran") && !s.Knows("he_runs_fast") && s.Knows("visitor_time"));   // v0.8: loop 1 has no chase
 
     Header("LOOP 2: house clues, 16:22 call, 16:30 peek, hide");
     At(4, 10); Use("coats");
     At(6, 14); Use("calendar");
     At(17, 17); Use("album");
     At(16, 14); Use("bookshelf");
+    At(25, 16); Use("tree", {"tr_open"});
+    assert(s.Knows("presents"));
     At(28, 11); Use("basement");
     At(8, 15); WaitUntil(23);
     At(20, 10); WaitUntil(30);
@@ -241,6 +245,14 @@ int main(int argc, char** argv) {
     At(8, 15); Use("mom", {"m_loop"});
     At(21, 14); Use("tv");
     FinishLoop("c_fight");
+
+    CleanLoop();
+    Header("LOOP 5b: big footprints by the house, then the snow gets you");
+    assert(!s.hasCoat);
+    At(14, 22); WaitUntil(29);
+    assert(s.Knows("prints"));
+    FinishLoop("cold");
+    assert(s.Knows("cold"));
 
     CleanLoop();
     Header("LOOP 6: meet him at the gate with Doggo");
@@ -361,7 +373,7 @@ int main(int argc, char** argv) {
 
     Header("Monster ending check on a fresh story with only darkness");
     {
-        Story m; m.darkPoints = 10; m.tainted = true; m.memory = {"dead_switch"};
+        Story m; m.loop = 1; m.darkPoints = 10; m.tainted = true; m.memory = {"dead_switch"};
         m.BeginLoop(); m.beats.clear();
         m.trapsSet = {"marbles", "tripwire"}; m.traps = 2; m.Hold(Item::Knife);
         m.t = 49 * 60 + 59; m.Tick(1.0f, false, 21, 17);
@@ -413,9 +425,9 @@ int main(int argc, char** argv) {
       At(29, 25); Use("woodpile", {"wp_stack"});
       assert(s.ChoresDone() == Story::CHORES && s.t < 40 * 60);
       WaitUntil(41);
-      assert(s.gotAllowance);
-      At(8, 7); Use("fliptendo", {"ft_buy"});
-      assert(s.zuldaBought);
+      assert(s.earnedPresent);
+      At(25, 16); Use("tree", {"tr_zulda"});
+      assert(s.zuldaOpened);
       (void)startLoop;
     }
     FinishLoop("caught");

@@ -2,7 +2,7 @@
 
 ![600 Seconds opening](docs/opening.gif)
 
-A top down time loop game. You're a 12 year old kid in a lone house on Hardangervidda. At 16:50 a man comes to collect you. You remember every loop. Nobody else does.
+A top down time loop game. It's Christmas Eve and you're a 12 year old kid in a lone house on Hardangervidda, snowed in by the storm. At 16:50 there's a knock at the door. It isn't Julenissen. You remember every loop. Nobody else does.
 
 This is a prototype and proof of concept from Sund Origin Studio. Placeholder art, synth sounds, one hour, one house. C++ and raylib, compiled to WebAssembly.
 
