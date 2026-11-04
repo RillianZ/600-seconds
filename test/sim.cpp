@@ -255,6 +255,17 @@ int main(int argc, char** argv) {
     assert(s.Knows("cold"));
 
     CleanLoop();
+    Header("LOOP 5c: the early storm");
+    gShiftCfg.forceNext = Shift::EarlyStorm;
+    FinishLoop("caught");
+    assert(s.shift == Shift::EarlyStorm && !s.PowerOut());
+    At(8, 15); WaitUntil(38);
+    assert(s.Storm() && !s.PowerOut());
+    WaitUntil(41);
+    assert(s.PowerOut() && !s.collection && s.achievements.count("Weather Report"));
+    FinishLoop("caught");
+
+    CleanLoop();
     Header("LOOP 6: meet him at the gate with Doggo");
     At(20, 28); WaitUntil(49);
     Use("visitor", {"v_program"});
@@ -353,9 +364,17 @@ int main(int argc, char** argv) {
     assert(endingsSeen.back() == "escape");
 
     CleanLoop();
-    Header("LOOP 9g: Doggo is in the room when he grabs you (Good Boy)");
+    Header("LOOP 9g: Doggo jumps in front of you. First time the loop just goes on");
+    { size_t before = endingsSeen.size();
+      qteWin = false;   // this can be the last memory: don't win the trunk here
+      FinishLoop("doggo");
+      qteWin = true;
+      assert(s.Knows("doggo_stay") && endingsSeen.size() == before); }
+
+    CleanLoop();
+    Header("LOOP 9g2: you knew, and he's still in the room (Good Boy)");
     FinishLoop("doggo");
-    assert(s.Knows("doggo_stay") && endingsSeen.back() == "doggo");
+    assert(endingsSeen.back() == "doggo");
 
     CleanLoop();
     Header("LOOP 9h: tell Doggo to stay, keep running until 17:00 (Tired Out)");
@@ -440,6 +459,9 @@ int main(int argc, char** argv) {
     assert(n.tainted && n.darkPoints == s.darkPoints && n.memory.empty());
     Story r; r.LoadSave(s.SaveString());
     assert(r.memory == s.memory && r.endings == s.endings);
+    // v0.9: seen lines survive a save, and the tape changes her name
+    { Story a; a.MarkSeen("hello"); Story b; b.LoadSave(a.SaveString()); assert(b.SeenLine("hello") && !b.SeenLine("nope"));
+      Story c; c.memory = {"the_tape"}; assert(std::string(c.MomName()) == "Handler two"); }
 
     bool all = s.memory.size() == AllMemories().size();
     std::printf("Endings seen: ");

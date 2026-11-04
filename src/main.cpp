@@ -6,6 +6,7 @@
 #include "audio/Soundtrack.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -71,6 +72,7 @@ static float typed = 0;      // chars shown
 static int choiceSel = 0;
 static bool fadeApplied = false;
 static std::string fadeFrom, fadeTo;
+static bool curSeen = false;   // v0.9: the player has read this line before
 static std::string talkingTo;   // v0.5: who you are talking to stops walking
 // v0.6: end-of-loop recap, journal scroll, the Fliptendo mini-game
 static bool recapOpen = false; static float recapT = 0; static int recapShown = 0; static std::vector<std::string> recapList;
@@ -104,7 +106,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.8";
+static const char* kVersion = "v0.9.1";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -143,6 +145,11 @@ static int jukeboxSel = 1;
 // Sounds
 static Sound sBeep, sKnock, sBang, sRing, sThud, sBark, sGlass, sCrack, sChime, sFlap, sPoint, sDoor, sBells;
 static bool audioOk = false;
+// v0.9: settings, saved apart from the game
+struct Settings { int music = 7, sfx = 10, text = 1; bool calmFlashes = false; };
+static Settings settings;
+static bool pauseOpen = false;
+static int pauseSel = 0, pauseTapRow = -1, pauseTapDir = 0;
 
 // ============================================================ persistence
 static void SaveGame() {
@@ -275,21 +282,29 @@ static void InitSounds() {
     });
 }
 
+static bool hushMusic = false;   // v0.9: the story asks for silence
 static void Play(const std::string& id) {
+    if (id == "hush_on") { hushMusic = true; return; }
+    if (id == "hush_off") { hushMusic = false; return; }
     if (!audioOk) return;
-    if (id == "beep") PlaySound(sBeep);
-    else if (id == "knock") PlaySound(sKnock);
-    else if (id == "bang") PlaySound(sBang);
-    else if (id == "ring") PlaySound(sRing);
-    else if (id == "thud") PlaySound(sThud);
-    else if (id == "bark") PlaySound(sBark);
-    else if (id == "glass") PlaySound(sGlass);
-    else if (id == "crack") PlaySound(sCrack);
-    else if (id == "chime") PlaySound(sChime);
-    else if (id == "flap") PlaySound(sFlap);
-    else if (id == "point") PlaySound(sPoint);
-    else if (id == "door") PlaySound(sDoor);
-    else if (id == "bells") PlaySound(sBells);
+    auto P = [&](Sound& s) { SetSoundVolume(s, settings.sfx / 10.0f * (id == "bark" ? 0.5f : 1.0f)); PlaySound(s); };
+    if (id == "beep") P(sBeep);
+    else if (id == "knock") P(sKnock);
+    else if (id == "bang") P(sBang);
+    else if (id == "ring") P(sRing);
+    else if (id == "thud") P(sThud);
+    else if (id == "bark") P(sBark);
+    else if (id == "glass") P(sGlass);
+    else if (id == "crack") P(sCrack);
+    else if (id == "chime") P(sChime);
+    else if (id == "flap") P(sFlap);
+    else if (id == "point") P(sPoint);
+    else if (id == "door") P(sDoor);
+    else if (id == "bells") P(sBells);
+}
+// v0.9: only Doggo lines that are actually loud get the bark
+static bool IsBark(const std::string& t) {
+    return t.find("ark") != std::string::npos || t.find("YELP") != std::string::npos || t.find("growl") != std::string::npos;
 }
 
 // ============================================================ music
@@ -336,7 +351,7 @@ static void InitMusic() {
     if (!musicOk) return;
     echoBuf.assign((size_t)(MUSIC_RATE * 0.36f), 0.0f);
     SetAudioStreamCallback(musicStream, MusicCallback);
-    SetAudioStreamVolume(musicStream, 0.7f);
+    SetAudioStreamVolume(musicStream, settings.music / 10.0f);
     PlayAudioStream(musicStream);
 }
 
@@ -605,7 +620,7 @@ static void StartNextBeat() {
         if (b.type == BeatType::Achievement) { ToastFor("ACHIEVEMENT", b.text, GOLD); continue; }
         if (b.type == BeatType::Clue) { ToastFor("NEW MEMORY  [J]", b.text, Color{ 190, 150, 255, 255 }); SaveGame(); continue; }
         if (b.type == BeatType::Flash) { flashT = 0.9f; continue; }
-        if (b.type == BeatType::Bubble) { AddBubble(b.speaker, b.text); if (b.speaker == "Doggo") Play("bark"); continue; }
+        if (b.type == BeatType::Bubble) { AddBubble(b.speaker, b.text); if (b.speaker == "Doggo" && IsBark(b.text)) Play("bark"); continue; }
         if (b.type == BeatType::Scene) {
             sceneT = 0;
             hidden = false;
@@ -644,13 +659,34 @@ static void StartNextBeat() {
         typed = 0;
         choiceSel = 0;
         fadeApplied = false;
-        if (b.type == BeatType::Say && b.speaker == "Doggo") Play("bark");
+        curSeen = false;
+        if (b.type == BeatType::Say || b.type == BeatType::Black || b.type == BeatType::Narrate) { curSeen = story.SeenLine(b.text); story.MarkSeen(b.text); }
+        if (b.type == BeatType::Say && b.speaker == "Doggo" && IsBark(b.text)) Play("bark");
         return;
     }
     beatActive = false;
     interactCooldown = 0.45f;   // v0.6: was 0.3, fast clicking could reopen the same talk
 }
 
+// v0.9: Tab skips talk from loop 2, and any line you've read before, black screens too
+static bool CanSkip() {
+    if (!beatActive) return false;
+    if (cur.type == BeatType::Say) return story.Stage() >= 1 || curSeen;
+    return (cur.type == BeatType::Black || cur.type == BeatType::Narrate) && curSeen;
+}
+static void SkipSeen() {
+    while (!story.beats.empty()) {
+        Beat& f = story.beats.front();
+        bool text = f.type == BeatType::Say || f.type == BeatType::Black || f.type == BeatType::Narrate;
+        if (f.type == BeatType::Say && story.Stage() >= 1) story.beats.pop_front();
+        else if (text && story.SeenLine(f.text)) story.beats.pop_front();
+        else if (f.type == BeatType::Sound) { if (f.id.rfind("hush", 0) == 0) Play(f.id); story.beats.pop_front(); }
+        else if (f.type == BeatType::Fade && f.minutes == 0 && f.tx < 0 && f.text.empty()) story.beats.pop_front();
+        else break;
+    }
+    StartNextBeat();
+}
+static float TextMul() { static const float m[4] = { 0.6f, 1.0f, 1.7f, 200.0f }; return m[settings.text]; }
 static bool Confirm() {
     return IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
 }
@@ -661,20 +697,16 @@ static void UpdateBeat(float dt) {
     switch (cur.type) {
     case BeatType::Say:
     case BeatType::Black: {
-        typed += dt * 55;
-        if (IsKeyPressed(KEY_TAB) && story.Stage() >= 1 && cur.type == BeatType::Say) {
-            // speedrun conversations: skip all queued lines
-            while (!story.beats.empty() && story.beats.front().type == BeatType::Say) story.beats.pop_front();
-            StartNextBeat();
-            return;
-        }
+        typed += dt * 55 * TextMul();
+        if (IsKeyPressed(KEY_TAB) && CanSkip()) { SkipSeen(); return; }
         if (Confirm()) {
             if (typed < (float)cur.text.size()) typed = 1e9f;
             else StartNextBeat();
         }
     } break;
     case BeatType::Narrate: {
-        typed += dt * 32;
+        typed += dt * 32 * TextMul();
+        if (IsKeyPressed(KEY_TAB) && CanSkip()) { SkipSeen(); return; }
         if (Confirm()) {
             if (typed < (float)cur.text.size()) typed = 1e9f;
             else StartNextBeat();
@@ -689,6 +721,7 @@ static void UpdateBeat(float dt) {
             story.beats.clear();
             SaveGame();
             hasSave = true;
+            hushMusic = false;
             scene = SceneMode::None;
             screen = Screen::Title;
         }
@@ -739,6 +772,7 @@ static void UpdateBeat(float dt) {
             beatActive = false;
             story.EndLoop();
             SaveGame();
+            hushMusic = false;
             // v0.6: Outer Wilds style recap of what you learned this loop
             recapList = story.lastLoopNew;
             if (!recapList.empty()) { recapOpen = true; recapT = 0; recapShown = 0; }
@@ -1442,7 +1476,7 @@ static void BuildLightmap(Camera2D cam) {
     if (!powerOut && !story.inBasement) {
         // the house and the shed stay warm while the power lasts
         float flick = 1;
-        if (story.Storm()) { float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f); if (f > 0.85f) flick = 0.72f; }
+        if (story.Storm() && !settings.calmFlashes) { float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f); if (f > 0.85f) flick = 0.72f; }
         Color warm = LerpC(Color{ 255, 246, 228, 255 }, Color{ 226, 206, 182, 255 }, dusk);
         warm.r = (unsigned char)(warm.r * flick); warm.g = (unsigned char)(warm.g * flick); warm.b = (unsigned char)(warm.b * flick);
         float ox = VW / 2.0f - cam.target.x, oy = VH / 2.0f - cam.target.y;
@@ -1460,7 +1494,7 @@ static void BuildLightmap(Camera2D cam) {
     auto tile = [](float t) { return t * TS + TS / 2.0f; };
     if (!powerOut) {
         float lamp = std::max(0.0f, dusk - 0.1f) * 1.1f;
-        if (story.Storm()) { float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f); if (f > 0.85f) lamp *= 0.3f; }
+        if (story.Storm() && !settings.calmFlashes) { float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f); if (f > 0.85f) lamp *= 0.3f; }
         Color warm = { 150, 104, 52, 255 };
         const float L[][2] = { { 6, 5 }, { 13, 5 }, { 22, 5 }, { 8, 10 }, { 24, 10 }, { 7, 16 }, { 19, 15 }, { 25, 17 }, { 34, 7 } };
         for (auto& p : L) light(tile(p[0]), tile(p[1]), 78, warm, lamp);
@@ -1686,6 +1720,7 @@ static Color NarratorColor() {
 
 static void DrawNarrator(const std::string& text, float shown) {
     DrawRectangle(0, 0, SW, SH, story.Stage() >= 4 ? Fade(Color{ 70, 0, 6, 255 }, 0.85f) : Fade(BLACK, 0.72f));
+    if (curSeen && !touchMode) UIText("TAB: skip", VW - 46, VH - 14, 6, Fade(WHITE, 0.4f));
     std::string vis = text.substr(0, std::min<size_t>(text.size(), (size_t)shown));
     float size = 15;
     auto lines = Wrap(text, 360, size, true);
@@ -1741,6 +1776,7 @@ static void DrawBlack() {
         UIText(part.c_str(), VW / 2.0f - UIMeasure(l.c_str(), 10) / 2, y, 10, Color{ 220, 220, 220, 255 });
         y += 14;
     }
+    if (curSeen && !touchMode) UIText("TAB: skip", VW - 46, VH - 14, 6, Fade(WHITE, 0.4f));
 }
 
 static void DrawChoice() {
@@ -2263,7 +2299,7 @@ static void DbgChange(int row, int dir, bool enter) {
     case D_MAXGAP: step(c.maxGap, 0, 30, 1); break;
     case D_FIRST: step(c.firstLoop, 1, 30, 1); break;
     case D_SHARE: step(c.toiletShare, 0, 100, 10); break;
-    case D_FORCE: if (tog) { int f = ((int)c.forceNext + (dir < 0 ? 2 : 1)) % 3; c.forceNext = (Shift)f; } break;
+    case D_FORCE: if (tog) { int f = ((int)c.forceNext + (dir < 0 ? 3 : 1)) % 4; c.forceNext = (Shift)f; } break;
     case D_RESTART: if (enter && screen == Screen::Game) { dbgRestartLoop = true; dbgOpen = false; } break;
     case D_DARK: if (dir) { story.DebugSetDark(story.darkPoints + dir); SaveGame(); } break;
     case D_ALLMEM: if (enter) { story.DebugAllMemories(); SaveGame(); ToastFor("DEBUG", "Every memory unlocked.", Color{ 120, 220, 140, 255 }); } break;
@@ -2344,7 +2380,7 @@ static void DrawTitle() {
         UIText(ng, VW / 2.0f - UIMeasure(ng, 8) / 2, 200, 8, newGameArm > 0 ? Color{ 240, 80, 80, 255 } : Fade(WHITE, 0.8f));
     }
     const char* c1 = touchMode ? "D-pad walk  -  RUN / WAIT hold  -  tap or E to use  -  tap top left for memories" :
-        "WASD/arrows walk  -  Shift run  -  E/Space use  -  hold T wait  -  J memory log  -  Tab skip talk  -  F fullscreen";
+        "WASD/arrows walk  -  Shift run  -  E/Space use  -  hold T wait  -  J memory log  -  Tab skip  -  P pause  -  F fullscreen";
     UIText(c1, VW / 2.0f - UIMeasure(c1, 6) / 2, 220, 6, Fade(WHITE, 0.6f));
     DrawAIBadge(8, VH - 18, Fade(WHITE, 0.55f));
     UIText(kVersion, VW - 8 - UIMeasure(kVersion, 7), 8, 7, Fade(WHITE, 0.45f));
@@ -2354,8 +2390,81 @@ static void DrawTitle() {
         UIText(d1, VW - 8 - UIMeasure(d1, 6), VH - 34, 6, Color{ 120, 220, 140, 200 });
         UIText(d2, VW - 8 - UIMeasure(d2, 6), VH - 24, 6, hardResetArm > 0 ? Color{ 240, 80, 80, 255 } : Color{ 120, 220, 140, 200 });
     }
-    const char* c2 = "Contains implied off-screen violence. Prototype: placeholder art.";
+    const char* c2 = "Contains off-screen violence, implied child abuse and the death of a dog. Flashing lights.";
     UIText(c2, VW / 2.0f - UIMeasure(c2, 6) / 2, 236, 6, Fade(WHITE, 0.35f));
+}
+
+// ============================================================ v0.9 pause menu and settings
+static void SaveSettings() {
+    std::string s = std::to_string(settings.music) + "|" + std::to_string(settings.sfx) + "|" + std::to_string(settings.text) + "|" + std::to_string(settings.calmFlashes ? 1 : 0);
+#if defined(PLATFORM_WEB)
+    EM_ASM({ try { localStorage.setItem('600s_settings', UTF8ToString($0)); } catch (e) {} }, s.c_str());
+#else
+    SaveFileText("600s_settings.txt", (char*)s.c_str());
+#endif
+}
+static void LoadSettings() {
+    std::string s;
+#if defined(PLATFORM_WEB)
+    char* p = (char*)EM_ASM_PTR({
+        var s = null;
+        try { s = localStorage.getItem('600s_settings'); } catch (e) {}
+        if (!s) s = "";
+        var len = lengthBytesUTF8(s) + 1;
+        var buf = _malloc(len);
+        stringToUTF8(s, buf, len);
+        return buf;
+    });
+    if (p) s = p;
+    free(p);
+#else
+    if (FileExists("600s_settings.txt")) { char* t = LoadFileText("600s_settings.txt"); if (t) s = t; UnloadFileText(t); }
+#endif
+    int a, b, c, d;
+    if (std::sscanf(s.c_str(), "%d|%d|%d|%d", &a, &b, &c, &d) == 4) {
+        settings.music = std::max(0, std::min(10, a)); settings.sfx = std::max(0, std::min(10, b));
+        settings.text = std::max(0, std::min(3, c)); settings.calmFlashes = d != 0;
+    }
+}
+static const int PAUSE_ROWS = 6;
+static const float PAUSE_Y = 84, PAUSE_H = 20, PAUSE_X = 110, PAUSE_W = 260;
+static void DrawPause() {
+    DrawRectangle(0, 0, (int)(VW * US), (int)(VH * US), Fade(Color{ 8, 8, 14, 255 }, 0.86f));
+    UIText("PAUSED", VW / 2.0f - UIMeasure("PAUSED", 16) / 2, 48, 16, Color{ 230, 60, 60, 255 });
+    static const char* speed[4] = { "Slow", "Normal", "Fast", "Instant" };
+    std::string val[PAUSE_ROWS] = { "", std::to_string(settings.music) + " / 10", std::to_string(settings.sfx) + " / 10", speed[settings.text],
+                                    settings.calmFlashes ? "Calm" : "Normal", "" };
+    static const char* name[PAUSE_ROWS] = { "Resume", "Music", "Sound", "Text speed", "Flashes", "Back to the title" };
+    for (int i = 0; i < PAUSE_ROWS; ++i) {
+        float y = PAUSE_Y + i * PAUSE_H;
+        if (i == pauseSel) DrawRectangle((int)(PAUSE_X * US), (int)((y - 3) * US), (int)(PAUSE_W * US), (int)((PAUSE_H - 2) * US), Color{ 50, 40, 80, 255 });
+        UIText(name[i], PAUSE_X + 8, y, 10, WHITE);
+        if (!val[i].empty()) UIText(val[i].c_str(), PAUSE_X + PAUSE_W - 8 - UIMeasure(val[i].c_str(), 10), y, 10, Color{ 255, 210, 90, 255 });
+    }
+    const char* h = touchMode ? "Tap a row. Left side lowers, right side raises." : "UP/DOWN pick    LEFT/RIGHT change    ENTER use    P or ESC close";
+    UIText(h, VW / 2.0f - UIMeasure(h, 6) / 2, PAUSE_Y + PAUSE_ROWS * PAUSE_H + 8, 6, Fade(WHITE, 0.5f));
+}
+static void UpdatePause() {
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_P)) { pauseOpen = false; SaveSettings(); return; }
+    if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) pauseSel = (pauseSel + 1) % PAUSE_ROWS;
+    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W)) pauseSel = (pauseSel + PAUSE_ROWS - 1) % PAUSE_ROWS;
+    int dir = (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) ? 1 : (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A)) ? -1 : 0;
+    bool use = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_E);
+    if (pauseTapRow >= 0) { pauseSel = pauseTapRow; dir = pauseTapDir; use = true; pauseTapRow = -1; }
+    switch (pauseSel) {
+    case 0: if (use) { pauseOpen = false; SaveSettings(); } break;
+    case 1: if (dir) { settings.music = std::max(0, std::min(10, settings.music + dir)); if (musicOk) SetAudioStreamVolume(musicStream, settings.music / 10.0f); } break;
+    case 2: if (dir) { settings.sfx = std::max(0, std::min(10, settings.sfx + dir)); Play("chime"); } break;
+    case 3: if (dir) settings.text = std::max(0, std::min(3, settings.text + dir)); break;
+    case 4: if (dir || use) settings.calmFlashes = !settings.calmFlashes; break;
+    case 5:
+        if (use) {
+            pauseOpen = false; SaveSettings(); SaveGame();
+            story.beats.clear(); beatActive = false; hushMusic = false; hidden = false; recapOpen = false; journalOpen = false;
+            scene = SceneMode::None; hasSave = true; screen = Screen::Title;
+        }
+        break;
+    }
 }
 
 static void StartGame(bool fresh) {
@@ -2393,7 +2502,7 @@ static TouchLayout Layout() {
     return l;
 }
 static bool In(TouchPt p, Vector2 c, float r) { return std::hypot(p.x - c.x, p.y - c.y) <= r; }
-static bool SkipShown() { return beatActive && cur.type == BeatType::Say && story.Stage() >= 1; }
+static bool SkipShown() { return CanSkip(); }
 
 static void ReadTouches() {
     touchLive.clear(); touchTaps.clear();
@@ -2461,6 +2570,12 @@ static void UpdateTouch() {
             } else vPress[KEY_ENTER] = true;
             continue;
         }
+        if (pauseOpen) {
+            int row = (int)((p.y - PAUSE_Y + 3) / PAUSE_H);
+            if (row >= 0 && row < PAUSE_ROWS) { pauseTapRow = row; pauseTapDir = p.x < VW / 2.0f ? -1 : 1; }
+            continue;
+        }
+        if (p.x > VW - 34 && p.y > 54 && p.y < 78 && !beatActive && !journalOpen && !recapOpen && !miniOpen) { vPress[KEY_P] = true; continue; }
         bool d[4]; DpadDirs(p, l, d);
         bool onDpad = std::hypot(p.x - l.dx, p.y - l.dy) <= l.dr * 1.5f;
         if (onDpad) { for (int k = 0; k < 4; ++k) if (d[k]) vPress[dirKey[k]] = true; continue; }
@@ -2491,6 +2606,7 @@ static void TouchButton(Vector2 c, float r, const char* label, bool lit, float s
 static void DrawTouchControls() {
     if (!touchMode || screen != Screen::Game) return;
     TouchLayout l = Layout();
+    if (!beatActive && !journalOpen && !pauseOpen) UIText("II", VW - 22, 60, 10, Fade(WHITE, 0.6f));
     // D-pad
     DrawCircleV({ l.dx * US, l.dy * US }, l.dr * US, Fade(WHITE, 0.08f));
     DrawCircleLinesV({ l.dx * US, l.dy * US }, l.dr * US, Fade(WHITE, 0.35f));
@@ -2525,10 +2641,12 @@ static void DrawRotateHint() {
 static void UpdateDrawFrame() {
     float dt = std::min(GetFrameTime(), 0.05f);
     globalT += dt;
-#if defined(PLATFORM_WEB)
+#if !defined(PLATFORM_WEB)
+    // v0.9.1: the page handles F in the browser. The exe has to do it itself
+    if (IsKeyPressed(KEY_F)) ToggleBorderlessWindowed();
+#endif
     int cw = GetScreenWidth(), ch = GetScreenHeight();
     if (cw != SW || ch != SH) { SW = cw; SH = ch; }
-#endif
     US = std::min(SW / (float)VW, SH / (float)VH);
     UpdateTouch();
 
@@ -2539,6 +2657,7 @@ static void UpdateDrawFrame() {
         else if (screen == Screen::Game) {
             if (story.collection && !(beatActive && (cur.type == BeatType::Ending || cur.type == BeatType::EndLoop))) track = 4;
             else track = story.Act();
+            if (hushMusic) track = 0;
             if (beatActive && cur.type == BeatType::Ending) track = 3;
         }
         if (!jukeboxOpen) SetMusic(track);
@@ -2602,6 +2721,9 @@ static void UpdateDrawFrame() {
 
     // ---------------- update
     bool jbGame = UpdateDebugPanel() || UpdateJukebox();
+    if (screen == Screen::Game && !jbGame && !pauseOpen && !journalOpen && !recapOpen && !miniOpen && !jukeboxOpen && !dbgOpen &&
+        (IsKeyPressed(KEY_P) || IsKeyPressed(KEY_ESCAPE))) { pauseOpen = true; pauseSel = 0; jbGame = true; }
+    else if (pauseOpen) { UpdatePause(); jbGame = true; }
     if (dbgRestartLoop) {
         // debug: skip straight to the next loop (applies "force the next loop")
         dbgRestartLoop = false; jbGame = true;
@@ -2677,7 +2799,7 @@ static void UpdateDrawFrame() {
     }
 
     // NPCs move whenever the journal is closed (they keep walking during talk, that's fine)
-    if (!journalOpen && !jukeboxOpen && !dbgOpen && !recapOpen && !miniOpen) {
+    if (!journalOpen && !jukeboxOpen && !dbgOpen && !recapOpen && !miniOpen && !pauseOpen) {
         float npcSpeed = story.Stage() >= 2 ? 62.0f : 44.0f;
         NpcState ms = story.Mom(), ds = story.Dad(), vs = story.Visitor();
         if (story.collection && !wasCollection) {
@@ -3044,7 +3166,8 @@ static void UpdateDrawFrame() {
     if (miniOpen) DrawMini();
     if (jukeboxOpen) DrawJukebox();
     if (dbgOpen) DrawDebugPanel();
-    if (flashT > 0) { flashT -= dt; DrawRectangle(0, 0, SW, SH, Fade(WHITE, flashT)); }
+    if (pauseOpen) DrawPause();
+    if (flashT > 0) { flashT -= dt; DrawRectangle(0, 0, SW, SH, Fade(settings.calmFlashes ? BLACK : WHITE, flashT)); }
     DrawToasts(dt);
     SW = saveSW; SH = saveSH;
     EndMode2D();
@@ -3074,6 +3197,9 @@ int main() {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
 #endif
     InitWindow(SW, SH, "600 Seconds - prototype");
+#if !defined(PLATFORM_WEB)
+    ChangeDirectory(GetApplicationDirectory());   // v0.9: find assets and saves next to the exe, however it was started
+#endif
     SetExitKey(KEY_NULL);
 #if defined(PLATFORM_WEB)
     {
@@ -3103,7 +3229,7 @@ int main() {
         hasUiFont = load("assets/ui.ttf", 72, uiFont);
     }
     InitSounds();
-    if (audioOk) SetSoundVolume(sBark, 0.5f);
+    LoadSettings();
     InitMusic();
     if (FileExists("assets/logo.png")) {
         logoTex = LoadTexture("assets/logo.png");

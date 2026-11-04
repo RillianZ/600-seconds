@@ -68,7 +68,7 @@ struct NpcState {
     bool facingWall = false;
 };
 
-enum class Shift { None, Toilet45, NoDoggo };
+enum class Shift { None, Toilet45, NoDoggo, EarlyStorm };
 
 // v0.5: how a parent feels about you right now (per loop). Big choices lock them into a state,
 // so you can't chat about dinner with someone you just pulled a knife on.
@@ -97,6 +97,7 @@ struct ShiftConfig {
     bool enabled = true;
     bool toilet = true;          // the 45 minute toilet
     bool noDoggo = true;         // the reality without Doggo
+    bool earlyStorm = true;      // v0.9: the storm at 16:37, the power out at 16:40
     int chance = 20;             // % chance per loop once the cooldown is over
     int minGap = 4;              // normal loops needed after an anomaly before the next one can happen
     int maxGap = 9;              // after this many normal loops one is guaranteed (0 = never forced)
@@ -137,6 +138,7 @@ public:
     bool seenToilet45 = false;
     bool prototypeEndShown = false;
     int cleanStreak = 0;       // normal loops in a row since the last reality shift
+    std::set<unsigned> seenLines;   // v0.9: hashes of every line already read (so it can be skipped)
     // ---- darkness. Survives even a New Game. You can't undo it.
     int darkPoints = 0;
     bool tainted = false;
@@ -243,8 +245,8 @@ public:
     bool Befriended() const;
     Stance CurrentStance() const;
     void DoggoSacrifice();                 // the presentation calls this when he jumps in front of you
-    bool PowerOut() const { return collection || t >= visitorTime; }
-    bool Storm() const { return t >= 47 * 60; }
+    bool PowerOut() const { return collection || t >= visitorTime || (shift == Shift::EarlyStorm && t >= 40 * 60); }
+    bool Storm() const { return t >= (shift == Shift::EarlyStorm ? 37 : 47) * 60; }
     bool CarHere() const { return t >= visitorTime - 120 || collection; }
     bool DoggoExists() const { return shift != Shift::NoDoggo && !doggoGone && !doggoDead; }
     bool MomHere() const { return !momLocked; }
@@ -257,11 +259,15 @@ public:
     std::string ClockTextSec() const;   // v0.5: HH:MM:SS for the watch
     int ChoresDone() const { return (fed ? 1 : 0) + (trashDone ? 1 : 0) + (roomClean ? 1 : 0) + (dishesDone ? 1 : 0) + (firewoodDone ? 1 : 0); }
     static constexpr int CHORES = 5;
+    bool SeenLine(const std::string& text) const;
+    void MarkSeen(const std::string& text);
+    const char* MomName() const { return Knows("the_tape") ? "Handler two" : "Mom"; }
     void Hold(Item it, bool quiet = false);   // v0.6: one thing at a time, the old one goes back
     void MinigameDone(int score);             // v0.6: the Fliptendo easter egg finished
 
 private:
     float rng = 0.1234f;
+    bool solemn = false;        // v0.9: the repeated line glitch stays out of serious scenes
     float Rand();
 
     void Say(const std::string& who, const std::string& text);

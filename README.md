@@ -10,10 +10,10 @@ This is a prototype and proof of concept from Sund Origin Studio. Placeholder ar
 
 | | |
 | --- | --- |
-| ![The house](docs/house.png) | ![The collection](docs/collection.png) |
-| ![Memory log](docs/memory-log.png) | |
+| ![The house](docs/house.png) | ![The snow](docs/snow.png) |
+| ![The collection](docs/collection.png) | ![Memory log](docs/memory-log.png) |
 
-Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains implied off screen violence.
+Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains off screen violence, implied child abuse and the death of a dog. Flashing lights, which can be calmed in the pause menu.
 
 ## Controls
 
@@ -24,9 +24,10 @@ Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains implied
 | F | Fullscreen |
 | E / Space | Use things, talk, continue |
 | Enter | Continue / pick a choice |
-| Hold T | Wait (time runs 12x faster) |
+| Hold T | Wait (time runs much faster) |
 | J | Memory log |
-| Tab | Skip talking (from loop 2) |
+| Tab | Skip talking (from loop 2) and any line you've already read |
+| P or Esc | Pause: music, sound, text speed, flashes |
 
 Debug: add `?debug` to the URL, or press Shift+D on the title screen. `M` opens the jukebox (every song), `5` hops to the living room, `6` marks all five chores done, `7` opens the Fliptendo (Flappy Plane), `8` jumps 5 minutes, `9` jumps to 16:49, `0` jumps straight to the knock at the door. On the title screen, `Shift+R` twice is a true hard reset (memories, darkness, endings, achievements, save). `O` opens the debug panel (title or in game): reality shift frequency, force the next loop's reality, restart the loop, set dark points, give or clear all memories, make the visitor blind. Panel settings are saved in the browser and only apply in debug mode.
 
@@ -59,6 +60,10 @@ web/index.html       itch.io friendly page shell
 - **New timed event**: add a `Crossed(prev, now, minute)` block in `CheckEvents`.
 
 Run the logic test: `g++ -std=c++17 -Isrc test/sim.cpp src/game/Story.cpp -o sim && ./sim`
+
+## Play without an IDE
+
+`package_play.sh` makes a zip with `600Seconds.exe` for Windows and `600Seconds.html`, one file that runs in any browser. Build raylib for Windows, run `build_all.sh`, then `RAYLIB_WIN=path/to/raylib-win/src ./package_play.sh`. The zip lands in `build/play`.
 
 ## Build it
 
