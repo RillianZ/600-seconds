@@ -106,7 +106,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.9.2";
+static const char* kVersion = "v0.9.3";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -2379,10 +2379,11 @@ static void DrawTitle() {
     DrawAIBadge(8, VH - 18, Fade(WHITE, 0.55f));
     UIText(kVersion, VW - 8 - UIMeasure(kVersion, 7), 8, 7, Fade(WHITE, 0.45f));
     if (debugMode) {
-        const char* d1 = "DEBUG: O panel, M jukebox, 5 living room, 6 chores, 7 Fliptendo, 8 +5, 9 16:49, 0 knock";
+        const char* d1 = "DEBUG: O panel, M jukebox, 4 basement + tape, 5 living room, 6 chores, 7 Fliptendo, 8 +5, 9 16:49, 0 knock";
         const char* d2 = hardResetArm > 0 ? "Shift+R again to WIPE EVERYTHING (memories, darkness, endings, achievements)" : "Shift+R: hard reset";
-        UIText(d1, VW - 8 - UIMeasure(d1, 6), VH - 34, 6, Color{ 120, 220, 140, 200 });
-        UIText(d2, VW - 8 - UIMeasure(d2, 6), VH - 24, 6, hardResetArm > 0 ? Color{ 240, 80, 80, 255 } : Color{ 120, 220, 140, 200 });
+        // v0.9.3: top left, the bottom of the title is full
+        UIText(d1, 8, 8, 6, Color{ 120, 220, 140, 200 });
+        UIText(d2, 8, 18, 6, hardResetArm > 0 ? Color{ 240, 80, 80, 255 } : Color{ 120, 220, 140, 200 });
     }
     const char* c2 = "Contains off-screen violence, implied child abuse and the death of a dog. Flashing lights.";
     UIText(c2, VW / 2.0f - UIMeasure(c2, 6) / 2, 236, 6, Fade(WHITE, 0.35f));
@@ -2782,6 +2783,7 @@ static void UpdateDrawFrame() {
                 }
             }
         }
+        if (debugMode && IsKeyPressed(KEY_FOUR) && !story.inBasement && !story.collection) story.DebugToBasement();   // debug: the tape, downstairs
         if (debugMode && IsKeyPressed(KEY_FIVE) && !story.inBasement) { Snap(player, 16, 16); player.dir = 3; }   // debug: hop to the living room
         if (debugMode && IsKeyPressed(KEY_SIX)) { story.fed = story.trashDone = story.roomClean = story.dishesDone = story.firewoodDone = true; ToastFor("DEBUG", "All five chores done", SKYBLUE); }
         if (debugMode && IsKeyPressed(KEY_SEVEN)) story.Choose("ft_flappy", TX(player.pos.x), TX(player.pos.y));   // debug: jump into the Fliptendo

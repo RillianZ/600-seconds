@@ -289,6 +289,7 @@ void Story::DebugSetDark(int v) {
 }
 void Story::DebugAllMemories() { for (auto& m : AllMemories()) memory.insert(m.id); }
 void Story::DebugClearMemories() { memory.clear(); }
+void Story::DebugToBasement() { Hold(Item::Tape, true); Choose("b_down", 6, 38); }
 
 std::string Story::SaveString() const {
     std::ostringstream o;

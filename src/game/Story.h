@@ -212,6 +212,7 @@ public:
     Shift RollShift();       // decides this loop's reality (uses gShiftCfg)
     void DebugSetDark(int v);
     void DebugAllMemories();
+    void DebugToBasement();   // v0.9.3: go down with the tape in your hand
     void DebugClearMemories();
     void EndLoop();
 
