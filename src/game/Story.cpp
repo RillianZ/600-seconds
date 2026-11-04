@@ -214,6 +214,7 @@ void Story::NewGame() {
     memory.clear();
     achievements.clear();
     endings.clear();
+    seenLines.clear();
     seenToilet45 = false;
     prototypeEndShown = false;
     cleanStreak = 0;
@@ -226,13 +227,13 @@ void SeedShifts(unsigned seed) { shiftRng.seed(seed); }
 static int ShiftRoll100() { return (int)(shiftRng() % 100); }
 
 const char* ShiftName(Shift s) {
-    return s == Shift::Toilet45 ? "45 minute toilet" : s == Shift::NoDoggo ? "no Doggo" : "normal";
+    return s == Shift::Toilet45 ? "45 minute toilet" : s == Shift::NoDoggo ? "no Doggo" : s == Shift::EarlyStorm ? "early storm" : "normal";
 }
 
 std::string ShiftConfig::Save() const {
     std::ostringstream o;
     o << "c1|" << enabled << "|" << toilet << "|" << noDoggo << "|" << chance << "|" << minGap << "|"
-      << maxGap << "|" << firstLoop << "|" << toiletShare << "|" << (int)std::lround(timeMul * 10);
+      << maxGap << "|" << firstLoop << "|" << toiletShare << "|" << (int)std::lround(timeMul * 10) << "|" << earlyStorm;
     return o.str();
 }
 
@@ -247,19 +248,24 @@ void ShiftConfig::Load(const std::string& s) {
     chance = std::clamp(v[3], 0, 100); minGap = std::clamp(v[4], 0, 30); maxGap = std::clamp(v[5], 0, 30);
     firstLoop = std::clamp(v[6], 1, 30); toiletShare = std::clamp(v[7], 0, 100);
     if (v.size() >= 9) timeMul = std::clamp(v[8], 10, 20) / 10.0f;
+    if (v.size() >= 10) earlyStorm = v[9];
 }
 
 Shift Story::RollShift() {
     ShiftConfig& c = gShiftCfg;
     if (c.forceNext != Shift::None) { Shift f = c.forceNext; c.forceNext = Shift::None; return f; }
-    if (!c.enabled || loop < c.firstLoop || (!c.toilet && !c.noDoggo)) return Shift::None;
+    if (!c.enabled || loop < c.firstLoop || (!c.toilet && !c.noDoggo && !c.earlyStorm)) return Shift::None;
     if (cleanStreak < c.minGap) return Shift::None;
     bool forced = c.maxGap > 0 && cleanStreak >= std::max(c.maxGap, c.minGap);
     if (!forced && ShiftRoll100() >= c.chance) return Shift::None;
-    if (!c.noDoggo) return Shift::Toilet45;
-    if (!c.toilet) return Shift::NoDoggo;
+    std::vector<Shift> others;
+    if (c.noDoggo) others.push_back(Shift::NoDoggo);
+    if (c.earlyStorm) others.push_back(Shift::EarlyStorm);
+    if (others.empty()) return Shift::Toilet45;
+    Shift other = others[ShiftRoll100() % others.size()];
+    if (!c.toilet) return other;
     if (!seenToilet45) return Shift::Toilet45;  // the first anomaly you meet is the toilet, so its memory is always findable
-    return ShiftRoll100() < c.toiletShare ? Shift::Toilet45 : Shift::NoDoggo;
+    return ShiftRoll100() < c.toiletShare ? Shift::Toilet45 : other;
 }
 
 void Story::Hold(Item it, bool quiet) {
@@ -293,7 +299,8 @@ std::string Story::SaveString() const {
     for (auto& a : achievements) o << a << ",";
     o << "|";
     for (auto& e : endings) o << e << ",";
-    o << "|" << cleanStreak;
+    o << "|" << cleanStreak << "|";
+    for (unsigned h : seenLines) o << std::hex << h << std::dec << ",";
     return o.str();
 }
 
@@ -326,20 +333,32 @@ void Story::LoadSave(const std::string& s) {
         split(parts[7], achievements);
         split(parts[8], endings);
         cleanStreak = parts.size() >= 10 ? std::atoi(parts[9].c_str()) : 0;
+        seenLines.clear();
+        if (parts.size() >= 11) {
+            std::set<std::string> hs; split(parts[10], hs);
+            for (auto& h : hs) seenLines.insert((unsigned)std::strtoul(h.c_str(), nullptr, 16));
+        }
     }
 }
 
 // ============================================================ helpers
+// v0.9: lines you have read before can be skipped, including the black screens
+static unsigned LineHash(const std::string& t) { unsigned h = 2166136261u; for (unsigned char c : t) h = (h ^ c) * 16777619u; return h; }
+bool Story::SeenLine(const std::string& text) const { return seenLines.count(LineHash(text)) > 0; }
+void Story::MarkSeen(const std::string& text) { seenLines.insert(LineHash(text)); }
+
 float Story::Rand() {
     rng = std::fmod(rng * 9301.0f + 49297.0f * 0.0001f + 0.618f, 1.0f);
     return rng;
 }
 
 void Story::Say(const std::string& who, const std::string& text) {
-    Beat b; b.type = BeatType::Say; b.speaker = who; b.text = text;
+    Beat b; b.type = BeatType::Say; b.text = text;
+    b.speaker = who == "Mom" ? MomName() : who;   // v0.9: after the tape she isn't Mom any more
     beats.push_back(b);
-    // Quantum instability: the extras don't know their lines.
-    if (Stage() >= 2 && who != "" && who != "You" && who != "The visitor" && !collection && Rand() < 0.12f) beats.push_back(b);
+    // Quantum instability: the extras don't know their lines. Never in the serious scenes
+    if (Stage() >= 2 && who != "" && who != "You" && who != "The visitor" && !collection && !solemn &&
+        momAtt == Attitude::Normal && dadAtt == Attitude::Normal && Rand() < 0.12f) beats.push_back(b);
 }
 void Story::Bubble(const std::string& who, const std::string& text) {
     Beat b; b.type = BeatType::Bubble; b.speaker = who; b.text = text;
@@ -533,7 +552,8 @@ NpcState Story::Mom() const {
     if (momLocked) { n.x = 12; n.y = 39; n.visible = inBasement; return n; }
     if (collection && dadOnFloor && stance == Stance::Befriended && !momOnFloor) { n.x = 19; n.y = 17; return n; }   // on her knees next to him
     if (collection) { n.x = 17; n.y = 15; return n; }
-    if (t >= 22 * 60 && t < 24 * 60) { n.x = 4; n.y = 15; return n; }
+    int phone = Stage() >= 2 ? 21 : 22;
+    if (t >= phone * 60 - 30 && t < (phone + 2) * 60) { n.x = 4; n.y = 15; return n; }
     if (t >= 28 * 60 && t < 30 * 60) { n.x = 27; n.y = 10; return n; }
     if (t >= 30 * 60 && t < 33 * 60) { n.x = 8; n.y = 40; n.visible = inBasement; return n; }
     if (Stage() >= 2 && ((m >= 12 && m < 18) || (m >= 36 && m < 40))) {
@@ -642,6 +662,7 @@ void Story::BeginLoop() {
 
     if (shift == Shift::Toilet45) Say("You", "(My stomach just made a noise like a dying whale.)");
     if (shift == Shift::NoDoggo) Say("You", "(It's quiet. Too quiet. Something's missing.)");
+    if (shift == Shift::EarlyStorm) Say("You", "(The wind is already up. That's not how today goes.)");
 }
 
 void Story::EndLoop() {
@@ -819,6 +840,13 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
         Beat e; e.type = BeatType::EndLoop; beats.push_back(e);
         collection = true; // freeze the clock
         return;
+    }
+    if (shift == Shift::EarlyStorm && Crossed(prev, now, 37) && Once("storm"))
+        Say("", "(The snowstorm hits. Ten minutes early. It has never been early.)");
+    if (shift == Shift::EarlyStorm && Crossed(prev, now, 40) && Once("early_power")) {
+        Sound("thud");
+        Say("", "(The power dies. It's only 16:40. Nobody is at the door. Not yet.)");
+        Achieve("Weather Report");
     }
     if (Crossed(prev, now, 47) && Once("storm")) {
         Say("", "(The snowstorm hits. The lights flicker. You can't see the gate any more.)");
@@ -1017,6 +1045,7 @@ void Story::OnVisitorUp() {
 void Story::CollectionScript() {
     chase = false;
     FadeFor(0, "");
+    Sound("hush_on");   // v0.9: no music for this part
     Black("Rope. The couch. He ties knots like he's done it a thousand times.");
     bool momLeft = MomHere() || momLocked;
     bool dadLeft = !dadDown;
@@ -1279,6 +1308,8 @@ void Story::DoggoShot(bool onScreen) {
 
 void Story::DoggoSacrifice() {
     // v0.7: he was in the room. He always is, unless you tell him to stay.
+    // v0.9: the first time the loop carries on, so you learn it before it costs you an ending
+    bool first = !Knows("doggo_stay");
     chase = false;
     doggoDead = true;
     Say("", "(His hand is already reaching for you.)");
@@ -1292,6 +1323,11 @@ void Story::DoggoSacrifice() {
     Say("You", "(No. No no no. Get up. GET UP.)");
     Say("The visitor", "(wiping his sleeve) ...Good dog. Shame.");
     AddClue("doggo_stay");
+    if (first) {
+        Say("You", "(He got in front of me. I never told him to stay.)");
+        CollectionScript();
+        return;
+    }
     Achieve("Good Boy");
     FadeFor(0, "");
     Black("You don't fight when he picks you up. You can't stop looking back.");
@@ -1305,6 +1341,7 @@ void Story::DoggoSacrifice() {
 void Story::ConvinceParents(const std::string& who) {
     // v0.7: befriended + proof. They didn't know they were part of the clean-up.
     bool proofPhone = Knows("phone_answer");
+    solemn = true;
     Say("You", "I need you to listen. Really listen. The man at 16:50. The clean-up. It's not just me. It's you too.");
     if (tainted) Narrate("I said it the way they taught me to say things. Soft. Scared. Every word exactly where it would hurt. It worked.");
     Say(who, who == "Mom" ? "(she laughs, then stops) Clean-up is... no. We're being reassigned. They promised." : "(he rubs his face) Buddy, no. We're done after today. We retire. They promised.");
@@ -1321,6 +1358,7 @@ void Story::ConvinceParents(const std::string& who) {
     parentsAllied = true;
     AddClue("allies");
     Achieve("Not Alone");
+    solemn = false;
 }
 
 void Story::DeadSwitchLoop() {
@@ -1405,11 +1443,12 @@ void Story::Choose(const std::string& id, int px, int py) {
     }
     if (id == "cab_key") { Hold(Item::Key, true); keyInDrawer = false; Say("You", "(You take the key back out of the lock.)"); return; }
     if (id == "vt_play") {
+        Sound("hush_on");   // v0.9: nothing under the tape but the tape
         FadeFor(0, "");
         Black("The tape crackles. The basement. This basement. The same chair.");
         Black("A boy in the chair. Six, maybe. A watch that's much too big for his wrist.");
         Black("You know the watch. You know the boy.");
-        Black("Dad's voice, off camera, bored. \"Session one, week three. Subject is resisting.\"");
+        Black("Dad's voice, off camera, bored. \"Session one, week three hundred and twelve. Subject is resisting.\"");
         Black("You don't watch the next part. You can't. You hear it anyway.");
         Black("You hear yourself. You didn't know you could make that sound.");
         Black("You hear Mom. She's humming. The same carol she hums in the kitchen every Christmas Eve.");
@@ -1418,6 +1457,7 @@ void Story::Choose(const std::string& id, int px, int py) {
         Black("\"There we go, sweetie. Drink up. You won't remember any of this.\"");
         Black("The boy drinks. He stops crying. He smiles back at her.");
         Black("That's the worst part. You're smiling.");
+        Sound("hush_off");
         FadeFor(5, "The tape hisses. Snow on the screen.");
         Say("You", "(I'm shaking. I can't make it stop.)");
         Say("You", "(The juice at 15:55. Every day. Every single day.)");
@@ -1987,13 +2027,13 @@ void Story::Interact(const std::string& id, int px, int py) {
                 if (keyInDrawer || hasKey) o.push_back({keyInDrawer ? "cab_tape2" : "cab_tape", keyInDrawer ? "Take the tape." : "Take the tape. (leave the key in the lock)"});
             }
             o.push_back({"none", "Leave it."});
-            Choice("Dad's cabinet is open. Papers, an old watch, a VHS tape: S06 - SESSION 1 - WEEK 3.", o);
+            Choice("Dad's cabinet is open. Papers, an old watch, a VHS tape: S06 - SESSION 1 - WEEK 312.", o);
             return;
         }
         if (hasKey) {
             drawerOpen = true;
             Say("You", "(The basement key fits Dad's cabinet too. Of course it does.)");
-            Say("", "(Papers. An old watch. A VHS tape with a label in Dad's handwriting: S06 - SESSION 1 - WEEK 3.)");
+            Say("", "(Papers. An old watch. A VHS tape with a label in Dad's handwriting: S06 - SESSION 1 - WEEK 312.)");
             Choice("The tape.", {{"cab_tape", "Take the tape. (leave the key in the lock)"}, {"none", "Leave it."}});
             return;
         }
@@ -2072,6 +2112,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         fed = true; Hold(Item::None);
         Say("Doggo", "*inhales the entire bowl in two seconds*");
     } else if (id == "tv") {
+        if (PowerOut()) { Say("You", "(No power. Just my own face in the glass.)"); return; }
         FadeFor(Dur(20), "Watching TV");
         if (Knows("handlers")) {
             Say("", "(Same channel. Different episode. A boy in a box. The audience laughs.)");
@@ -2282,12 +2323,12 @@ void Story::Interact(const std::string& id, int px, int py) {
             Say("You", "(Leave her alone. I did enough.)");
         } else {
             Say("Mom", "(she keeps the kitchen table between you) ...What do you want?");
-            Choice("Mom", {{"m_sorry", "\"I'm sorry.\""}, {"none", "(Leave her alone.)"}});
+            Choice(MomName(), {{"m_sorry", "\"I'm sorry.\""}, {"none", "(Leave her alone.)"}});
         }
     } else if (id == "mom" && momAtt == Attitude::Cold) {
         if (grounded) Say("Mom", "(through the door) I'm not discussing it. You stay in there.");
         else Say("Mom", "(not looking up) Did I say you could come out of your room?");
-        Choice("Mom", {{"m_sorry", "\"Sorry, Mom.\""}, {"none", "(Go.)"}});
+        Choice(MomName(), {{"m_sorry", "\"Sorry, Mom.\""}, {"none", "(Go.)"}});
     } else if (id == "mom") {
         if (Knows("the_tape") && Once("tape_mom")) Say("You", "(She smiles at me. I can hear her humming. I smile back. I learned that from her.)");
         if (hasKnife && !tainted && Once("mom_sees_knife")) {
@@ -2317,7 +2358,7 @@ void Story::Interact(const std::string& id, int px, int py) {
             Say("You", "(She's just standing there. Facing the corner. Breathing.)");
             Say("Mom", "(she turns around, smiling) Oh! Hi, sweetie.");
         }
-        Choice("Mom", o);
+        Choice(MomName(), o);
     } else if (id == "dad" && dadAtt == Attitude::Broken) {
         Say("Dad", "(he won't look at you. He's holding his hand against his chest.)");
         Say("You", "(There's nothing left to say to him. Not this loop.)");

@@ -2,6 +2,20 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.9
+- **Tab skips what you've read.** Black screens and narrator lines too, so the collection doesn't cost you a minute every loop. New lines still have to be read.
+- **Doggo gets a warning.** The first time he jumps in front of you the loop just goes on, and you learn to tell him to stay. Good Boy only ends the run after that.
+- **Early Storm.** A new reality shift: the storm comes at 16:37 and the power dies at 16:40, ten minutes before he does. Achievement: Weather Report.
+- **Pause menu.** P or Esc: music, sound, text speed and calmer flashes. Settings are saved.
+- **After the tape she isn't Mom any more.** The dialogue box says Handler two.
+- **Silence.** No music under the tape, and none while he does what he came to do.
+- The tape is week 312 now. Week 3 would have made him a baby.
+- The repeated line glitch stays out of serious scenes.
+- Mom walks to the phone in time when it rings early.
+- Doggo only barks on lines where he actually barks.
+- New content note on the title screen.
+- `package_play.sh` makes a zip with a Windows exe and a one file browser version.
+
 ## What's in v0.8
 - **It's Christmas Eve.** The hour now happens on 24 December. Snow on the yard, the vidda, the roofs and the fence. Blue dusk at 16:00, night by about 16:25, warm light from the windows until the power goes.
 - **The house is ready for Christmas.** A tree with lights that die as things go wrong, advent candles in the windows, a wreath, an advent calendar with PICKUP behind door 24, and a little nisse who turns to face the wall.
