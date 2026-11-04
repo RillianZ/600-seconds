@@ -138,6 +138,7 @@ struct World {
             {"tv", "TV", 21, 13},
             {"couch", "Couch", 21, 16},
             {"radio", "Radio", 26, 13},
+            {"tree", "Christmas tree", 26, 15},
             {"woodstove", "Wood stove", 27, 18},
             {"bins", "Trash bins", 5, 23},
             {"doghouse", "Doggo's house", 25, 24},
