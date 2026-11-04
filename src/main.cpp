@@ -102,7 +102,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.7";
+static const char* kVersion = "v0.7.1";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -1086,7 +1086,7 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         R(4, 1, 8, 2, Color{ 230, 220, 200, 255 });                                            // name board
     }
     else if (id == "gate") { R(0, 4, 3, 10, Color{ 90, 64, 40, 255 }); }
-    else if (id == "flag") { R(7, -20, 2, 34, LIGHTGRAY); float w = std::sin(globalT * 9) * 2; R(9, -20, 10 + w, 7, RED); R(12, -20, 2, 7, RAYWHITE); R(9, -17, 10 + w, 2, RAYWHITE); }
+    else if (id == "flag") { R(7, -20, 2, 34, LIGHTGRAY); float w = std::sin(globalT * 9) * 2; Color navy = { 0, 32, 91, 255 }; R(9, -20, 10 + w, 7, RED); R(12, -20, 3, 7, RAYWHITE); R(9, -18, 10 + w, 3, RAYWHITE); R(13, -20, 1, 7, navy); R(9, -17, 10 + w, 1, navy); }
     else if (id == "generator") {
         R(1, 2, 14, 12, Color{ 206, 164, 44, 255 }); R(1, 2, 14, 1, Color{ 236, 200, 90, 255 });
         R(3, 4, 10, 4, Color{ 40, 40, 40, 255 }); for (int k = 0; k < 4; ++k) R(4 + k * 2, 5, 1, 2, Color{ 90, 90, 90, 255 });

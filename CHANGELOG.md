@@ -2,6 +2,9 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.7.1
+- **The flag is Norwegian now.** It was red with a white cross, which is Denmark. It got its blue cross.
+
 ## What's in v0.7
 - **Doors.** Every door can be opened and closed (E). Only the master key (the basement key) locks them. Mom and Dad open doors on their way and close them behind them. The man walks through closed doors and kicks in locked ones. Doggo can't open doors at all.
 - **Basement and Dad's cabinet.** Unlock the basement with the key and it stays unlocked. The same key opens Dad's cabinet: swap the key for a VHS tape and play it on the old TV in the basement. The medicine fridge explains the juice.
