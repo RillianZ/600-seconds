@@ -106,7 +106,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.9";
+static const char* kVersion = "v0.9.1";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -2641,10 +2641,12 @@ static void DrawRotateHint() {
 static void UpdateDrawFrame() {
     float dt = std::min(GetFrameTime(), 0.05f);
     globalT += dt;
-#if defined(PLATFORM_WEB)
+#if !defined(PLATFORM_WEB)
+    // v0.9.1: the page handles F in the browser. The exe has to do it itself
+    if (IsKeyPressed(KEY_F)) ToggleBorderlessWindowed();
+#endif
     int cw = GetScreenWidth(), ch = GetScreenHeight();
     if (cw != SW || ch != SH) { SW = cw; SH = ch; }
-#endif
     US = std::min(SW / (float)VW, SH / (float)VH);
     UpdateTouch();
 

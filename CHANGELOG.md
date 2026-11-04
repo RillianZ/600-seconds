@@ -2,6 +2,9 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.9.1
+- **Fullscreen in the exe.** F now works there too, and the picture scales when you resize or maximize the window.
+
 ## What's in v0.9
 - **Tab skips what you've read.** Black screens and narrator lines too, so the collection doesn't cost you a minute every loop. New lines still have to be read.
 - **Doggo gets a warning.** The first time he jumps in front of you the loop just goes on, and you learn to tell him to stay. Good Boy only ends the run after that.
