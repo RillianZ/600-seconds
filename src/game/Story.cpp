@@ -40,6 +40,7 @@ const std::vector<EndingEntry>& AllEndings() {
         {"doggo", "Good Boy", "Doggo would do anything for you. Don't let him."},
         {"paid", "They Paid", "Stay hidden. No matter what you hear."},
         {"bells", "One Good Hour", "Running doesn't work. You'd have to know that first. Then stay."},
+        {"empty", "The Empty House", "Leave him nobody to make pay. Not even the dog. Then last until the bells."},
     };
     return e;
 }
@@ -61,7 +62,7 @@ const std::vector<TimelineEntry>& AllTimeline() {
         {47, 0, "storm", "The snowstorm hits. The road closes behind him.", ""},
         {49, 0, "car_out", "He gets out again. Something under his coat.", ""},
         {50, 0, "knock", "The power dies. Three slow knocks.", "visitor_time"},
-        {57, 0, "threat", "If he can't find me he starts on them. One a minute.", "they_paid"},
+        {57, 30, "threat", "If he can't find me he starts on them.", "they_paid"},
         {60, 0, "bells", "Bells, far away. The watch beeps. 16:00 again.", "loop"},
     };
     return t;
@@ -120,6 +121,7 @@ const std::vector<AchievementEntry>& AllAchievements() {
         {"Spelled Out", "Read the board behind the shed on a dark night."},
         {"Not a Dog", "Go and see what Doggo growls at."},
         {"Out Back", "Find all six things somebody left out back."},
+        {"Nobody Left", "Leave him nobody to make pay. Then last the whole hunt."},
     };
     return a;
 }
@@ -258,6 +260,12 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"dad_ran", "The visitor", "Dad fought him",
          "Dad grabbed a lamp, told me to run and went straight at him. It bought me ten seconds. Mom sat on the floor next to him and cried.",
          "Be a kid worth fighting for. Do everything right, all of it."},
+        {"taser", "The visitor", "He doesn't run any more",
+         "Lead him round a fence or out a window a couple of times, or stand where he can see me but can't get to me, and he stops chasing. He has a taser. Two little hooks, and every muscle I have locks at once.",
+         "What does he do when he can't catch you?"},
+        {"nobody_left", "The visitor", "Nobody left to hurt",
+         "Mom bolted in the basement, Dad barred in the shed, Doggo gone through the gate. I lasted to the bells. He sat down in Dad's chair and talked to the empty room. He said he never got that far. He always came out for them.",
+         "Leave him nobody to make pay. Then last the whole hunt."},
         {"they_paid", "The visitor", "He makes them pay",
          "If he can't find me, he starts on them. 16:57 a warning. 16:58 Dad. 16:59 Mom. I heard all of it.",
          "Stay hidden long enough."},
@@ -401,7 +409,7 @@ const char* ShiftName(Shift s) {
 std::string ShiftConfig::Save() const {
     std::ostringstream o;
     o << "c1|" << enabled << "|" << toilet << "|" << noDoggo << "|" << chance << "|" << minGap << "|"
-      << maxGap << "|" << firstLoop << "|" << toiletShare << "|" << (int)std::lround(timeMul * 10) << "|" << earlyStorm;
+      << maxGap << "|" << firstLoop << "|" << toiletShare << "|" << (int)std::lround(timeMul * 10) << "|" << earlyStorm << "|" << (int)std::lround(huntScale * 10);
     return o.str();
 }
 
@@ -417,6 +425,7 @@ void ShiftConfig::Load(const std::string& s) {
     firstLoop = std::clamp(v[6], 1, 30); toiletShare = std::clamp(v[7], 0, 100);
     if (v.size() >= 9) timeMul = std::clamp(v[8], 10, 20) / 10.0f;
     if (v.size() >= 10) earlyStorm = v[9];
+    if (v.size() >= 11) huntScale = std::clamp(v[10], 10, 50) / 10.0f;
 }
 
 Shift Story::RollShift() {
@@ -1035,10 +1044,12 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
         // v0.6: the clock keeps going while he hunts you. At 17:00 you can't run any more.
         if (chase) {
             float before = t;
-            t = std::min<float>((float)HOUR, t + realDt * TIME_SCALE * gShiftCfg.timeMul);
+            t = std::min<float>((float)HOUR, t + realDt * gShiftCfg.huntScale * gShiftCfg.timeMul);   // v0.15.2: the hunt runs slower than the hour
             // v0.7: he runs out of patience in the last three minutes
             (void)before;
-            for (int n = 1; n <= 3; ++n) if (t >= (56 + n) * 60 && threats < n && !visitorChasing) { Threat(n); break; }
+            // v0.15.2 (Noah): more hunt before he starts on them, and more time between them
+            static const int kThreatAt[3] = { 57 * 60 + 30, 58 * 60 + 40, 59 * 60 + 40 };
+            for (int n = 1; n <= 3; ++n) if (t >= kThreatAt[n - 1] && threats < n && !visitorChasing) { Threat(n); break; }
             // v0.8: the storm gets you if you stay out in it. A jacket buys time. Indoors you warm up again
             Room here = world.RoomAt(px, py);
             // v0.15 (Noah): without the jacket you don't make it across the yard. With it you can stay out
@@ -1053,7 +1064,7 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
             } else if (IsYard(here)) cold = std::max(0.0f, cold - realDt / 30.0f);
             else cold = std::max(0.0f, cold - realDt / 12.0f);
             if (cold >= 1.0f && Once("cold")) { ColdOut(); return; }
-            if (t >= HOUR && Once("tired")) { if (kidHidden) PaidEnding(); else TiredOut(); }
+            if (t >= HOUR && Once("tired")) { if (NobodyLeft()) EmptyHouseEnding(); else if (kidHidden) PaidEnding(); else TiredOut(); }
         }
         return;
     }
@@ -2051,7 +2062,7 @@ void Story::Threat(int n) {
     FadeFor(0, "");
     if (n == 1) {
         Sound("knock");
-        Say("The visitor", std::string("(loud, from the living room) Zero-six! Three minutes. Then I start on your ") + (dadOnFloor ? "dad again." : dad ? "dad." : (mom || bath) ? "mom." : "family."));
+        Say("The visitor", std::string("(loud, from the living room) Zero-six! I'm done looking. Come out, or I start on your ") + (dadOnFloor ? "dad again." : dad ? "dad." : (mom || bath) ? "mom." : "family."));
         Bubble("Doggo", "*whimpers*");
     } else if (n == 2) {
         Sound("crack");
@@ -2061,7 +2072,7 @@ void Story::Threat(int n) {
         else Say("", "(Something heavy breaks downstairs. He's not looking anymore. He's just breaking things.)");
         DarkAct(1, "", true);
         Say("You", darkPoints >= DARK_REVEL ? "(I could come out. I don't want to.)" : "(I could come out. I could. I'm still hiding.)");
-        Say("The visitor", (mom || bath) && dad ? "Two minutes, 06. Mom's next." : "Two minutes, 06.");
+        Say("The visitor", (mom || bath) && dad ? "Come out, 06. Mom's next." : "Come out, 06.");
     } else {
         Sound("crack");
         if (bath && !momOnFloor) { Say("", "(The bathroom door gives. Mom. Begging. Then a crack.)"); momOnFloor = true; }
@@ -2070,7 +2081,7 @@ void Story::Threat(int n) {
         else Say("", "(Glass. Wood. Your room, probably. He knows where you sleep.)");
         DarkAct(1, "", true);
         Say("You", darkPoints >= DARK_REVEL ? "(Let him.)" : "(Hands over my ears. It doesn't help. Nothing helps.)");
-        Say("The visitor", "(quiet now) One minute. I'm not counting out loud anymore.");
+        Say("The visitor", "(quiet now) I'm not asking anymore.");
         AddClue("they_paid");
     }
 }
@@ -2094,6 +2105,36 @@ void Story::PaidEnding() {
     Achieve("They Paid");
     Beat e; e.type = BeatType::Ending; e.id = "paid"; e.speaker = "ENDING";
     e.text = "THEY PAID\n\nHe stayed hidden. Someone always pays.";
+    beats.push_back(e);
+}
+
+void Story::EmptyHouseEnding() {
+    // v0.15.2 (Noah): the special ending for lasting the whole hunt with nobody for him to hurt
+    chase = false;
+    Sound("bells");
+    Say("", "(17:00. Far away, the bells start.)");
+    Say("", "(Downstairs, his footsteps stop. They don't come any closer. For the first time all hour he isn't looking for you.)");
+    Say("", "(The radio on his belt clicks.)");
+    Say("Finse", "(on the radio) Collector. Status.");
+    Say("The visitor", "Subject not recovered. Handlers secured, out of reach. The dog is gone. No leverage.");
+    Say("Finse", "(a long pause) ...Hold position. The cycle closes on its own.");
+    Say("", "(A chair creaks. Dad's chair, by the wood stove. He has sat down.)");
+    Say("The visitor", "(to the empty living room, not loud) You did it right, 06. Nobody to make pay. No dog to follow. Just you and the cold.");
+    Say("The visitor", "I never got this far. I always came out for them.");
+    if (HingePieces() >= 3) Say("The visitor", "(very quiet) Mom used to hum under the duvet. I don't know why I remember that.");
+    Say("The visitor", "See you at four.");
+    FadeFor(0, "");
+    Black("For one second the whole house is quiet. Nobody in it is afraid of anything.");
+    Black("Mom isn't crying in the basement. Dad isn't banging on the shed door. They're listening too.");
+    Black("You stay where you are. You don't come out. You don't need to.");
+    Sound("beep");
+    Narrate("I won. Nobody told me it would feel exactly like losing.");
+    AddClue("nobody_left");
+    endings.insert("empty");
+    lastEnd = "ending:empty";
+    Achieve("Nobody Left");
+    Beat e; e.type = BeatType::Ending; e.id = "empty"; e.speaker = "ENDING";
+    e.text = "THE EMPTY HOUSE\n\nNobody to make pay. Nobody to follow. He sat down and waited with you.";
     beats.push_back(e);
 }
 
@@ -3831,6 +3872,16 @@ void Story::OnLitUp() {
     if (!chase) return;
     if (Once("lit_up")) Bubble("The visitor", hasCoat ? "Stripes on your jacket, 06. You shine." : "Red as a postbox. There you are.");
     AddClue("lit_up");
+}
+void Story::OnTased() {
+    // v0.15.2 (Noah): the counter to kiting him through windows and fences
+    if (!chase) return;
+    chase = false;
+    Sound("crack");
+    Say("", "(Two little hooks bite into your back. Then every muscle you have locks at once. The snow comes up and hits you.)");
+    Say("The visitor", Knows("taser") ? "Same as last time, 06. I don't run anymore." : "Enough games, 06. I'm too old to run after you.");
+    AddClue("taser");
+    CollectionScript();
 }
 void Story::TooColdToLeave() {
     // v0.15.1 (Noah): in the first round the kid just turns around

@@ -113,6 +113,7 @@ struct ShiftConfig {
     int toiletShare = 60;        // % of anomalies that are the toilet (the rest: no Doggo)
     Shift forceNext = Shift::None; // one shot, not saved
     float timeMul = 1.0f;        // v0.5.1: game clock speed, 1.0x to 2.0x (debug panel)
+    float huntScale = 2.0f;      // v0.15.2 (Noah): game seconds per real second in the hunt. 2 = the last ten minutes take five. 1 = real time, 5 = the old speed
     std::string Save() const;
     void Load(const std::string& s);
 };
@@ -280,7 +281,9 @@ public:
     void OnClimbed(const std::string& win, bool out, bool doggoLeft);   // the presentation finished the climb
     void OnLitUp();                           // his torch found you from far away, out in the dark
     void OnHusky();
-    void TooColdToLeave();                    // v0.15.1: loop 1. You walk up to the edge of the yard and turn back                           // you walked up to the dog at the far fence. Nobody there
+    void TooColdToLeave();
+    void OnTased();
+    bool NobodyLeft() const { return momLocked && dadLocked && (doggoOut || shift == Shift::NoDoggo) && !doggoDead; }   // v0.15.2: nobody he can reach to make pay                           // v0.15.2: you kited him one time too many. He doesn't run after you any more                    // v0.15.1: loop 1. You walk up to the edge of the yard and turn back                           // you walked up to the dog at the far fence. Nobody there
     bool BoardSpells() const { return (tainted || Act() >= 3) && t >= 45 * 60; }   // the lights behind the shed spell at you
     bool Warm() const { return chase && kidHidden && hideSpot == "beast"; }
     static int OutbackEggs(const std::set<std::string>& seen);
@@ -372,6 +375,7 @@ private:
     void VisitorChoice();
     void TiredOut();
     void PaidEnding();
+    void EmptyHouseEnding();   // v0.15.2 (Noah): both parents where he can't reach them, Doggo gone, and you lasted to the bells
     void EscapeEnding();
     void Threat(int n);
     void DoggoShot(bool onScreen);

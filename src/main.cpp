@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.15.1";
+static const char* kVersion = "v0.15.2";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -155,6 +155,15 @@ static float climbT = 0, climbDur = 0;
 static std::string climbWin;
 static Vector2 climbFrom{}, climbTo{};
 static float beamAng = 1.5708f;        // which way his torch points (radians, 0 = east)
+// v0.15.2 (Noah): a tiny sixth sense. Every so often he gets a hunch and walks to the area you're in. Not the spot
+static float vHunchT = 0;
+static int vHunches = 0;
+static bool vHunchSearch = false;
+// v0.15.2 (Noah): kite him through a window or a fence a couple of times and he stops running. He has a taser
+static int vJukes = 0;
+static float vTaserT = 0, vTaserCD = 0, vNoReachT = 0, vPathCD = 0, taserFx = 0;
+static bool vCantReach = false;
+static Vector2 taserA{}, taserB{};      // the room plan after a hunch is a normal one, not "check every spot"
 static std::vector<int> vSpots;        // hiding spots (obj index) still to check in this room
 static int vRoom = -1, vSweep = 0, vSpotObj = -1;
 static bool vRoomDone[16] = {};
@@ -489,6 +498,29 @@ static Vector2 NextStep(Vector2 from, int tx, int ty, bool basement) {
     return TileCenter(bx, by);
 }
 
+// v0.15.2: how many steps he needs to get to a tile (-1: he can't). He opens and kicks doors, he doesn't fit the torn fence
+static int PathLen(Vector2 from, int tx, int ty) {
+    int fx = TX(from.x), fy = TX(from.y);
+    if (!story.world.InBounds(tx, ty) || !story.world.InBounds(fx, fy)) return -1;
+    static Rows<int, World::ROWS, World::W, World::TOP> dist;
+    for (auto& row : dist.d) for (int& d : row) d = -1;
+    std::queue<std::pair<int, int>> q;
+    dist[ty][tx] = 0; q.push({ tx, ty });
+    const int dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+    while (!q.empty()) {
+        auto [x, y] = q.front(); q.pop();
+        if (x == fx && y == fy) return dist[y][x];
+        for (int k = 0; k < 4; ++k) {
+            int nx = x + dx[k], ny = y + dy[k];
+            if (!story.world.InBounds(nx, ny) || dist[ny][nx] >= 0) continue;
+            if (!(story.world.Walkable(nx, ny, false) || (nx == fx && ny == fy)) || story.world.tiles[ny][nx] == Tile::ChainGap) continue;
+            dist[ny][nx] = dist[y][x] + 1;
+            q.push({ nx, ny });
+        }
+    }
+    return -1;
+}
+
 static void MoveActor(Actor& a, int tx, int ty, float speed, float dt, bool basement, float stopDist = 0) {
     Vector2 goal = TileCenter(tx, ty);
     float gd = std::hypot(goal.x - a.pos.x, goal.y - a.pos.y);
@@ -697,6 +729,8 @@ static void PickNextRoom() {
 static void StartSearch(bool dadRan) {
     for (bool& b : vRoomDone) b = false;
     vSweep = 0; vPause = 0; vLostT = 0; vBarkT = 5; vSpotCooldown = 0; vSpotObj = -1;
+    vHunchT = 18; vHunches = 0; vHunchSearch = false;
+    vJukes = 0; vTaserT = vTaserCD = vNoReachT = vPathCD = 0; vCantReach = false;
     ResetHunt();
     vPath.clear(); vSpots.clear(); vRoom = -1;
     if (dadRan) {
@@ -720,6 +754,9 @@ static const char* kSearchLines[] = { "Zero-six. Come on out.", "We do this ever
                                       "Your mom's waiting. Sort of.", "Ready or not.", "Cold out tonight. Let's not drag it out." };
 static const char* kSpotLines[] = { "There you are.", "Peekaboo.", "Hey. 06." };
 static const char* kLostLines[] = { "...Clever.", "Fine. The slow way.", "Where'd you go?" };
+static const char* kHunchLines[] = { "I used to hide over... here. Didn't I?", "Funny. I always hid somewhere around... here.",
+                                     "Don't know why I know this. Over here.", "Warmer. Warmer." };
+static const char* kLateHunch[] = { "Close now. I can almost hear you think.", "Right... about... here.", "I know this house better than you, 06." };
 
 // ============================================================ beats
 
@@ -1714,7 +1751,7 @@ static bool UpdateJukebox() {
 static bool dbgOpen = false;
 static int dbgSel = 0;
 static bool dbgRestartLoop = false;
-enum DbgRow { D_SPEED, D_ON, D_TOILET, D_DOGGO, D_CHANCE, D_MINGAP, D_MAXGAP, D_FIRST, D_SHARE, D_FORCE, D_RESTART,
+enum DbgRow { D_SPEED, D_HUNT, D_ON, D_TOILET, D_DOGGO, D_CHANCE, D_MINGAP, D_MAXGAP, D_FIRST, D_SHARE, D_FORCE, D_RESTART,
               D_DARK, D_ALLMEM, D_CLEARMEM, D_BLIND, D_DEFAULTS, D_COUNT };
 
 static void SaveDebugCfg() {
@@ -1745,6 +1782,7 @@ static std::string DbgValue(int row) {
     auto onoff = [](bool b) { return std::string(b ? "ON" : "OFF"); };
     switch (row) {
     case D_SPEED: { char b[16]; std::snprintf(b, sizeof b, "%.1fx", c.timeMul); return b; }
+    case D_HUNT: return c.huntScale <= 1.01f ? std::string("real time (10 min)") : c.huntScale <= 2.01f ? std::string("half (5 min)") : std::string("old (2 min)");
     case D_ON: return onoff(c.enabled);
     case D_TOILET: return onoff(c.toilet);
     case D_DOGGO: return onoff(c.noDoggo);
@@ -1764,7 +1802,7 @@ static std::string DbgValue(int row) {
 }
 static const char* DbgLabel(int row) {
     static const char* L[D_COUNT] = {
-        "Game speed (how fast the clock runs)", "Reality shifts", "  45 minute toilet", "  No Doggo", "  Chance per loop (after cooldown)",
+        "Game speed (how fast the clock runs)", "Hunt clock (16:50 to 17:00)", "Reality shifts", "  45 minute toilet", "  No Doggo", "  Chance per loop (after cooldown)",
         "  Normal loops before the next can happen", "  Guaranteed after", "  First possible loop", "  Mix",
         "  Force the next loop", "Restart this loop now", "Dark points", "Give all memories", "Clear memories (keeps darkness)",
         "Visitor can't see you", "Reset these settings to default" };
@@ -1776,6 +1814,7 @@ static void DbgChange(int row, int dir, bool enter) {
     auto step = [&](int& v, int lo, int hi, int st) { v = std::clamp(v + dir * st, lo, hi); };
     bool tog = enter || dir != 0;
     switch (row) {
+    case D_HUNT: if (tog) { static const float hs[3] = { 1.0f, 2.0f, 5.0f }; int i = c.huntScale <= 1.01f ? 0 : c.huntScale <= 2.01f ? 1 : 2; i = (i + (dir < 0 ? 2 : 1)) % 3; c.huntScale = hs[i]; } break;
     case D_SPEED: if (dir) c.timeMul = std::clamp(std::round((c.timeMul + dir * 0.2f) * 10) / 10.0f, 1.0f, 2.0f); break;
     case D_ON: if (tog) c.enabled = !c.enabled; break;
     case D_TOILET: if (tog) c.toilet = !c.toilet; break;
@@ -2307,6 +2346,7 @@ static void UpdateDrawFrame() {
                 climbing = false; player.pos = climbTo; player.anim = 0;
                 if (climbOut) player.dir = climbTo.y < climbFrom.y ? 1 : 0;
                 if (!climbOut) wetT = 14;
+                if (scene == SceneMode::Chase && vmode == VMode::Chase) ++vJukes;   // v0.15.2: out the window right in front of him
                 story.OnClimbed(climbWin, climbOut, climbDoggo && story.DoggoExists());
                 if (!story.beats.empty()) StartNextBeat();
             }
@@ -2579,6 +2619,38 @@ static void UpdateDrawFrame() {
                 } else {
                     bool sees = VisitorSeesKid();
                     if (sees && seenFar) { story.OnLitUp(); StartNextBeat(); }
+                    // ---- v0.15.2: the taser. He stops, aims, and if he still sees you he fires
+                    vTaserCD -= dt;
+                    if (vTaserT > 0) {
+                        vTaserT -= dt;
+                        float dx = player.pos.x - visitor.pos.x, dy = player.pos.y - visitor.pos.y;
+                        visitor.dir = std::fabs(dx) > std::fabs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
+                        visitor.anim = 0;
+                        if (vTaserT <= 0) {
+                            if (!hidden && std::hypot(dx, dy) < TS * 10 && LineOfSight(visitor.pos, player.pos)) {
+                                Play("crack"); taserFx = 0.5f; taserA = { visitor.pos.x, visitor.pos.y - 10 }; taserB = player.pos;
+                                climbing = false; scene = SceneMode::None; hidden = false;
+                                story.OnTased(); StartNextBeat();
+                            } else { AddBubble("The visitor", "Tch.", 1.0f); vTaserCD = 3; }
+                        }
+                        goto chaseDone;
+                    }
+                    if (sees && !hidden && vTaserCD <= 0) {
+                        float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
+                        vPathCD -= dt;
+                        if (vPathCD <= 0) {
+                            vPathCD = 0.25f;
+                            int pl = PathLen(visitor.pos, TX(player.pos.x), TX(player.pos.y));
+                            vCantReach = climbing || pl < 0 || pl > dk / TS * 2.0f + 8;
+                        }
+                        vNoReachT = vCantReach ? vNoReachT + dt : std::max(0.0f, vNoReachT - dt);
+                        bool kited = vJukes >= 2 && dk < TS * 8;
+                        bool stuck = vJukes >= 1 && vCantReach && dk < TS * 10;   // he only sees you for a moment before he turns to go round, so he aims at once
+                        if (kited || stuck) {
+                            vTaserT = 0.7f; Play("point");
+                            AddBubble("The visitor", kited ? "Enough games, 06." : "Fine. The hard way.", 1.4f);
+                        }
+                    } else if (!sees) vNoReachT = std::max(0.0f, vNoReachT - dt);
                     // v0.15: he gets to the window before you're through. He pulls you back
                     if (climbing && std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y) < 18 && sceneT > 0.4f) {
                         climbing = false; player.pos = climbFrom;
@@ -2587,13 +2659,13 @@ static void UpdateDrawFrame() {
                         goto chaseDone;
                     }
                     if (sees && vmode != VMode::Grace && vmode != VMode::GoToHide) {
-                        if (vmode != VMode::Chase && vSpotCooldown <= 0) { VisitorBark(kSpotLines, 3); vSpotCooldown = 6; }
+                        if (vmode != VMode::Chase && vSpotCooldown <= 0 && vTaserT <= 0) { VisitorBark(kSpotLines, 3); vSpotCooldown = 6; }
                         vmode = VMode::Chase; vLostT = 0; vLastSeen = player.pos;
                     }
                     // ---- v0.12: what he hears
                     bool busy = vmode == VMode::Grace || vmode == VMode::GoToHide || (vmode == VMode::Chase && (sees || vLostT < 0.3f));
                     float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
-                    auto hear = [&](Vector2 at, float wait) { vmode = VMode::Investigate; vNoise = at; vNoiseWait = wait; vNoiseT = 0; vPause = 0; };
+                    auto hear = [&](Vector2 at, float wait) { vmode = VMode::Investigate; vNoise = at; vNoiseWait = wait; vNoiseT = 0; vPause = 0; vHunchSearch = false; };
                     vHearCD -= dt;
                     if (!busy && !hidden && !visitorBlind) {
                         bool loudOut = IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6))) && story.Storm();
@@ -2651,6 +2723,24 @@ static void UpdateDrawFrame() {
                         lastStep = visitor.pos;
                         if (vStepAcc > 30) { vStepAcc = 0; if (vShowT <= 0 && de < TS * 11) AddRing(visitor.pos, 0); }
                     }
+                    // ---- v0.15.2: the hunch. He walks to the area you're in and searches it. He doesn't know the spot
+                    if (vmode == VMode::Search || vmode == VMode::Lost) {
+                        vHunchT -= dt;
+                        if (vHunchT <= 0 && !visitorBlind) {
+                            // v0.15.2 (Noah): the closer it gets to 17:00, the more psychic he gets. More often, and closer
+                            float late = std::max(0.0f, std::min(1.0f, (story.t - 50 * 60.0f) / (9 * 60.0f)));
+                            vHunchT = (float)GetRandomValue(20, 26) * (1.0f - 0.65f * late);
+                            int spread = late > 0.8f ? 0 : late > 0.5f ? 1 : late > 0.25f ? 2 : 3;
+                            Vector2 at = hidden ? hidePos : player.pos;
+                            for (int k = 0; spread > 0 && k < 12; ++k) {
+                                Vector2 c = { at.x + GetRandomValue(-spread, spread) * (float)TS, at.y + GetRandomValue(-spread, spread) * (float)TS };
+                                if (story.world.Walkable(TX(c.x), TX(c.y), false) && story.world.RoomAt(TX(c.x), TX(c.y)) == story.world.RoomAt(TX(at.x), TX(at.y))) { at = c; break; }
+                            }
+                            AddBubble("The visitor", late > 0.8f ? kLateHunch[vHunches % 3] : kHunchLines[vHunches % 4], 2.6f);
+                            ++vHunches;
+                            vmode = VMode::Investigate; vNoise = at; vNoiseWait = 1.4f; vNoiseT = 0; vPause = 0; vHunchSearch = late < 0.6f;   // late in the hour he checks every spot there
+                        }
+                    }
                     switch (vmode) {
                     case VMode::Grace:
                         if (goTo(vGraceGoal, 34, 0)) {
@@ -2673,7 +2763,7 @@ static void UpdateDrawFrame() {
                         else {
                             vLostT += dt;
                             if (goTo(vLastSeen, chaseSp * 0.9f, 2) || vLostT > 4.0f) {
-                                vmode = VMode::Lost; vPause = 1.6f; VisitorBark(kLostLines, 3);
+                                vmode = VMode::Lost; vPause = 1.6f; VisitorBark(kLostLines, 3); ++vJukes;
                             }
                         }
                         if (std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y) < 9 && sceneT > 0.4f) caught();
@@ -2701,7 +2791,8 @@ static void UpdateDrawFrame() {
                                 int ri = -1;
                                 for (int k = 0; k < kRoomCount; ++k) if (kSearchRooms[k] == r) ri = k;
                                 vmode = VMode::Search;
-                                if (ri >= 0) { vSure = true; PlanRoom(ri); } else PickNextRoom();
+                                if (ri >= 0) { vSure = !vHunchSearch; PlanRoom(ri); } else PickNextRoom();
+                                vHunchSearch = false;
                             }
                         } else if (goTo(vNoise, searchSp * 1.7f, 4) || vNoiseT > 8) vPause = vNoiseWait;
                         break;
@@ -2725,16 +2816,22 @@ static void UpdateDrawFrame() {
                         // v0.8: outside he reads your tracks
                         vPrintCD -= dt;
                         if (vPrintCD <= 0 && IsYard(story.world.RoomAt(TX(visitor.pos.x), TX(visitor.pos.y)))) {
+                            // v0.15.2: your prints stay in the snow. He finds the trail and follows it to the newest print
                             vPrintCD = 1.0f;
+                            Vector2 newest{}; bool any = false, near = false;
                             for (auto it = prints.rbegin(); it != prints.rend(); ++it) {
-                                if (it->who != 0 || it->t > 14) continue;
-                                if (std::hypot(it->p.x - visitor.pos.x, it->p.y - visitor.pos.y) < 56) {
-                                    vmode = VMode::Chase; vLostT = 0; vLastSeen = prints.back().who == 0 ? prints.back().p : it->p;
-                                    AddBubble("The visitor", "Little feet.", 1.4f); vPrintCD = 5;
-                                }
+                                if (it->who != 0 || it->t > 100) continue;
+                                if (!any) { newest = it->p; any = true; }
+                                if (std::hypot(it->p.x - visitor.pos.x, it->p.y - visitor.pos.y) < 64) { near = true; break; }
+                            }
+                            if (near && std::hypot(newest.x - visitor.pos.x, newest.y - visitor.pos.y) > 20) {
+                                static float littleT = 0;
+                                if (globalT - littleT > 12) { AddBubble("The visitor", "Little feet.", 1.4f); littleT = globalT; }
+                                vPrintCD = 2.5f;
+                                if (hidden && std::hypot(newest.x - hidePos.x, newest.y - hidePos.y) < TS * 2.6f) { vmode = VMode::GoToHide; break; }
+                                vmode = VMode::Investigate; vNoise = newest; vNoiseWait = 0.6f; vNoiseT = 0; vPause = 0; vHunchSearch = false;
                                 break;
                             }
-                            if (vmode == VMode::Chase) break;
                         }
                         vBarkT -= dt;
                         if (vBarkT <= 0) { VisitorBark(kSearchLines, 6); vBarkT = (float)GetRandomValue(8, 13); }
@@ -2966,6 +3063,7 @@ static void UpdateDrawFrame() {
     if (jukeboxOpen) DrawJukebox();
     if (dbgOpen) DrawDebugPanel();
     if (pauseOpen) DrawPause();
+    if (taserFx > 0) taserFx -= dt;
     if (flashT > 0) { flashT -= dt; DrawRectangle(0, 0, SW, SH, Fade(settings.calmFlashes ? BLACK : WHITE, flashT)); }
     DrawToasts(dt);
     SW = saveSW; SH = saveSH;

@@ -75,6 +75,9 @@ static void ShotsStep() {
             if (beatActive && cur.type == BeatType::Choice) { beatActive = false; story.Choose(id, px, py); StartNextBeat(); }
         }
         else if (c == "vmode") { std::string m; ss >> m; if (m == "search") { vmode = VMode::Search; vPause = 0; } else if (m == "lost") { vmode = VMode::Lost; vPause = 30; } }
+        else if (c == "debug") debugMode = true;
+        else if (c == "jukes") ss >> vJukes;
+        else if (c == "nobodyleft") { story.momLocked = story.dadLocked = true; story.doggoOut = true; }
         else if (c == "skip") { story.beats.clear(); beatActive = false; }
         else if (c == "hold" || c == "press") { std::string k; int n = 1; ss >> k >> n; shotHoldKey = ShotKey(k); shotHoldN = c == "press" ? 1 : n; return; }
         else if (c == "visitor") { int x, y, d = 0; ss >> x >> y >> d; Snap(visitor, x, y); visitor.dir = d; }

@@ -73,6 +73,8 @@ static void Drain() {
                 else if (chasePlan == "cold") { At(25, 25); s.kidHidden = false; }   // stand out in the storm, no jacket
                 else if (chasePlan == "outside") s.OnLeftPremises();
                 else if (chasePlan == "litup") { s.OnLitUp(); s.OnCaught(); }   // v0.15: his torch, from across the yard
+                else if (chasePlan == "taser") s.OnTased();                      // v0.15.2: kited him one time too many
+                else if (chasePlan == "empty") { s.momLocked = s.dadLocked = true; s.doggoOut = true; At(9, 5); s.kidHidden = true; }   // v0.15.2: nobody he can reach
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
             }
             break;
@@ -203,7 +205,7 @@ static void ItemTest() {
     assert(b.Befriended() && b.CurrentStance() == Stance::Befriended);
     b.Choose("s_bar", 34, 11); assert(!b.Befriended() && b.CurrentStance() == Stance::Dark);
     // threats wait while he can see you
-    Story th; th.loop = 3; th.BeginLoop(); th.beats.clear(); th.collection = th.chase = true; th.t = 57 * 60 + 2;
+    Story th; th.loop = 3; th.BeginLoop(); th.beats.clear(); th.collection = th.chase = true; th.t = 57 * 60 + 32;
     th.visitorChasing = true; th.Tick(0.2f, false, 20, 15); assert(th.threats == 0);
     th.visitorChasing = false; th.Tick(0.2f, false, 20, 15); assert(th.threats == 1);
     std::printf("Doors, befriended, threats: OK\n");
@@ -706,6 +708,12 @@ int main(int argc, char** argv) {
     assert(px == 6 && py == 3);
     FinishLoop("litup");
     assert(s.Knows("lit_up"));
+    CleanLoop();
+    FinishLoop("taser");
+    assert(s.Knows("taser"));
+    CleanLoop();
+    FinishLoop("empty");
+    assert(s.Knows("nobody_left") && s.endings.count("empty") && s.achievements.count("Nobody Left"));
 
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {

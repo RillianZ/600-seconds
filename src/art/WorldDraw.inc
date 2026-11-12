@@ -180,16 +180,16 @@ static void AddPrint(const Actor& a, int who, float dt, float every) {
     prints.push_back({ { a.pos.x, a.pos.y + 6 }, 0, who, printSide });
     if (prints.size() > 500) prints.erase(prints.begin());
 }
+// v0.15.2 (Noah): your prints stay a lot longer, even in the storm, so he can follow you out to a hiding spot
+static float PrintLife(int who) { return who == 3 ? 45.0f : who == 0 ? 120.0f : story.Storm() ? 30.0f : 150.0f; }
 static void UpdatePrints(float dt) {
-    float life = story.Storm() ? 16.0f : 150.0f;
     for (auto& p : prints) p.t += dt;
-    prints.erase(std::remove_if(prints.begin(), prints.end(), [&](const Print& p) { return p.t > (p.who == 3 ? 45.0f : life); }), prints.end());
+    prints.erase(std::remove_if(prints.begin(), prints.end(), [&](const Print& p) { return p.t > PrintLife(p.who); }), prints.end());
 }
 static void DrawPrints() {
-    float life = story.Storm() ? 16.0f : 150.0f;
     Color c = { 112, 130, 186, 255 }, lip = { 250, 252, 255, 255 };
     for (auto& p : prints) {
-        float a = 0.9f * (1 - p.t / life);
+        float a = 0.9f * (1 - p.t / PrintLife(p.who));
         int ox = p.side ? 2 : -2, x = (int)p.p.x, y = (int)p.p.y;
         if (p.who == 3) {   // v0.12: wet boots on the floor, drying
             float w = 0.5f * (1 - p.t / 45.0f);
@@ -411,6 +411,20 @@ static void DrawGlows() {
     // v0.15: the bulbs on the board behind the shed
     for (int k = 0; k < 26; ++k) if (BoardBulbOn(k)) { Vector2 p = BoardLetter(k); bool spell = BoardLit() >= 0; Glow(BOARD_X + p.x + 1.5f, BOARD_Y + p.y + (spell ? 3.0f : 1.0f), spell ? 11.0f : 5.0f, spell ? 11.0f : 5.0f, BulbCol(k), spell ? 1.0f : 0.45f); }
     if (TorchOn()) Glow(visitor.pos.x + std::cos(beamAng) * 8, visitor.pos.y - 8 + std::sin(beamAng) * 8, 4, 4, Color{ 255, 250, 220, 255 }, 0.9f);
+    if (vTaserT > 0 && std::fmod(globalT, 0.12f) < 0.06f) Glow(visitor.pos.x + 8, visitor.pos.y - 10, 5, 5, Color{ 140, 200, 255, 255 }, 0.9f);   // v0.15.2: the taser, aimed
+    if (taserFx > 0) {
+        // the wires and the spark
+        float k = taserFx / 0.5f;
+        for (int i = 0; i < 2; ++i) {
+            Vector2 a = taserA, b = { taserB.x + (i ? 2.0f : -2.0f), taserB.y - 4 };
+            for (int s = 0; s < 6; ++s) {
+                float t0 = s / 6.0f, t1 = (s + 1) / 6.0f;
+                Vector2 p0 = { a.x + (b.x - a.x) * t0, a.y + (b.y - a.y) * t0 + std::sin(globalT * 80 + s + i) * 2 }, p1 = { a.x + (b.x - a.x) * t1, a.y + (b.y - a.y) * t1 + std::sin(globalT * 80 + s + 1 + i) * 2 };
+                DrawLineEx(p0, p1, 1.0f, Fade(Color{ 180, 220, 255, 255 }, k));
+            }
+        }
+        Glow(taserB.x, taserB.y - 4, 18, 18, Color{ 120, 180, 255, 255 }, k);
+    }
 }
 
 // ---------------------------------------------------------------- who looks like what

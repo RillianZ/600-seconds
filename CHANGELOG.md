@@ -2,6 +2,18 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.15.2
+Same branch, `claude-batch-v0.15-outside`. Noah's playtest of the hunt: too much sitting and waiting, then he kills your parents. More chase now.
+
+- **The hunt is longer.** 16:50 to 17:00 now takes about five real minutes instead of two. The debug panel (O) has "Hunt clock": real time (ten minutes), half (the new default) or the old speed.
+- **Your prints stay.** Two minutes in the snow, even in the storm. He finds the trail and follows it to the newest print. If you hid at the end of it, he walks straight there.
+- **A tiny sixth sense.** About every 20 to 25 seconds without a sighting he gets a hunch: "I used to hide over... here. Didn't I?" He walks to the area you are in and searches that room. He doesn't know the spot.
+- **More hunt before he starts on them, and more time between.** The warning comes at 16:57:30, then 16:58:40, then 16:59:40. He says "Come out" instead of counting minutes.
+- **He has a taser.** Kite him (lose him out of a chase, or go out a window in front of him) twice and the next time he sees you within eight tiles he stops, aims and fires. After one juke, standing where he can see you but can't get to you (across a fence, out a window, the far side of the stream) does it too. Break his line of sight while he aims and he misses ("Tch.").
+- **He gets more psychic toward 17:00.** The hunches come more often (every 7 to 9 seconds at the end) and land closer to you. In the last minute he walks to your exact area and checks every spot there.
+- **New ending: The Empty House.** Bolt Mom in the basement, bar Dad in the shed, send Doggo out the front door, then last the whole hunt. At the bells he stops, reports in, sits down in Dad's chair and talks to the empty room. Achievement Nobody Left.
+- New memories: He doesn't run any more, Nobody left to hurt. The story test now has 73 memories and 9 endings.
+
 ## What's in v0.15.1
 Same branch, `claude-batch-v0.15-outside`. A fix from Noah's playtest.
 
