@@ -1131,8 +1131,12 @@ static Color Shade(Color c, int d) {
     auto cl = [](int v) { return (unsigned char)std::max(0, std::min(255, v)); };
     return { cl(c.r + d), cl(c.g + d), cl(c.b + d), c.a };
 }
+// v0.20.1 hunt-systems: the couch faces the TV and they sit on it for Kaptein Fjord (art/Couch.inc, after WorldDraw.inc)
+static void CouchDraw(float x, float y);
+static bool CouchSits(const Actor& a);
 #include "art/Sprites.inc"
 #include "art/WorldDraw.inc"
+#include "art/Couch.inc"      // v0.20.1 hunt-systems
 #include "art/Look.inc"      // v0.20 look: darkness in the house, stage 1 flux, the power room by room, lightning, headlights
 
 // ============================================================ UI drawing (screen space)
@@ -1561,6 +1565,7 @@ static int JournalTabs() { return (int)AllTopics().size() + 4; }   // v0.20 syst
 // Memories as cards, lines between the ones that belong together (src/game/Links.h).
 // Found: the title. Unknown but linked to one you have: "?". The rest stays hidden. UP/DOWN pans
 #include "game/Links.h"
+#include "art/RumorCard.inc"   // v0.20.1 hunt-systems: open a card and read it
 static bool RumorShown(const std::string& id) {
     if (story.Knows(id)) return true;
     for (auto& l : AllRumorLinks()) if ((id == l.a && story.Knows(l.b)) || (id == l.b && story.Knows(l.a))) return true;
@@ -1580,6 +1585,7 @@ static void DrawRumors(float top, float bottom) {
     int visible = (int)((bottom - top) / rowH);
     int maxScroll = std::max(0, lastRow + 1 - visible);
     journalScroll = std::max(0, std::min(journalScroll, maxScroll));
+    rumorVisibleRows = visible; rumorHits.clear(); float selY = -1;   // v0.20.1 hunt-systems: cards you can open
     auto pos = [&](const RumorNode& r) { return Vector2{ left + r.col * colW, top + 2 + (r.row - journalScroll) * rowH }; };
     auto find = [&](const char* id) -> const RumorNode* { for (auto& r : AllRumorNodes()) if (std::strcmp(r.id, id) == 0) return &r; return nullptr; };
     auto title = [&](const std::string& id) -> std::string { for (auto& m : AllMemories()) if (m.id == id) return m.title; return id; };
@@ -1589,6 +1595,7 @@ static void DrawRumors(float top, float bottom) {
         const RumorNode* a = find(l.a); const RumorNode* b = find(l.b);
         if (!a || !b || !RumorShown(a->id) || !RumorShown(b->id)) continue;
         bool both = story.Knows(a->id) && story.Knows(b->id);
+        bool lit = !rumorSel.empty() && (rumorSel == a->id || rumorSel == b->id);   // v0.20.1 hunt-systems: the open card's lines stand out
         Vector2 pa = pos(*a), pb = pos(*b);
         pa.x += cardW / 2; pa.y += cardH / 2; pb.x += cardW / 2; pb.y += cardH / 2;
         {   // from edge to edge, so the part between the cards is all you see, and it's long enough to read
@@ -1596,7 +1603,7 @@ static void DrawRumors(float top, float bottom) {
             float k = std::min(dx != 0 ? (cardW / 2) / std::fabs(dx) : 1e9f, dy != 0 ? (cardH / 2) / std::fabs(dy) : 1e9f);
             pa.x += dx * k; pa.y += dy * k; pb.x -= dx * k; pb.y -= dy * k;
         }
-        DrawLineEx({ pa.x * US, pa.y * US }, { pb.x * US, pb.y * US }, (both ? 1.4f : 0.9f) * US, both ? Fade(teal, 0.75f) : Fade(dim, 0.8f));
+        DrawLineEx({ pa.x * US, pa.y * US }, { pb.x * US, pb.y * US }, (lit ? 2.0f : both ? 1.4f : 0.9f) * US, lit ? Color{ 255, 210, 90, 255 } : both ? Fade(teal, 0.75f) : Fade(dim, 0.8f));
     }
     for (auto& r : AllRumorNodes()) {
         if (!RumorShown(r.id)) continue;
@@ -1607,12 +1614,15 @@ static void DrawRumors(float top, float bottom) {
         Panel(p.x, p.y, cardW, cardH, known ? Color{ 30, 26, 40, 255 } : Color{ 16, 16, 20, 255 },
               known ? (fresh ? Color{ 255, 210, 90, 255 } : Color{ 120, 100, 170, 255 }) : Color{ 50, 50, 60, 255 });
         if (known) {
+            if (p.y >= top - 2 && p.y + cardH <= bottom + 2) rumorHits.push_back({ r.id, p.x, p.y, cardW, cardH });   // v0.20.1 hunt-systems
+            if (rumorSel == r.id) { selY = p.y + cardH / 2; DrawRectangleLinesEx({ (p.x - 2) * US, (p.y - 2) * US, (cardW + 4) * US, (cardH + 4) * US }, std::max(1.0f, US), WHITE); }
             auto lines = Wrap(title(r.id), cardW - 6, 6, false);
             float ly = p.y + (lines.size() > 1 ? 2.0f : 5.6f);
             for (size_t i = 0; i < lines.size() && i < 2; ++i) { UIText(lines[i].c_str(), p.x + 3, ly, 6, WHITE); ly += 7.0f; }
         } else UIText("?", p.x + cardW / 2 - UIMeasure("?", 9) / 2, p.y + 3.5f, 9, dim);
     }
     EndScissorMode();
+    DrawRumorCard(top, bottom, selY);   // v0.20.1 hunt-systems
     (void)rows; (void)firstRow;
     std::string count = std::to_string(RumorsFound()) + " of " + std::to_string(AllRumorNodes().size()) + " on the map";
     UIText(count.c_str(), VW - 16 - UIMeasure(count.c_str(), 6.5f), bottom + 1, 6.5f, Fade(WHITE, 0.45f));
@@ -1630,8 +1640,11 @@ static void DrawTimeline() {
         UIText(l2, VW / 2.0f - UIMeasure(l2, 8) / 2, 136, 8, dim);
         return;
     }
-    auto& tl = AllTimeline();
-    const float top = 53, rowH = 12.2f;
+    // v0.20.1 hunt-systems: drawn in time order. AllTimeline() keeps its own order (new rows go at the end of the list)
+    std::vector<TimelineEntry> tl = AllTimeline();
+    std::stable_sort(tl.begin(), tl.end(), [](const TimelineEntry& a, const TimelineEntry& b) { return a.minute * 60 + a.second < b.minute * 60 + b.second; });
+    const float top = 53, rowH = std::min(12.2f, (VH - 22 - 53) / (float)std::max<size_t>(1, tl.size()));   // more rows: they sit closer, the page doesn't run off
+    const float fs = std::min(8.0f, rowH - 1.0f);   // v0.20.1 hunt-systems
     int next = -1;
     for (size_t i = 0; i < tl.size(); ++i) if (next < 0 && tl[i].minute * 60 + tl[i].second > story.t) next = (int)i;
     DrawRectangle((int)(61 * US), (int)((top + 3) * US), (int)std::max(1.0f, US), (int)((tl.size() - 1) * rowH * US), Fade(ice, 0.25f));
@@ -1642,11 +1655,11 @@ static void DrawTimeline() {
         char tb[16]; std::snprintf(tb, sizeof tb, "%02d:%02d", 16 + e.minute / 60, e.minute % 60);
         if ((int)i == next) {
             DrawRectangle((int)(16 * US), (int)((y - 2) * US), (int)((VW - 32) * US), (int)((rowH - 1) * US), Fade(ice, 0.10f));
-            UIText(">", 18, y, 8, Color{ 255, 210, 90, 255 });
+            UIText(">", 18, y, fs, Color{ 255, 210, 90, 255 });
         }
-        UIText(tb, 28, y, 8, known ? (past ? Fade(ice, 0.5f) : ice) : dim);
+        UIText(tb, 28, y, fs, known ? (past ? Fade(ice, 0.5f) : ice) : dim);
         DrawCircleV({ 61.5f * US, (y + 4.2f) * US }, (known ? 2.2f : 1.5f) * US, known ? (past ? Fade(ice, 0.5f) : ice) : dim);
-        UIText(known ? e.text.c_str() : "?", 70, y, 8, known ? (past ? Fade(WHITE, 0.5f) : WHITE) : dim);
+        UIText(known ? e.text.c_str() : "?", 70, y, fs, known ? (past ? Fade(WHITE, 0.5f) : WHITE) : dim);
     }
     std::string now = "NOW " + story.ClockText() + (story.collection ? "   the last 600 seconds" : "");
     UIText(now.c_str(), VW - 16 - UIMeasure(now.c_str(), 7), 53, 7, Color{ 255, 210, 90, 255 });
@@ -1690,7 +1703,9 @@ static void DrawJournal() {
     }
     if (journalTopic == tabRumors) {
         DrawRumors(top, bottom);
-        const char* help = touchMode ? "What belongs together.    D-pad: page / pan    tap: close" : "What belongs together.    LEFT/RIGHT page    UP/DOWN pan    J or ESC close";
+        // v0.20.1 hunt-systems: cards open now
+        const char* help = touchMode ? (rumorSel.empty() ? "What belongs together.    tap a card: read it    D-pad: page / pan    tap: close" : "D-pad: next card    tap: close the card")
+                                     : (rumorSel.empty() ? "What belongs together.    E: read a card    LEFT/RIGHT page    UP/DOWN pan    J close" : "ARROWS: next card    E or ESC: close the card    J close");
         UIText(help, 16, VH - 14, 7, Fade(WHITE, 0.5f));
         return;
     }
@@ -2301,7 +2316,7 @@ static void UpdateTouch() {
         if (In(p, l.run, l.sr + 4) || In(p, l.wait, l.sr + 4)) continue;
         if (SkipShown() && In(p, l.skip, l.sr + 4)) { vPress[KEY_TAB] = true; continue; }
         if (p.x < 100 && p.y < 44) { vPress[KEY_J] = true; continue; }   // top left: memory log
-        if (journalOpen) { vPress[KEY_J] = true; continue; }              // tap anywhere closes the log
+        if (journalOpen) { if (RumorTap({ p.x, p.y })) continue; vPress[KEY_J] = true; continue; }   // tap anywhere closes the log (v0.20.1 hunt-systems: a rumor card first)
         if (beatActive && cur.type == BeatType::Choice) {
             // tap a choice directly (same geometry as DrawChoice)
             float w = 300, lineH = 16, h = 26 + cur.choices.size() * lineH;
@@ -2722,6 +2737,8 @@ static void UpdateDrawFrame() {
         UpdateMini(dt);
     } else if (recapOpen) {
         UpdateRecap(dt);
+    } else if (journalOpen && RumorKeys()) {
+        // v0.20.1 hunt-systems: the rumor page used the keys (a card is open, or you just opened one)
     } else if (journalOpen) {
         if (IsKeyPressed(KEY_ESCAPE)) journalOpen = false;
         int n = JournalTabs();   // Timeline + topics + Endings + Awards + Rumors (v0.20 systems)
@@ -3162,6 +3179,20 @@ static void UpdateDrawFrame() {
                     float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
                     auto hear = [&](Vector2 at, float wait) { vmode = VMode::Investigate; vNoise = at; vNoiseWait = wait; vNoiseT = 0; vPause = 0; vHunchSearch = false; };
                     vHearCD -= dt;
+                    // ---- v0.20.1 hunt-systems: banging your stuck window open. Like a slammed door, it carries through the house.
+                    // The knife opens it without a bang (Knife.inc sets windowBanged first), so climbBanged is false and he hears only the climb
+                    {
+                        static bool bangDone = false;
+                        if (!climbing || !climbBanged) bangDone = false;
+                        else if (!bangDone) {
+                            bangDone = true;
+                            AddRing(climbFrom, 1);
+                            if (!busy && !visitorBlind && std::hypot(visitor.pos.x - climbFrom.x, visitor.pos.y - climbFrom.y) < TS * 14) {
+                                hear(climbFrom, 1.6f);
+                                story.OnHeard("window"); StartNextBeat();
+                            }
+                        }
+                    }
                     if (!busy && !hidden && !visitorBlind) {
                         bool loudOut = IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6))) && story.Storm();
                         if ((kidRunning || climbing) && dk < TS * (loudOut ? 5.0f : 10.0f)) {

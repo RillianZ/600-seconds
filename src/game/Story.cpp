@@ -1267,6 +1267,7 @@ void Story::BeginLoop() {
     tapeCut = doggoTangled = gapCut = phoneCut = brakesCut = false;   // v0.20 knife
     fortressFights = 0; nobodyHome = false;   // v0.20 systems
     knifeCleanLoop = frameCarved = carveSkip = watchThrown = slipped = dadReady = false;   // v0.20.1 story-knife
+    frontOpened = false;   // v0.20.1 hunt-systems
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
@@ -1590,12 +1591,18 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
     }
     if (momBathLocked && Crossed(prev, now, 48, 30) && Once("bath_late") && fresh(48))
         Bubble("Mom", bathLockDark ? "(not a sound from the bathroom)" : "Kiddo! Joke's over! He'll be here any... Dinner! Dinner's soon!");
+    // v0.20.1 hunt-systems: the nod, counted from his schedule. When he comes early, it happens before the box
+    if (int nod = NodAt(); nod >= 0 && nod != 44 * 60 + 40 && prev < nod && now >= nod && Once("nod") && !Tutorial() && DadFree() &&
+        Dad().x == 11 && here == Room::Outside && std::abs(px - 10) + std::abs(py - 26) <= 16 && now - nod < 90) {
+        Say("", "(Dad stops at the flagpole. He looks up, across the yard, at the big man by the living room window. Dad nods. The man nods back.)");
+        Say("You", "(They know each other.)");
+        Achieve("A Nod Across the Yard");
+    }
     // v0.10: Dad and the box under the flagpole. You have to be out there to see it
     if (Crossed(prev, now, 44, 40) && Once("flag44") && !Tutorial() && DadFree() && Dad().x == 11 && here == Room::Outside &&
         std::abs(px - 10) + std::abs(py - 26) <= 16 && now - (44 * 60 + 40) < 90) {
         Say("", "(Dad crouches at the bottom of the flagpole. A tiny box, painted the same colour as the pole. He opens it, looks, closes it.)");
-        int left = visitorTime - (int)now;
-        if (left <= VISIT_LOOK && left > VISIT_BACK) {
+        if (NodAt() == 44 * 60 + 40) {   // v0.20.1 hunt-systems: on a normal day the nod is right after the box
             Say("", "(Then he looks up, across the yard, at the big man by the living room window. Dad nods. The man nods back.)");
             Say("You", "(They know each other.)");
             Achieve("A Nod Across the Yard");
@@ -1680,7 +1687,9 @@ void Story::StartCollection(const std::string& how) {
     Sound("knock");
     if (downstairs) HingeBasement();
     else Say("", "(The power dies. Then: three slow knocks.)");
-    if (frontLocked) {
+    bool letIn = !downstairs && frontLocked && DarkOpener();   // v0.20.1 hunt-systems: Dark stance, somebody opens it for him
+    if (letIn) DarkOpensDoor();
+    else if (frontLocked) {
         if (downstairs) Say("", "(Above you, glass explodes. Heavy boots on the living room floor.)");
         else if (NobodyToOpen()) NobodyHome();   // v0.20 systems: T-083
         else {
@@ -1886,6 +1895,35 @@ void Story::HingeShed() {
 // v0.20 systems: T-083. The front door is locked and nobody is left in the house to open it.
 // He talks to you through the wood, then goes round the back and comes in through YOUR window
 bool Story::NobodyToOpen() const { return frontLocked && !MomHere() && !DadFree() && !Tutorial(); }
+
+// ============================================================ v0.20.1 hunt-systems
+// T5: in the Dark stance they want him gone. A locked front door doesn't hold when somebody inside opens it for him
+const char* Story::DarkOpener() const {
+    if (!frontLocked || !collection || stance != Stance::Dark || Tutorial() || NobodyToOpen()) return nullptr;
+    if (MomHere() && !momTurned && !momOnFloor && momAtt != Attitude::Broken) return "Mom";
+    if (DadFree() && !dadTurned && !dadOnFloor && dadAtt != Attitude::Broken) return "Dad";
+    return nullptr;
+}
+void Story::DarkOpensDoor() {
+    std::string who = DarkOpener();
+    bool mom = who == "Mom";
+    Say("", "(Nobody opens. The handle turns. Locked.)");
+    Say("", mom ? "(Then Mom's slippers on the floorboards. She doesn't hurry. She turns the lock herself.)"
+                : "(Then Dad's boots on the floorboards. He turns the lock himself. He doesn't look at you.)");
+    Sound("lock");
+    frontLocked = false; frontOpened = true;
+    if (mom) Say("Mom", "(opening the door) Sorry. He locked it. Come in. Please. Just take him.");
+    else Say("Dad", "(opening the door) Sorry about the door. Come in.");
+    Say("You", mom ? "(I locked everything. She just opened it.)" : "(I locked everything. He just opened it.)");
+}
+// T6: Dad gets to the flagpole at 16:43:30 every year. The man is at the window from VISIT_LOOK to VISIT_BACK before the knock.
+// The nod is 20 seconds into his look, and at least 10 seconds after Dad gets there. On a normal day that's 16:44:40, with the box
+int Story::NodAt() const {
+    int dadThere = 43 * 60 + 30, dadGone = 45 * 60 + 30;
+    int nod = std::max(dadThere + 10, visitorTime - VISIT_LOOK + 20);
+    if (nod >= visitorTime - VISIT_BACK || nod >= dadGone) return -1;
+    return nod;
+}
 bool Story::DarkEarly() const { return gEarlyKnock && tainted && darkPoints >= DARK_EARLY && !Tutorial(); }   // T-086
 void Story::NobodyHome() {
     nobodyHome = true;
@@ -2172,6 +2210,10 @@ void Story::OnHeard(const std::string& how) {
     } else if (how == "door_open" || how == "door_shut" || how == "slam") {
         // v0.20 systems: T-088. Doors carry through the house like feet
         if (Once("heard_" + how)) Bubble("The visitor", how == "slam" ? "(he turns toward the bang) Temper, temper." : how == "door_shut" ? "Shutting doors on me, 06?" : "(a hinge, somewhere) ...Hello, door.");
+        AddClue("he_hears");
+    } else if (how == "window") {
+        // v0.20.1 hunt-systems: the bang on your stuck window. He knows that window
+        if (Once("heard_window")) Bubble("The visitor", "(a bang on a window frame, somewhere) Still sticks, that one.");
         AddClue("he_hears");
     } else if (how == "gasp") {
         Bubble("The visitor", "There it is.");

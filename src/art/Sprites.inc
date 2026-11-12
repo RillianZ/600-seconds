@@ -150,15 +150,7 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         R(13, 6, 1, 1, LkObjDark(o) ? Color{ 60, 20, 20, 255 } : Color{ 240, 60, 60, 255 });
         R(4, -7, 1, 3, Color{ 150, 150, 160, 255 }); R(11, -7, 1, 3, Color{ 150, 150, 160, 255 });           // rabbit ears
     }
-    else if (id == "couch") {
-        Color c = { 66, 110, 116, 255 };
-        B(-12, -6, 40, 8, Shade(c, -14));                                                                    // back
-        B(-12, 1, 40, 13, c);
-        B(-13, -3, 6, 17, Shade(c, -6)); B(23, -3, 6, 17, Shade(c, -6));                                     // arms
-        for (int k = 0; k < 3; ++k) { R(-6 + k * 10, 2, 9, 9, Shade(c, 8)); R(-6 + k * 10, 2, 9, 1, Shade(c, 26)); R(-6 + k * 10, 10, 9, 1, Shade(c, -18)); R(2 + k * 10, 3, 1, 8, Shade(c, -22)); }
-        R(-6, -1, 8, 5, Color{ 220, 198, 150, 255 }); R(-6, -1, 8, 1, Color{ 240, 222, 180, 255 }); R(-4, 1, 4, 1, Color{ 190, 80, 70, 255 });   // pillow
-        R(12, -5, 10, 9, Color{ 168, 50, 52, 255 }); for (int k = 0; k < 3; ++k) R(12, -4 + k * 3, 10, 1, Color{ 232, 222, 200, 255 });          // a wool blanket over the back
-    }
+    else if (id == "couch") CouchDraw(x, y);   // v0.20.1 hunt-systems: turned to face the TV, people sit on it (art/Couch.inc)
     else if (id == "radio") {
         B(0, 8, 16, 7, Color{ 112, 76, 48, 255 });                                                           // sideboard
         B(2, 1, 12, 8, Color{ 146, 86, 52, 255 }); R(3, 3, 5, 5, Color{ 56, 44, 40, 255 }); for (int k = 0; k < 3; ++k) R(3, 3 + k * 2, 5, 1, Color{ 96, 76, 60, 255 });

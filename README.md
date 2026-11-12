@@ -51,6 +51,8 @@ src/game/Knife.inc   the kitchen knife: clean jobs, darker jobs, the mirror (inc
 src/game/PolishStoryKnife.inc v0.20.1: oh-seven says 07, hunt payoffs, the door frame, Mom and the clean knife (included by Story.cpp)
 src/game/Schedule.h  where Mom and Dad are hour by hour, and when he comes early (data)
 src/game/Links.h     the rumor map in the memory log: which memories belong together (data)
+src/art/Couch.inc    the couch (it faces the TV) and Mom and Dad sitting on it for Kaptein Fjord
+src/art/RumorCard.inc open a card on the rumor map and read the memory on it (keys, mouse, tap)
 src/audio/Soundtrack.h/.cpp every song, written as code (plain C++)
 src/audio/SfxV20.inc  v0.20 sound effects made in code (power cut, locks, phone, tape, trunk, kicks) and sounds placed in the house
 src/audio/MusicFiles.inc v0.20: assets/music/<name>.ogg plays instead of a code track, if the file is there

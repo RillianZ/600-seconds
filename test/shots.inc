@@ -50,6 +50,7 @@
 //   ending ID | att mom|dad cold|scared|broken | say WHO TEXT   (WHO with _ for spaces, e.g. The_visitor)
 //   sayt WHO TEXT | bubble WHO TEXT | calm 0|1 | blips 0|1 | pause ROW   v0.20.1 sound-look: a typed line (blips), a bubble, calm flashes, voice blips, the pause menu on a row
 //   trunkshift | cleanjob | screenbrakes   v0.20.1 story-knife
+//   see ID | climbwin [WIN]   a timeline event seen | climb through a window now, yours by default | rtap X Y a phone tap on the rumor page (v0.20.1 hunt-systems)
 //   quit
 #include <fstream>
 #include <sstream>
@@ -178,6 +179,10 @@ static void ShotsStep() {
         else if (c == "trunkshift") { story.beats.clear(); beatActive = false; story.ShiftTrunk(); StartNextBeat(); }
         else if (c == "cleanjob") { story.knifeCleanLoop = true; }
         else if (c == "screenbrakes") { story.beats.clear(); beatActive = false; story.brakesCut = true; story.ScreenTimeBrakes(); StartNextBeat(); }
+        // v0.20.1 hunt-systems: see ID = a timeline event you watched happen. climbwin = start the climb out of your window (as the story does)
+        else if (c == "see") { std::string id; ss >> id; story.seenEvents.insert(id); }
+        else if (c == "rtap") { float x = 0, y = 0; ss >> x >> y; touchMode = true; if (!RumorTap({ x, y })) journalOpen = false; }   // a phone tap on the rumor page (UI units)
+        else if (c == "climbwin") { std::string w = "window"; ss >> w; Beat b; b.type = BeatType::Scene; b.id = "climb:" + w; story.beats.push_back(b); StartNextBeat(); }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

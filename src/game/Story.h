@@ -314,6 +314,11 @@ public:
     bool PolishInteract(const std::string& id, int px, int py);
     bool PolishChoose(const std::string& id, int px, int py);
     void ScreenTimeBrakes();
+    // v0.20.1 hunt-systems per loop
+    bool frontOpened = false;                  // the front door was locked at the knock, and a parent on his side opened it for him
+    const char* DarkOpener() const;            // Dark stance, door locked, somebody still in the house: "Mom", "Dad" or nullptr
+    void DarkOpensDoor();                      // they want him gone. The lock doesn't hold
+    int NodAt() const;                         // game second when Dad at the flagpole and the man at the window can nod (-1 = they can't this loop)
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
