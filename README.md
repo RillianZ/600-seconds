@@ -2,6 +2,7 @@
 
 Playable test zips. Unzip one, then double click 600Seconds.exe on Windows or 600Seconds.html on any computer.
 
+- [v0.19.0](600Seconds-v0.19.0-play.zip) from `claude-batch-v0.19-before-knock`: before the knock (barricade a door, take his car key, tracks out the back, traps at other doors)
 - [v0.18.0](600Seconds-v0.18.0-play.zip) from `claude-batch-v0.18-parents`: whose side are they on (Dark parents hunt with him, one turned parent fights him, The Handlers, Last Toll)
 - [v0.17.0](600Seconds-v0.17.0-play.zip) from `claude-batch-v0.17-true-ending`: the true ending (tie him up, tell him all five, Same House or After)
 - [v0.16.0](600Seconds-v0.16.0-play.zip) from `claude-batch-v0.15-outside`: Doggo goes to the door, Dad has a day, parents get tired of the same question
