@@ -2,6 +2,36 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.13.0
+Built on the branch `claude-batch-v0.13-hinges`, on top of v0.12.0 (`claude-batch-v0.12-hunt`). Not merged. Expansion 1 of 4: the first three hinges. Each hinge is a door you shut on somebody before he comes. He has to deal with them first, and you get to listen. The story test now has 65 memories and the same 8 endings.
+
+**Hinge A: Mom in the bathroom**
+- Every loop at 16:46 Mom goes to the bathroom for two and a half minutes.
+- With the master key you can lock her in. When she's fine with you it's a trick, nothing dark. If you have had the knife this loop it's a dark act. If she's already scared of you it's darker.
+- At the knock he goes to her door before he starts on yours. What she tells him through it is the first piece.
+- He starts the hunt from the bathroom door, after a longer pause. If he can't find you, it's the bathroom door he kicks in.
+
+**Hinge B: Dad in the shed**
+- Bar Dad in the shed (the plank, as before). At the knock he asks where the father is and walks out to the shed with his torch. He leaves the plank where it is.
+- Dad makes him read the back of his watch. That's the second piece.
+- He starts the hunt out by the shed, so you get a head start in the house.
+
+**Hinge C: in the basement at the knock**
+- If you are downstairs when the power dies, you stay downstairs. One small screen keeps running on a battery and the radio channel is open. What Finse tells him is the third piece.
+- The stairs work during the hunt, both ways. He takes them too, once he gets round to the basement (only if its door is unlocked).
+- New hiding spot down there: the storage crates.
+
+**The pieces**
+- Three new memories: Not like with you, Crooked letters, Same house, next cycle. Together they say he was you once, and you will be him.
+- The true ending needs a piece from every hinge, so it isn't built yet. Two more hinges to go.
+- New achievements: Occupied, Three of Five.
+
+**Doors**
+- Doors now say which side you end up on. With the master key you can also step through and close or lock the door behind you. Closing a door without the key shows where you are standing. The front door says if you are about to lock yourself out.
+
+**Debug**
+- `H` sets up the next hinge (A, B, C in turn).
+
 ## What's in v0.12.0
 Built on the branch `claude-batch-v0.12-hunt`, on top of v0.11.0 (`fable-visuals-20261112`). Not merged. The first of four expansions: the hunt. The story test now has 62 memories and the same 8 endings.
 

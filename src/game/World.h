@@ -169,6 +169,7 @@ struct World {
             {"chair", "Chair with straps", 11, 41},
             {"medfridge", "Medicine fridge", 18, 43},
             {"vcr", "Old TV", 7, 41},
+            {"crates", "Storage crates", 15, 43},   // v0.13: the one hiding spot down here
             // v0.7: every door can be closed (and locked with the master key)
             {"door_kid", "Your door", 6, 9, false},
             {"door_bath", "Bathroom door", 13, 9, false},

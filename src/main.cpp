@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.12.0";
+static const char* kVersion = "v0.13.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -552,8 +552,8 @@ static void AddBubble(const std::string& who, const std::string& text, float lif
 
 // ============================================================ the visitor searches (v0.4)
 static const Room kSearchRooms[] = { Room::LivingRoom, Room::Kitchen, Room::Hallway, Room::KidsRoom,
-                                     Room::Bathroom, Room::ParentsRoom, Room::Shed, Room::Outside };
-static const int kRoomCount = 8;
+                                     Room::Bathroom, Room::ParentsRoom, Room::Shed, Room::Outside, Room::Basement };
+static const int kRoomCount = 9;   // v0.13: the basement, only while its door is unlocked
 
 static bool BlocksSight(int x, int y) {
     if (!story.world.InBounds(x, y)) return true;
@@ -644,6 +644,7 @@ static void PickNextRoom() {
         for (int i = 0; i < kRoomCount; ++i) {
             if (vRoomDone[i]) continue;
             Room r = kSearchRooms[i];
+            if (r == Room::Basement && !story.BasementInHunt()) continue;
             // rough distance to the room, house first, yard and shed last
             float sx = 0, sy = 0; int n = 0;
             for (int y = 0; y < World::H; y += 2) for (int x = 0; x < World::W; x += 2)
@@ -675,6 +676,9 @@ static void StartSearch(bool dadRan) {
         vmode = VMode::Grace;
         vGraceGoal = visitor.pos;
         vGraceWait = 2.5f;
+        // v0.13: the hinges. At Mom's door he takes his time. Out at the shed he has a long walk back
+        if (story.huntStart == "bath") { vGraceWait = 5.0f; visitor.dir = 1; }
+        else if (story.huntStart == "shed") { vGraceWait = 1.5f; visitor.dir = 1; }
     }
 }
 static void VisitorBark(const char* const* lines, int n) {
@@ -846,6 +850,9 @@ static void UpdateBeat(float dt) {
             story.AdvanceMinutes(cur.minutes, px, py);
             fadeTo = story.ClockTextSec(); fadeToT = story.t;
             if (cur.tx >= 0) { Snap(player, cur.tx, cur.ty); player.dir = 0; if (story.DoggoExists() && !story.doggoStay && cur.ty < 34) Snap(doggo, cur.tx + 1, cur.ty); }   // v0.10: he never comes down the basement stairs
+            // v0.13: the hinges. A blink of black while he walks to Mom's door, or out to the shed
+            if (cur.id == "hinge_bath") { Snap(visitor, 13, 10); visitor.dir = 1; }
+            if (cur.id == "hinge_shed") { Snap(visitor, 34, 11); visitor.dir = 1; }
             if (story.threats != lastThreats) {
                 // v0.7: the blink of black hides him walking back to the living room
                 lastThreats = story.threats;
@@ -2253,6 +2260,15 @@ static void UpdateDrawFrame() {
                 }
             }
         }
+        // v0.13 debug: H sets up the next hinge. A: key in hand, outside the bathroom at 16:46. B: at the shed, Dad inside. C: key in hand at the basement door
+        if (debugMode && IsKeyPressed(KEY_H) && !story.collection && !story.Tutorial()) {
+            static int hinge = 0;
+            int x = TX(player.pos.x), y = TX(player.pos.y);
+            if (hinge == 0) { story.Hold(Item::Key, true); story.AdvanceMinutes(std::max(0, 46 - (int)(story.t / 60)), x, y); story.t = std::max(story.t, 46 * 60 + 25.0f); Snap(player, 13, 10); player.dir = 1; ToastFor("DEBUG", "Hinge A: Mom goes in at 16:46. Lock her in", SKYBLUE); }
+            else if (hinge == 1) { if (story.t < 9 * 60) story.AdvanceMinutes(9 - (int)(story.t / 60), x, y); Snap(player, 34, 11); player.dir = 1; ToastFor("DEBUG", "Hinge B: Dad is in the shed. Bar the door", SKYBLUE); }
+            else { story.Hold(Item::Key, true); if (story.t < 45 * 60) story.AdvanceMinutes(45 - (int)(story.t / 60), x, y); Snap(player, 28, 10); player.dir = 3; ToastFor("DEBUG", "Hinge C: go down and wait", SKYBLUE); }
+            hinge = (hinge + 1) % 3;
+        }
         if (debugMode && IsKeyPressed(KEY_FOUR) && !story.inBasement && !story.collection) story.DebugToBasement();   // debug: the tape, downstairs
         if (debugMode && IsKeyPressed(KEY_THREE) && !story.inBasement) { Snap(player, 20, 29); player.dir = 0; }   // debug: hop to the gate
         if (debugMode && IsKeyPressed(KEY_FIVE) && !story.inBasement) { Snap(player, 16, 16); player.dir = 3; }   // debug: hop to the living room
@@ -2291,6 +2307,7 @@ static void UpdateDrawFrame() {
         bool dadTalking = beatActive && talkingTo == "dad" && !story.collection && scene == SceneMode::None;
         if (momTalking) face(mom); else MoveActor(mom, ms.x, ms.y, npcSpeed, dt, true);
         if (ms.facingWall && TX(mom.pos.x) == ms.x && TX(mom.pos.y) == ms.y) mom.dir = 1;
+        story.momRoomNow = story.world.RoomAt(TX(mom.pos.x), TX(mom.pos.y));   // v0.13: hinge A needs her really in there
 
         // v0.7: grown-ups open closed doors on the way (they have keys) and close them again behind them
         auto humanDoors = [&](Actor& a, HeldDoor& hd, const char* who) {
@@ -2312,6 +2329,7 @@ static void UpdateDrawFrame() {
                 int x = k ? fx : ax, y = k ? fy : ay;
                 if (!story.world.InBounds(x, y) || story.world.tiles[y][x] != Tile::Door || !story.DoorClosed(x, y)) continue;
                 if (x == 6 && y == 9 && story.grounded) continue;   // your door stays locked while you're grounded
+                if (x == 13 && y == 9 && story.momBathLocked) continue;   // v0.13: the key is on your side
                 if (hd.x >= 0 && (hd.x != x || hd.y != y)) restore();
                 hd.x = x; hd.y = y; hd.locked = story.DoorLocked(x, y);
                 story.OpenDoor(x, y);
@@ -2384,6 +2402,20 @@ static void UpdateDrawFrame() {
                 if (vDoorT <= 0) { Play("crack"); story.BreakDoor(vDoorX, vDoorY); AddBubble("The visitor", "There we go.", 1.4f); }
                 visitor.anim = 0;
                 return true;
+            }
+            // v0.13: the basement is its own floor. He takes the stairs (the top is by the basement door)
+            {
+                bool vDown = visitor.pos.y >= 34 * TS, tDown = ty >= 34;
+                if (vDown != tDown) {
+                    int sx = vDown ? 6 : 28, sy = vDown ? 38 : 11;
+                    Vector2 sc = TileCenter(sx, sy);
+                    if (std::hypot(visitor.pos.x - sc.x, visitor.pos.y - sc.y) < 6) {
+                        Snap(visitor, vDown ? 28 : 6, vDown ? 11 : 38);
+                        Play("door"); AddRing(visitor.pos, 0);
+                        return false;
+                    }
+                    tx = sx; ty = sy;
+                }
             }
             gMover = 1;
             Vector2 st = NextStep(visitor.pos, tx, ty, false);

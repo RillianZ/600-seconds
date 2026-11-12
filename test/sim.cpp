@@ -61,6 +61,7 @@ static void Drain() {
                     assert(a && b2 && !c);
                     s.hideSpot = "wardrobe"; s.OnFound();
                 }
+                else if (chasePlan == "crates") {}   // v0.13: the test drives this hunt by hand
                 else if (chasePlan == "cold") { At(25, 25); s.kidHidden = false; }   // stand out in the storm, no jacket
                 else if (chasePlan == "outside") s.OnLeftPremises();
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
@@ -500,6 +501,94 @@ int main(int argc, char** argv) {
     At(8, 15); Use("mom", {"m_ask", "m_sister"});
     assert(s.achievements.count("Table for Four") && s.sisterNoticed);
     FinishLoop("caught");
+
+    // ------------------------------------------------------------ v0.13: the hinges
+    Header("Hinge A rules: a trick when she's happy, dark with the knife, darker when she's scared");
+    {
+        auto lockAt = [](Story& f) {
+            f.memory = {"loop", "dad_key"}; f.loop = 1; f.BeginLoop(); f.beats.clear();
+            f.Hold(Item::Key, true);
+            f.t = 46 * 60 + 40; f.momRoomNow = Room::Bathroom;
+            assert(f.MomInBath() && f.Mom().x == 13 && f.Mom().y == 6);
+        };
+        Story a; lockAt(a);
+        a.Interact("door_bath", 13, 10);
+        bool offered = false; for (auto& b : a.beats) for (auto& c : b.choices) if (c.id == "bath_lock" && !c.dark) offered = true;
+        assert(offered);
+        a.beats.clear(); a.Choose("bath_lock", 13, 10);
+        assert(a.momBathLocked && !a.bathLockDark && a.darkThisLoop == 0 && a.DoorLocked(13, 9) && !a.MomHere());
+        assert(a.achievements.count("Occupied"));
+        Story b; lockAt(b); b.knifeTakenLoop = true;
+        b.Choose("bath_lock", 13, 10);
+        assert(b.bathLockDark && b.darkThisLoop == 2);
+        Story c; lockAt(c); c.momAtt = Attitude::Scared;
+        c.Choose("bath_lock", 13, 10);
+        assert(c.bathLockDark && c.darkThisLoop == 3);
+        Story d; lockAt(d); d.momRoomNow = Room::Hallway;   // still on her way: just a door
+        d.Interact("door_bath", 13, 10);
+        for (auto& bt : d.beats) for (auto& ch : bt.choices) assert(ch.id != "bath_lock");
+        Story e; lockAt(e); e.Hold(Item::None, true); e.beats.clear();
+        e.Interact("door_bath", 13, 10);
+        assert(!e.beats.empty() && e.beats.front().type == BeatType::Say && !e.momBathLocked);   // no key: a hint, no lock
+        std::puts("  neutral 0, knife 2, scared 3, only once she is really in there, and only with the key");
+    }
+    Header("Doors say which side you end up on");
+    {
+        Story f; Room here, there; int ox, oy;
+        assert(f.DoorSides(6, 9, 6, 10, here, there, ox, oy) && here == Room::Hallway && there == Room::KidsRoom && ox == 6 && oy == 8);
+        assert(f.DoorSides(13, 16, 12, 16, here, there, ox, oy) && here == Room::Kitchen && there == Room::LivingRoom && ox == 14 && oy == 16);
+        assert(f.DoorSides(34, 10, 34, 11, here, there, ox, oy) && here == Room::Outside && there == Room::Shed);
+        f.memory = {"loop"}; f.loop = 1; f.BeginLoop(); f.beats.clear(); f.Hold(Item::Key, true);
+        f.Choose("dr_lockto:door_kid", 6, 10);
+        assert(f.DoorLocked(6, 9));
+        bool moved = false; for (auto& b : f.beats) if (b.type == BeatType::Fade && b.tx == 6 && b.ty == 8) moved = true;
+        assert(moved);
+        std::puts("  your door from the hallway: step into your room and lock it behind you");
+    }
+    // up to the knock, without playing the hunt yet
+    auto toKnock = [&]() { while (!s.collection) { s.Tick(0.5f, false, px, py); if (!s.collection) Drain(); } };
+    CleanLoop();
+    Header("LOOP 13b: hinge B. Bar Dad in the shed. He goes out there first, with his torch");
+    At(34, 11); WaitUntil(9); Use("sheddoor", {"s_bar"});
+    assert(s.dadLocked);
+    WaitUntil(49); toKnock();
+    assert(s.huntStart == "shed");
+    FinishLoop("caught");
+    assert(s.Knows("piece_dad"));
+
+    CleanLoop();
+    Header("LOOP 13c: hinge C. In the basement at the knock. You stay down there");
+    At(10, 26); Use("flag", {"fl_key"});
+    At(28, 10); Use("basement", {"b_down"});
+    assert(s.inBasement && s.BasementInHunt());
+    WaitUntil(49); toKnock();
+    assert(s.inBasement && s.huntStart.empty());
+    chasePlan = "crates";
+    Drain();
+    assert(s.chase && s.Knows("piece_reissue"));
+    At(6, 38); Use("stairs");
+    assert(!s.inBasement && px == 27 && py == 11);
+    At(28, 10); Use("basement");
+    assert(s.inBasement && px == 6 && py == 38);
+    s.hideSpot = "crates"; s.OnFound();
+    Drain();
+    assert(s.CaughtIn("crates") == 1);
+    { Story r; r.LoadSave(s.SaveString()); assert(r.CaughtIn("crates") == 1); }
+
+    CleanLoop();
+    Header("LOOP 13a: hinge A. Lock Mom in the bathroom at 16:46. He talks to her door");
+    At(10, 26); Use("flag", {"fl_key"});
+    assert(s.hasKey);
+    At(13, 10); WaitUntil(47);
+    s.momRoomNow = Room::Bathroom;
+    Use("door_bath", {"bath_lock"});
+    assert(s.momBathLocked && s.bathLockDark);   // the kid is tainted by now, so she is scared of him
+    WaitUntil(49); toKnock();
+    assert(s.huntStart == "bath" && s.Mom().x == 13 && s.Mom().y == 5);
+    qteWin = false;   // the trunk scene with every memory is LOOP 10's job
+    FinishLoop("caught");
+    qteWin = true;
+    assert(s.Knows("piece_mom") && s.HingePieces() == 3 && s.achievements.count("Three of Five"));
 
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {

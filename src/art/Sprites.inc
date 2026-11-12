@@ -301,6 +301,7 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         for (int k = 0; k < 6; ++k) {
             float fx = (float)((k % 3) * 11 - 8), fy = (float)((k / 3) * 9 - 13);
             R(fx, fy, 10, 8, Color{ 12, 12, 16, 255 });
+            if (story.collection && k != 5) continue;   // v0.13: the power is out. One small screen runs on a battery
             Color glow = Mix(Color{ 50, 130, 250, 255 }, Color{ 150, 204, 255, 255 }, 0.5f + 0.5f * std::sin(globalT * 3 + k));
             R(fx + 1, fy + 1, 8, 6, Mix(glow, BLACK, 0.45f));
             if (k == 1 || k == 3) { R(fx + 2, fy + 2, 6, 4, Mix(glow, BLACK, 0.2f)); R(fx + 4 + ((int)(globalT * 2 + k) % 3), fy + 3, 1, 2, WHITE); }      // a room, and someone in it
@@ -328,6 +329,13 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         B(0, -7, 16, 15, Color{ 52, 48, 46, 255 }); R(2, -5, 10, 10, Color{ 22, 28, 36, 255 }); R(13, -4, 1, 1, Color{ 150, 150, 150, 255 }); R(13, -1, 1, 1, Color{ 150, 150, 150, 255 });
         if (std::fmod(globalT, 2.0f) < 1.0f) R(3, -4, 8, 1, Fade(WHITE, 0.1f));
         R(3, -4, 2, 1, Fade(WHITE, 0.2f));
+    }
+    else if (id == "crates") {
+        // v0.13: two program crates, the big one with its lid ajar
+        B(0, -2, 16, 17, Color{ 120, 128, 96, 255 }); R(1, 3, 14, 1, Color{ 90, 96, 70, 255 }); R(1, 9, 14, 1, Color{ 90, 96, 70, 255 });
+        R(3, 5, 10, 3, Color{ 220, 220, 200, 255 }); R(4, 6, 1, 1, Color{ 60, 60, 60, 255 }); R(6, 6, 3, 1, Color{ 60, 60, 60, 255 }); R(10, 6, 2, 1, Color{ 60, 60, 60, 255 });
+        B(-1, -6, 18, 4, Color{ 134, 142, 108, 255 });
+        B(11, -12, 7, 7, Color{ 110, 118, 88, 255 });
     }
     else if (id == "medfridge") { B(1, -7, 14, 23, Color{ 228, 234, 240, 255 }); R(3, -4, 10, 9, Color{ 130, 196, 226, 255 }); R(3, -4, 10, 1, Color{ 200, 236, 250, 255 }); for (int k = 0; k < 4; ++k) { R(4 + k * 2, 0, 1, 4, Color{ 250, 150, 50, 255 }); R(4 + k * 2, -1, 1, 1, WHITE); } R(3, 8, 10, 1, Color{ 170, 178, 190, 255 }); R(6, 10, 4, 3, Color{ 220, 50, 50, 255 }); R(7, 9, 2, 5, Color{ 220, 50, 50, 255 }); }
     else if (id == "bench") {

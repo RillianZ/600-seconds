@@ -329,7 +329,7 @@ static void BuildLightmap(Camera2D cam) {
     float fire = FireFlicker();
     Glow(tile(27), tile(18) + 2, 50, 46, Color{ 160, 74, 20, 255 }, fire * (0.4f + dusk * 0.6f + (powerOut ? 0.5f : 0)) * inH);
     if (viewBelow) {
-        Glow(tile(10), tile(37) - 4, 96, 90, Color{ 40, 84, 160, 255 }, 0.95f);                                   // the wall of screens
+        Glow(tile(10), tile(37) - 4, story.collection ? 40.0f : 96.0f, story.collection ? 36.0f : 90.0f, Color{ 40, 84, 160, 255 }, story.collection ? 0.4f : 0.95f);                                   // the wall of screens
         Glow(tile(18), tile(38), 30, 30, Color{ 130, 30, 30, 255 }, std::fmod(globalT, 1.2f) < 0.6f ? 0.7f : 0.2f);
         Glow(tile(18), tile(43) - 4, 30, 30, Color{ 50, 110, 140, 255 }, 0.7f);
         Glow(tile(5), tile(37), 40, 40, Color{ 90, 90, 110, 255 }, 0.6f);                                         // light down the stairs

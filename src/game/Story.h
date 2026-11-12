@@ -226,6 +226,11 @@ public:
     int decoys = 0;                            // how many he has fallen for this loop
     std::string pendingKnifeAct;
     int knifeChecks = 0;
+    // v0.13 per loop: the hinges. Each one changes the knock and where the hunt starts
+    bool momBathLocked = false;                // hinge A: Mom locked in the bathroom (16:46 to 16:48)
+    bool bathLockDark = false;                 // she was scared, or you had the knife: that one counts
+    std::string huntStart;                     // "", "bath", "shed" or "basement": the presentation reads it
+    Room momRoomNow = Room::Kitchen;           // set by the presentation: where Mom really stands right now
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -262,6 +267,13 @@ public:
     void OnTracked();                       // he followed wet prints indoors
     bool OnDecoy();                         // a thrown marble landed where he could hear it. True if he goes to look
     bool VisitorEntersWindow() const { return frontLocked; }
+    // v0.13: the hinges
+    bool MomInBath() const;                 // her two minutes in the bathroom, every loop
+    bool BathLockIsDark() const;            // Noah: a trick when she's happy, a dark act when she's scared or you hold the knife
+    int HingePieces() const { return (Knows("piece_mom") ? 1 : 0) + (Knows("piece_dad") ? 1 : 0) + (Knows("piece_reissue") ? 1 : 0); }
+    bool BasementInHunt() const { return basementUnlocked; }   // he only searches down there if the door is open
+    // v0.13: which room is on the other side of a door, from where you stand
+    bool DoorSides(int dx, int dy, int px, int py, Room& here, Room& there, int& ox, int& oy) const;
 
     // queries
     int Awareness() const { return (int)memory.size(); }
@@ -283,7 +295,7 @@ public:
     bool Storm() const { return t >= (shift == Shift::EarlyStorm ? 37 : 47) * 60; }
     bool CarHere() const { return t >= visitorTime - VISIT_ARRIVE || collection; }
     bool DoggoExists() const { return shift != Shift::NoDoggo && !doggoGone && !doggoDead && !doggoOut; }   // v0.10: out = safe, and not in the house
-    bool MomHere() const { return !momLocked; }
+    bool MomHere() const { return !momLocked && !momBathLocked; }
     bool DadFree() const { return !dadLocked && !dadDown; }
     bool FullMemory() const { return memory.size() >= AllMemories().size(); }
     // v0.10
@@ -345,6 +357,11 @@ private:
     void Threat(int n);
     void DoggoShot(bool onScreen);
     void ConvinceParents(const std::string& who);
+    // v0.13: the hinges at the door
+    void HingeBath();
+    void HingeShed();
+    void HingeBasement();
+    void PieceCheck();
     void AddDark(int n) { darkPoints = std::min(DARK_MAX, darkPoints + n); darkThisLoop += n; }
     void ScreenTimeEnding();
     // v0.10
