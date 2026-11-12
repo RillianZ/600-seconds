@@ -32,6 +32,9 @@
 //   tracks              your fake trail out the back held (set before "hunt")
 //   goto X Y            send him to look at a tile (he walks there, kicking doors on the way)
 //   blind               he can't see you (to watch him from close by)
+//   bolt | sweep K | idle N   v0.20 look: lightning now, headlights K of the way across, the kid has stood still N seconds
+//   luse ID | lchoose ID   use / choose with the close-up hook
+//   ending ID | att mom|dad cold|scared|broken | say WHO TEXT   (WHO with _ for spaces, e.g. The_visitor)
 //   quit
 #include <fstream>
 #include <sstream>
@@ -113,6 +116,15 @@ static void ShotsStep() {
         }
         else if (c == "wait") { ss >> shotWait; return; }
         else if (c == "shot") { std::string f; ss >> f; TakeScreenshot(f.c_str()); }
+        // v0.20 look: stage the look on demand
+        else if (c == "luse") { std::string id; ss >> id; LookOnInteract(id); story.Interact(id, px, py); if (!beatActive) StartNextBeat(); }   // use, with the close-up hook
+        else if (c == "lchoose") { std::string id; ss >> id; beatActive = false; LookOnInteract(id); story.Choose(id, px, py); StartNextBeat(); }
+        else if (c == "bolt") { lkBoltT = 0.02f; }                                     // lightning, now
+        else if (c == "sweep") { float k = 0.4f; ss >> k; lkSweepAt = globalT - k * 3.2f; }   // his headlights, k of the way across
+        else if (c == "idle") { float n = 5; ss >> n; lkIdleT = n; lkIdlePos = player.pos; }   // the kid has stood still for N seconds
+        else if (c == "ending") { std::string id; ss >> id; Beat e; e.type = BeatType::Ending; e.id = id; e.speaker = "ENDING"; for (auto& en : AllEndings()) if (en.id == id) e.text = en.title + "\n\n" + en.hint; story.beats.clear(); beatActive = false; story.beats.push_back(e); StartNextBeat(); }
+        else if (c == "att") { std::string w, v; ss >> w >> v; Attitude a = v == "cold" ? Attitude::Cold : v == "scared" ? Attitude::Scared : v == "broken" ? Attitude::Broken : Attitude::Normal; if (w == "mom") story.momAtt = a; else story.dadAtt = a; }
+        else if (c == "say") { std::string who, rest; ss >> who; std::getline(ss, rest); for (auto& ch : who) if (ch == '_') ch = ' '; Beat b; b.type = BeatType::Say; b.speaker = who; b.text = rest; story.beats.clear(); beatActive = false; story.beats.push_back(b); StartNextBeat(); typed = 1e9f; }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

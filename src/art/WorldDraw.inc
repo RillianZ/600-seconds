@@ -47,7 +47,7 @@ static void UnloadArt() { UnloadTexture(groundTex); UnloadTexture(southTex); Unl
 
 static bool InHouse(float px, float py) { int tx = TX(px), ty = TX(py); return tx >= 2 && tx <= 29 && ty >= 2 && ty <= 20; }
 static bool InShed(float px, float py) { int tx = TX(px), ty = TX(py); return tx >= 31 && tx <= 37 && ty >= 4 && ty <= 10; }
-static bool Lamps() { return !story.PowerOut(); }
+static bool Lamps() { return RoomPower(Room::Outside) > 0.5f; }   // v0.20 look: the lamps outside are the last to go
 static float StormFlick() {
     if (!story.Storm() || settings.calmFlashes) return 1;
     float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f);
@@ -62,7 +62,7 @@ static void Glow(float wx, float wy, float rx, float ry, Color c, float k) {
 
 // ---------------------------------------------------------------- the parts of a tile that change
 static void DrawWindowS(int px, int py, int seed, bool small) {
-    bool on = Lamps();
+    bool on = RoomPowerAt(px / TS, py / TS - 1) > 0.5f;   // v0.20 look: the room behind it
     Color trim = { 236, 230, 216, 255 };
     int w = small ? 10 : 14, ox = small ? 3 : 1;
     DrawRectangle(px + ox - 1, py + 5, w + 2, 11, Color{ 60, 24, 28, 255 });
@@ -102,7 +102,7 @@ static void DrawTileFx(int x, int y) {
         if (y == 10 && (x == 32 || x == 36)) DrawWindowS(px, py, x, true);
         if (y == 2 && (x == 6 || x == 13 || x == 20)) {
             // v0.15: the back windows, seen over the sill from the backyard. Lit while the power is on
-            bool on = Lamps();
+            bool on = RoomPowerAt(x, 3) > 0.5f;   // v0.20 look
             DrawRectangle(px + 2, py, 12, 4, Color{ 236, 230, 216, 255 });
             DrawRectangle(px + 3, py + 1, 10, 2, on ? Color{ 255, 214, 140, 255 } : Color{ 30, 38, 66, 255 });
             DrawRectangle(px + 7, py + 1, 2, 2, Color{ 236, 230, 216, 255 });
@@ -326,7 +326,7 @@ static void BuildLightmap(Camera2D cam) {
     Color amb = LerpC(Color{ 190, 198, 232, 255 }, Color{ 112, 126, 190, 255 }, m / 28.0f);
     if (story.Storm()) amb = LerpC(amb, Color{ 108, 114, 150, 255 }, 0.7f);
     bool powerOut = story.PowerOut();
-    if (powerOut) amb = Color{ 82, 90, 140, 255 };
+    if (powerOut) amb = LerpC(Color{ 82, 90, 140, 255 }, amb, RoomPower(Room::Outside));   // v0.20 look: room by room
     // v0.15: dark from 16:45, step by step. By 16:53 you can hardly see the yard
     float night = std::max(0.0f, std::min(1.0f, (m - 45.0f) / 8.0f));
     if (night > 0) amb = LerpC(amb, Color{ 14, 16, 36, 255 }, night * 0.86f);
@@ -338,30 +338,41 @@ static void BuildLightmap(Camera2D cam) {
     float inH = 1 - roofA, inS = 1 - shedRoofA;
     if (!viewBelow) {
         // under a roof it is never as blue as outside. With the power on it is warm
-        Color warm = powerOut ? Color{ 92, 92, 130, 255 } : LerpC(Color{ 255, 244, 226, 255 }, Color{ 206, 184, 160, 255 }, dusk);
-        if (!powerOut) { warm.r = (unsigned char)(warm.r * (0.6f + 0.4f * flick)); warm.g = (unsigned char)(warm.g * (0.6f + 0.4f * flick)); warm.b = (unsigned char)(warm.b * (0.6f + 0.4f * flick)); }
+        Color cold = { 92, 92, 130, 255 };
+        Color warm = !LkAnyPower() ? cold : LerpC(Color{ 255, 244, 226, 255 }, Color{ 206, 184, 160, 255 }, dusk);
+        if (LkAnyPower()) { warm.r = (unsigned char)(warm.r * (0.6f + 0.4f * flick)); warm.g = (unsigned char)(warm.g * (0.6f + 0.4f * flick)); warm.b = (unsigned char)(warm.b * (0.6f + 0.4f * flick)); }
         DrawRectangle(3 * TS, 2 * TS + 6, 26 * TS, 18 * TS - 6, Fade(warm, inH));
         DrawRectangle(32 * TS, 4 * TS + 6, 5 * TS, 6 * TS - 6, Fade(warm, inS));
+        if (powerOut && LkAnyPower()) {
+            // v0.20 look: the rooms that already went dark, while the rest still hang on
+            const struct { Room r; float x0, y0, x1, y1; } rr[] = { { Room::KidsRoom, 3, 2.4f, 10.5f, 9.5f }, { Room::Bathroom, 10.5f, 2.4f, 16.5f, 9.5f }, { Room::ParentsRoom, 16.5f, 2.4f, 29, 9.5f },
+                { Room::Hallway, 3, 9.5f, 29, 12.5f }, { Room::Kitchen, 3, 12.5f, 13.5f, 20 }, { Room::LivingRoom, 13.5f, 12.5f, 29, 20 } };
+            for (auto& q : rr) DrawRectangle((int)(q.x0 * TS), (int)(q.y0 * TS), (int)((q.x1 - q.x0) * TS), (int)((q.y1 - q.y0) * TS), Fade(cold, inH * (1 - RoomPower(q.r))));
+            DrawRectangle(32 * TS, 4 * TS + 6, 5 * TS, 6 * TS - 6, Fade(cold, inS * (1 - RoomPower(Room::Shed))));
+        }
     }
     BeginBlendMode(BLEND_ADDITIVE);
     auto tile = [](float t) { return t * TS + TS / 2.0f; };
-    if (!powerOut && !viewBelow) {
+    if (LkAnyPower() && !viewBelow) {
+        // v0.20 look: every lamp belongs to a room, and at 16:50 the rooms go one at a time
+        auto P = [](float tx, float ty) { return RoomPowerAt((int)tx, (int)ty); };
         float lamp = (0.25f + dusk * 0.75f) * flick;
         Color warm = { 150, 100, 46, 255 };
         const float L[][2] = { { 6, 5.5f }, { 13, 5.5f }, { 22, 5.5f }, { 8, 10.5f }, { 24, 10.5f }, { 7, 16 }, { 19, 15.5f }, { 25, 17 } };
-        for (auto& p : L) Glow(tile(p[0]), tile(p[1]), 84, 76, warm, lamp * inH);
-        Glow(tile(18) + 4, tile(4), 26, 26, Color{ 150, 120, 60, 255 }, 0.6f * inH);                                // Mom's desk lamp
-        Glow(tile(34), tile(7), 70, 64, warm, lamp * inS);
-        Glow(tile(21), tile(13) + 6, 44, 40, Color{ 40, 76, 130, 255 }, (0.5f + 0.2f * std::sin(globalT * 11)) * inH);   // TV
-        Glow(tile(26), tile(15) - 4, 36, 36, story.tainted ? Color{ 110, 30, 30, 255 } : Color{ 96, 76, 44, 255 }, 0.8f * inH);   // the tree
+        for (auto& p : L) Glow(tile(p[0]), tile(p[1]), 84, 76, warm, lamp * inH * P(p[0], p[1]));
+        Glow(tile(18) + 4, tile(4), 26, 26, Color{ 150, 120, 60, 255 }, 0.6f * inH * P(18, 4));                                // Mom's desk lamp
+        Glow(tile(34), tile(7), 70, 64, warm, lamp * inS * P(34, 7));
+        Glow(tile(21), tile(13) + 6, 44, 40, Color{ 40, 76, 130, 255 }, (0.5f + 0.2f * std::sin(globalT * 11)) * inH * P(21, 13));   // TV
+        Glow(tile(26), tile(15) - 4, 36, 36, story.tainted ? Color{ 110, 30, 30, 255 } : Color{ 96, 76, 44, 255 }, 0.8f * inH * P(26, 15));   // the tree
         // what the windows throw on the snow
         float spill = (0.55f + 0.45f * dusk) * flick;
         const float W[3] = { 8, 15, 25 };
-        for (float wx : W) { Glow(tile(wx), 21 * TS + 16.0f, 26, 34, Color{ 150, 96, 30, 255 }, spill); Glow(tile(wx), 21 * TS + 2.0f, 13, 10, Color{ 130, 96, 50, 255 }, spill); }
-        Glow(19 * TS + 12.0f, 21 * TS + 4.0f, 44, 40, Color{ 150, 110, 56, 255 }, spill * 0.9f);                    // porch lamp
-        Glow(tile(36), 11 * TS + 10.0f, 16, 22, Color{ 140, 92, 30, 255 }, spill); Glow(tile(32), 11 * TS + 10.0f, 16, 22, Color{ 140, 92, 30, 255 }, spill);
-        for (float wx : { 6.0f, 13.0f, 20.0f }) Glow(tile(wx), 1 * TS + 6.0f, 18, 22, Color{ 140, 92, 34, 255 }, spill * 0.8f);   // v0.15: the back windows
+        for (float wx : W) { Glow(tile(wx), 21 * TS + 16.0f, 26, 34, Color{ 150, 96, 30, 255 }, spill * P(wx, 19)); Glow(tile(wx), 21 * TS + 2.0f, 13, 10, Color{ 130, 96, 50, 255 }, spill * P(wx, 19)); }
+        Glow(19 * TS + 12.0f, 21 * TS + 4.0f, 44, 40, Color{ 150, 110, 56, 255 }, spill * 0.9f * RoomPower(Room::Outside));                    // porch lamp
+        Glow(tile(36), 11 * TS + 10.0f, 16, 22, Color{ 140, 92, 30, 255 }, spill * P(36, 9)); Glow(tile(32), 11 * TS + 10.0f, 16, 22, Color{ 140, 92, 30, 255 }, spill * P(32, 9));
+        for (float wx : { 6.0f, 13.0f, 20.0f }) Glow(tile(wx), 1 * TS + 6.0f, 18, 22, Color{ 140, 92, 34, 255 }, spill * 0.8f * P(wx, 3));   // v0.15: the back windows
     }
+    LookLightmap(inH);   // v0.20 look: his headlights at 16:43
     float fire = FireFlicker();
     Glow(tile(27), tile(18) + 2, 50, 46, Color{ 160, 74, 20, 255 }, fire * (0.4f + dusk * 0.6f + (powerOut ? 0.5f : 0)) * inH);
     if (viewBelow) {
@@ -376,7 +387,7 @@ static void BuildLightmap(Camera2D cam) {
         Glow(20 * TS + 8.0f, 33 * TS + 2.0f, 26, 14, Color{ 120, 20, 20, 255 }, 0.6f);
     }
     bool kidOut = IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y)));
-    if (powerOut && !kidOut) Glow(player.pos.x, player.pos.y - 6, 76, 76, Color{ 66, 68, 92, 255 }, 1.0f);   // eyes adjusting
+    if (powerOut && !kidOut) Glow(player.pos.x, player.pos.y - 6, 76, 76, Color{ 66, 68, 92, 255 }, 1.0f - RoomPowerAt(TX(player.pos.x), TX(player.pos.y)));   // eyes adjusting
     if (kidOut && (powerOut || night > 0)) Glow(player.pos.x, player.pos.y - 6, 50, 46, Color{ 84, 90, 132, 255 }, 0.35f + 0.55f * night);   // v0.15: a small circle you can see in
     if (TorchOn()) {
         // v0.15: his torch. Long, wide, and it goes straight through bushes and the chain fence
@@ -400,8 +411,9 @@ static void BuildLightmap(Camera2D cam) {
 
 // the things that shine by themselves get a halo, added after the light map
 static void DrawGlows() {
-    bool on = Lamps();
+    bool on = LkAnyPower();   // v0.20 look: room by room, below
     float inH = 1 - roofA, flick = StormFlick();
+    const float pK = RoomPower(Room::Kitchen), pL = RoomPower(Room::LivingRoom), pS = RoomPower(Room::Shed), pP = RoomPower(Room::ParentsRoom), pO = RoomPower(Room::Outside);
     auto tile = [](float t) { return t * TS + TS / 2.0f; };
     if (viewBelow) {
         Glow(tile(9) + 4, tile(37) - 6, 30, 22, Color{ 80, 150, 255, 255 }, 0.35f);
@@ -411,15 +423,15 @@ static void DrawGlows() {
     DrawEaveLights(true);
     if (on) {
         const int W[3] = { 8, 15, 25 };
-        for (int wx : W) Glow(tile((float)wx), 20 * TS + 10.0f, 17, 13, Color{ 255, 196, 110, 255 }, 0.42f * flick);
-        Glow(tile(32), 10 * TS + 10.0f, 11, 9, Color{ 255, 196, 110, 255 }, 0.35f); Glow(tile(36), 10 * TS + 10.0f, 11, 9, Color{ 255, 196, 110, 255 }, 0.35f);
-        Glow(19 * TS + 12.5f, 20 * TS + 9.0f, 10, 10, Color{ 255, 226, 150, 255 }, 0.7f * flick);
-        Glow(19 * TS + 12.5f, 20 * TS + 9.0f, 26, 24, Color{ 255, 190, 110, 255 }, 0.16f * flick);
+        for (int wx : W) Glow(tile((float)wx), 20 * TS + 10.0f, 17, 13, Color{ 255, 196, 110, 255 }, 0.42f * flick * (wx == 8 ? pK : pL));
+        Glow(tile(32), 10 * TS + 10.0f, 11, 9, Color{ 255, 196, 110, 255 }, 0.35f * pS); Glow(tile(36), 10 * TS + 10.0f, 11, 9, Color{ 255, 196, 110, 255 }, 0.35f * pS);
+        Glow(19 * TS + 12.5f, 20 * TS + 9.0f, 10, 10, Color{ 255, 226, 150, 255 }, 0.7f * flick * pO);
+        Glow(19 * TS + 12.5f, 20 * TS + 9.0f, 26, 24, Color{ 255, 190, 110, 255 }, 0.16f * flick * pO);
         // the tree, bulb by bulb
         for (int k = 0; k < 11; ++k) if (BulbOn(k)) Glow(26 * TS + kBulbX[k] + 1.0f, 15 * TS + kBulbY[k] + 1.0f, 5, 5, BulbColor(k), 0.6f * inH);
-        Glow(26 * TS + 8.0f, 15 * TS - 19.0f, 8, 8, Color{ 255, 230, 130, 255 }, (0.5f + 0.2f * std::sin(globalT * 3)) * inH);
-        Glow(tile(21), 13 * TS + 2.0f, 15, 11, Color{ 110, 170, 255, 255 }, 0.3f * inH);
-        Glow(18 * TS + 12.0f, 4 * TS + 1.0f, 7, 6, Color{ 255, 226, 140, 255 }, 0.5f * inH);
+        Glow(26 * TS + 8.0f, 15 * TS - 19.0f, 8, 8, Color{ 255, 230, 130, 255 }, (0.5f + 0.2f * std::sin(globalT * 3)) * inH * pL);
+        Glow(tile(21), 13 * TS + 2.0f, 15, 11, Color{ 110, 170, 255, 255 }, 0.3f * inH * pL);
+        Glow(18 * TS + 12.0f, 4 * TS + 1.0f, 7, 6, Color{ 255, 226, 140, 255 }, 0.5f * inH * pP);
     }
     Glow(27 * TS + 8.0f, 18 * TS + 9.0f, 13, 11, Color{ 255, 150, 60, 255 }, (0.4f + 0.3f * FireFlicker()) * inH);
     if (story.CarHere() && story.EngineOn()) {   // v0.19: no key, no lights
@@ -431,6 +443,7 @@ static void DrawGlows() {
         Glow(20 * TS - 3.0f, 32 * TS + 7.0f, 6, 5, Color{ 255, 40, 40, 255 }, 0.6f); Glow(20 * TS + 19.0f, 32 * TS + 7.0f, 6, 5, Color{ 255, 40, 40, 255 }, 0.6f);
     }
     if (story.hasLight && story.held == Item::Flashlight) Glow(player.pos.x + 10, player.pos.y - 3, 5, 5, Color{ 255, 244, 190, 255 }, 0.7f);
+    LookGlows(inH);   // v0.20 look: his headlights at 16:43, across your wall
     // v0.15: the bulbs on the board behind the shed
     for (int k = 0; k < 26; ++k) if (BoardBulbOn(k)) { Vector2 p = BoardLetter(k); bool spell = BoardLit() >= 0; Glow(BOARD_X + p.x + 1.5f, BOARD_Y + p.y + (spell ? 3.0f : 1.0f), spell ? 11.0f : 5.0f, spell ? 11.0f : 5.0f, BulbCol(k), spell ? 1.0f : 0.45f); }
     if (TorchOn()) Glow(visitor.pos.x + std::cos(beamAng) * 8, visitor.pos.y - 8 + std::sin(beamAng) * 8, 4, 4, Color{ 255, 250, 220, 255 }, 0.9f);
@@ -464,6 +477,7 @@ static Look LookVisitor() { return { Color{ 26, 26, 32, 255 }, Color{ 20, 20, 24
 
 // a face for the dialogue box. cx, cy in screen pixels: the middle of the frame. Returns false if this speaker has none
 static bool DrawPortrait(const std::string& who, float cx, float cy, float px) {
+    if (DrawBust(who, cx, cy, px)) return true;   // v0.20 look: real faces, with expressions (art/LookUI.inc)
     Actor a; a.pos = { 0, 0 }; a.dir = 0; a.anim = 0; a.visible = true;
     Look l; bool dog = who == "Doggo";
     if (who == "You") l = LookKid(); else if (who == "Mom") l = LookMom(); else if (who == "Dad") l = LookDad(); else if (who == "The visitor") l = LookVisitor(); else if (!dog) return false;
@@ -500,6 +514,7 @@ static void DrawWorld(Camera2D cam) {
     for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) if (below == (y >= 34)) DrawTileFx(x, y);
 
     DrawPrints();
+    LookWallProps();   // v0.20 look: the tally over your bed, your drawing, the photo, the clock
     // v0.12: marbles, in the air and where they stopped
     for (auto& m : marbles) {
         float k = m.dur > 0 ? std::min(1.0f, m.t / m.dur) : 1;
@@ -523,6 +538,7 @@ static void DrawWorld(Camera2D cam) {
     if (!below) for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) if (story.world.tiles[y][x] == Tile::Bush) bushes.push_back({ x, y });
     for (size_t i = 0; i < bushes.size(); ++i) ds.push_back({ bushes[i].second * TS + 13.0f, 7, nullptr, nullptr, (int)i });
     if (!below && huskyA > 0.01f) ds.push_back({ (float)World::TOP * TS + 13.0f, 8, nullptr, nullptr });
+    if (!below) ds.push_back({ LookMugSortY(), 9, nullptr, nullptr });   // v0.20 look: Mom's mug
     // v0.18: what the fight left on the floor. Flat, under everybody
     if (!below && story.chase && !story.dropItem.empty()) DrawDrop(story.dropItem, TileCenter(story.dropX, story.dropY));
     std::sort(ds.begin(), ds.end(), [](const D& a, const D& b) { return a.y < b.y; });
@@ -542,7 +558,8 @@ static void DrawWorld(Camera2D cam) {
         } break;
         case 1: {
             Look kid = LookKid();
-            DrawPerson(*d.a, kid);
+            LookKidShadow(*d.a);                                   // v0.20 look
+            if (!LookDrawKid(*d.a, kid)) DrawPerson(*d.a, kid);
             {
                 // whatever is in the kid's hands
                 int hx = (int)d.a->pos.x + 6, hy = (int)d.a->pos.y - 4;
@@ -574,6 +591,7 @@ static void DrawWorld(Camera2D cam) {
         case 6: DrawCar(); break;
         case 7: DrawBush(bushes[d.i].first, bushes[d.i].second); break;
         case 8: DrawHusky(); break;
+        case 9: LookMug(); break;
         }
     }
     DrawPuffs(0);
@@ -608,6 +626,7 @@ static void DrawWorld(Camera2D cam) {
             DrawRectangleGradientH((int)bx + 120, 30 + k * 60, 120, 46, Fade(WHITE, 0.10f), Fade(WHITE, 0));
         }
     }
+    LookStormFx(cam);   // v0.20 look: lightning, and him in it
     DrawTexture(vigTex, 0, 0, WHITE);
     if (scene == SceneMode::Chase) {
         float p = 0.5f + 0.5f * std::sin(globalT * 6);

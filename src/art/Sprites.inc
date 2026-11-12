@@ -7,7 +7,7 @@ static const Color kInk = { 30, 22, 30, 255 };
 // the tree's bulbs, shared with the glow pass
 static const int kBulbX[11] = { 8, 5, 10, 3, 12, 7, 1, 9, 14, 4, 11 }, kBulbY[11] = { -13, -9, -7, -3, -2, 0, 5, 4, 6, 9, 9 };
 static bool BulbOn(int k) {
-    return !story.PowerOut() && !(story.Stage() >= 2 && k % 3 == 0) && std::fmod(globalT * 0.7f + k * 0.37f, 2.0f) < 1.5f;
+    return RoomPower(Room::LivingRoom) > 0.5f && !(story.Stage() >= 2 && k % 3 == 0) && std::fmod(globalT * 0.7f + k * 0.37f, 2.0f) < 1.5f;
 }
 static Color BulbColor(int k) {
     if (story.tainted) return { 230, 40, 40, 255 };
@@ -83,7 +83,7 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         R(1, 12, 2, 4, Color{ 80, 52, 32, 255 }); R(13, 12, 2, 4, Color{ 80, 52, 32, 255 });
         B(0, 2, 16, 10, Color{ 128, 86, 52, 255 }); R(1, 8, 14, 1, Color{ 96, 62, 38, 255 }); R(7, 10, 2, 1, Color{ 220, 196, 110, 255 });
         R(3, 3, 6, 4, Color{ 244, 242, 234, 255 }); R(4, 4, 4, 1, Color{ 150, 150, 164, 255 }); R(4, 6, 3, 1, Color{ 150, 150, 164, 255 }); R(8, 4, 1, 3, Color{ 60, 80, 150, 255 });
-        R(11, 4, 2, 3, Color{ 60, 60, 66, 255 }); R(10, 0, 4, 3, story.PowerOut() ? Color{ 150, 140, 110, 255 } : Color{ 255, 226, 140, 255 }); R(10, 0, 4, 1, Color{ 96, 150, 110, 255 });   // lamp
+        R(11, 4, 2, 3, Color{ 60, 60, 66, 255 }); R(10, 0, 4, 3, LkObjDark(o) ? Color{ 150, 140, 110, 255 } : Color{ 255, 226, 140, 255 }); R(10, 0, 4, 1, Color{ 96, 150, 110, 255 });   // lamp
     }
     else if (id == "pbed") {
         B(-8, -6, 32, 24, Color{ 104, 70, 44, 255 });
@@ -120,9 +120,9 @@ static void DrawObj(const Obj& o, Vector2 jit) {
     }
     else if (id == "stove") {
         B(0, -1, 16, 17, Color{ 226, 226, 220, 255 }); R(0, -1, 16, 8, Color{ 52, 52, 60, 255 }); R(0, -1, 16, 1, Color{ 96, 96, 106, 255 });
-        for (int k = 0; k < 2; ++k) { DrawCircle((int)x + 4 + k * 8, (int)y + 3, 2.6f, Color{ 30, 30, 34, 255 }); DrawCircleLines((int)x + 4 + k * 8, (int)y + 3, 2, k == 0 && !story.PowerOut() ? Color{ 236, 96, 50, 255 } : Color{ 86, 86, 94, 255 }); }
+        for (int k = 0; k < 2; ++k) { DrawCircle((int)x + 4 + k * 8, (int)y + 3, 2.6f, Color{ 30, 30, 34, 255 }); DrawCircleLines((int)x + 4 + k * 8, (int)y + 3, 2, k == 0 && !LkObjDark(o) ? Color{ 236, 96, 50, 255 } : Color{ 86, 86, 94, 255 }); }
         B(3, -5, 5, 5, Color{ 150, 156, 168, 255 }); R(2, -3, 1, 1, Color{ 60, 60, 66, 255 }); R(8, -3, 2, 1, Color{ 60, 60, 66, 255 });        // the pot
-        R(2, 9, 12, 5, Color{ 40, 40, 46, 255 }); R(3, 10, 10, 3, story.PowerOut() ? Color{ 30, 26, 24, 255 } : Color{ 170, 110, 50, 255 }); R(2, 8, 12, 1, Color{ 170, 170, 176, 255 });
+        R(2, 9, 12, 5, Color{ 40, 40, 46, 255 }); R(3, 10, 10, 3, LkObjDark(o) ? Color{ 30, 26, 24, 255 } : Color{ 170, 110, 50, 255 }); R(2, 8, 12, 1, Color{ 170, 170, 176, 255 });
         for (int k = 0; k < 4; ++k) R(2 + k * 3, 7, 2, 1, Color{ 40, 40, 46, 255 });
     }
     else if (id == "trashcan") { B(3, 2, 10, 13, Color{ 86, 120, 92, 255 }); R(2, 1, 12, 2, Color{ 60, 90, 68, 255 }); R(5, 5, 1, 8, Color{ 64, 96, 72, 255 }); R(9, 5, 1, 8, Color{ 64, 96, 72, 255 }); if (!story.hasBag && !story.trashDone) { R(4, -2, 8, 4, Color{ 26, 26, 30, 255 }); R(5, -3, 3, 1, Color{ 60, 60, 66, 255 }); } }
@@ -131,13 +131,13 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         B(-2, 8, 20, 8, Color{ 112, 76, 48, 255 }); R(-1, 11, 8, 4, Color{ 84, 56, 36, 255 }); R(9, 11, 8, 4, Color{ 84, 56, 36, 255 }); R(2, 12, 2, 1, GOLD); R(12, 12, 2, 1, GOLD);
         B(0, -4, 16, 12, Color{ 34, 34, 40, 255 });
         bool stat = story.Stage() >= 2 && std::fmod(globalT, 4.0f) < 0.6f;
-        Color sc = story.PowerOut() ? Color{ 12, 12, 14, 255 } : stat ? (((int)(globalT * 12)) % 2 ? Color{ 170, 170, 170, 255 } : Color{ 60, 60, 60, 255 }) : Color{ 86, 156, 224, 255 };
+        Color sc = LkObjDark(o) ? Color{ 12, 12, 14, 255 } : stat ? (((int)(globalT * 12)) % 2 ? Color{ 170, 170, 170, 255 } : Color{ 60, 60, 60, 255 }) : Color{ 86, 156, 224, 255 };
         R(2, -2, 12, 8, sc);
-        if (!story.PowerOut()) {
+        if (!LkObjDark(o)) {
             if (!stat) { R(2, 3, 12, 3, Color{ 232, 240, 250, 255 }); R(4, 0, 3, 3, Color{ 190, 60, 60, 255 }); R(5, -1, 1, 1, Color{ 240, 230, 220, 255 }); R(9, 1, 2, 2, Color{ 40, 96, 66, 255 }); }   // a Christmas film
             R(3, -1, 4, 1, Fade(WHITE, 0.35f)); R(2, -2 + ((int)(globalT * 9)) % 8, 12, 1, Fade(BLACK, 0.14f));
         } else R(3, -1, 3, 1, Fade(WHITE, 0.08f));
-        R(13, 6, 1, 1, story.PowerOut() ? Color{ 60, 20, 20, 255 } : Color{ 240, 60, 60, 255 });
+        R(13, 6, 1, 1, LkObjDark(o) ? Color{ 60, 20, 20, 255 } : Color{ 240, 60, 60, 255 });
         R(4, -7, 1, 3, Color{ 150, 150, 160, 255 }); R(11, -7, 1, 3, Color{ 150, 150, 160, 255 });           // rabbit ears
     }
     else if (id == "couch") {
@@ -152,7 +152,7 @@ static void DrawObj(const Obj& o, Vector2 jit) {
     else if (id == "radio") {
         B(0, 8, 16, 7, Color{ 112, 76, 48, 255 });                                                           // sideboard
         B(2, 1, 12, 8, Color{ 146, 86, 52, 255 }); R(3, 3, 5, 5, Color{ 56, 44, 40, 255 }); for (int k = 0; k < 3; ++k) R(3, 3 + k * 2, 5, 1, Color{ 96, 76, 60, 255 });
-        R(10, 3, 3, 2, story.PowerOut() ? Color{ 60, 56, 40, 255 } : Color{ 250, 226, 140, 255 }); R(10, 6, 1, 1, kInk); R(12, 6, 1, 1, kInk); R(13, -4, 1, 5, Color{ 170, 170, 180, 255 });
+        R(10, 3, 3, 2, LkObjDark(o) ? Color{ 60, 56, 40, 255 } : Color{ 250, 226, 140, 255 }); R(10, 6, 1, 1, kInk); R(12, 6, 1, 1, kInk); R(13, -4, 1, 5, Color{ 170, 170, 180, 255 });
         // the nisse on top. From stage 2 he has turned to face the wall
         R(5, -3, 3, 4, Color{ 196, 44, 44, 255 }); R(6, -6, 1, 3, Color{ 196, 44, 44, 255 }); R(6, -7, 1, 1, WHITE);
         if (story.Stage() < 2) { R(5, -2, 3, 1, Color{ 240, 210, 180, 255 }); R(5, -1, 3, 2, WHITE); }
@@ -180,8 +180,8 @@ static void DrawObj(const Obj& o, Vector2 jit) {
             R((float)kBulbX[k], (float)kBulbY[k], 2, 2, on ? c : Color{ 26, 50, 40, 255 });
             if (on) R((float)kBulbX[k], (float)kBulbY[k], 1, 1, Mix(c, WHITE, 0.6f));
         }
-        Color star = story.PowerOut() ? Color{ 130, 118, 70, 255 } : Color{ 255, 226, 110, 255 };
-        R(7, -22, 2, 6, star); R(5, -20, 6, 2, star); R(6, -21, 4, 4, star); if (!story.PowerOut()) R(7, -20, 2, 2, WHITE);
+        Color star = LkObjDark(o) ? Color{ 130, 118, 70, 255 } : Color{ 255, 226, 110, 255 };
+        R(7, -22, 2, 6, star); R(5, -20, 6, 2, star); R(6, -21, 4, 4, star); if (!LkObjDark(o)) R(7, -20, 2, 2, WHITE);
         // presents
         B(-4, 9, 7, 7, Color{ 186, 52, 54, 255 }); R(-1, 9, 1, 7, Color{ 244, 226, 150, 255 }); R(-4, 12, 7, 1, Color{ 244, 226, 150, 255 }); R(-2, 7, 3, 2, Color{ 244, 226, 150, 255 });
         if (!story.zuldaOpened) { B(11, 10, 8, 6, Color{ 60, 92, 176, 255 }); R(14, 10, 1, 6, Color{ 240, 240, 244, 255 }); R(13, 8, 3, 2, Color{ 240, 240, 244, 255 }); }
@@ -227,7 +227,7 @@ static void DrawObj(const Obj& o, Vector2 jit) {
     }
     else if (id == "generator") {
         B(1, 2, 14, 12, Color{ 210, 166, 44, 255 }); R(3, 4, 10, 5, Color{ 36, 36, 40, 255 }); for (int k = 0; k < 4; ++k) R(4 + k * 2, 5, 1, 3, Color{ 96, 96, 100, 255 });
-        R(3, 11, 2, 2, story.PowerOut() ? Color{ 60, 30, 30, 255 } : Color{ 90, 230, 110, 255 }); R(10, 11, 3, 1, kInk); R(2, 14, 3, 2, kInk); R(11, 14, 3, 2, kInk); R(6, 0, 4, 2, Color{ 60, 60, 66, 255 });
+        R(3, 11, 2, 2, LkObjDark(o) ? Color{ 60, 30, 30, 255 } : Color{ 90, 230, 110, 255 }); R(10, 11, 3, 1, kInk); R(2, 14, 3, 2, kInk); R(11, 14, 3, 2, kInk); R(6, 0, 4, 2, Color{ 60, 60, 66, 255 });
     }
     else if (id == "pantry" || id == "wardrobe") {
         bool p = id == "pantry";
