@@ -2,6 +2,61 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.15.0
+Built on the branch `claude-batch-v0.15-outside`, on top of v0.14.0 (`claude-batch-v0.14-hinges-de`). Not merged. Expansion 5: the outside. The story test now has 71 memories and the same 8 endings.
+
+**The backyard**
+- Behind the house there's a backyard now, about twice the size of the house. The map grew north into negative rows, so nothing that was already there moved.
+- Two lines of bushes with gaps. Pushing through a bush is slow. He gets slowed too, but less.
+- An old chain fence across the middle, with an open gate at one end and a torn gap at the other. You fit through the gap, slowly. He doesn't.
+- A frozen stream along the far end. Past it the back fence is down in one place. Out there is the vidda, and the same running away ending as the gate.
+
+**Windows**
+- Every window in the house works both ways: your room, the bathroom, Mom and Dad's room, the kitchen and both living room windows.
+- Climbing takes about two and a half seconds. Your own window sticks in the cold, so the first time each loop you have to bang it open first.
+- In the hunt it's loud. He hears it like running, and if he gets to you before you're through, he pulls you back.
+- Doggo can't follow you out. He whines at the glass.
+- Climbing out while grounded is neutral. No mood, no dark.
+
+**Cold**
+- Without the jacket you don't make it across the yard in the hunt. About eight seconds in the open. The shed and Doggo's house are still in reach from the front door.
+- With the jacket the cold never gets you. You just light up in his torch.
+- Hiding out of the wind is slower: the woodpile, the bins and Doggo's house, and out back the spruce and the old car.
+- A WARM bar shows how long you have.
+
+**Dark**
+- From 16:45 it gets darker outside, step by step. By 16:53 you only see a small circle around you. Dad's flashlight is a real beam out there.
+- The windows at the back of the house throw light on the snow while the power is on.
+
+**His torch**
+- Outside, after the power dies, he has a big torch. Long, wide, and it shines straight through bushes and the chain fence.
+- He spots your red sweater from about 15 tiles away. With the jacket on, the reflective stripes make it 20.
+
+**New hiding spots**: the snow beast, the old car and the big spruce.
+
+**Six things out back**
+- An old car on blocks, no wheels, snowed in to the door handles. A child seat in the back with the straps cut.
+- Small boot prints that start at the swing, walk north and stop. The snow never fills them in.
+- A little wooden cross with 05 carved into it.
+- A satellite dish whose cable goes straight down into the snow.
+- A swing set built for somebody smaller.
+- A hole cut in the ice, with a rope going down.
+- Find all six for an achievement.
+
+**Five nods**
+- A huge ride-on toy snow beast, grey-white, three horns, button eyes, a zip down the belly. You can climb inside. It's warm in there.
+- The flagpole. You can lick it.
+- A weathervane on the shed roof shaped like a fat rodent. Look up at it late in the hour.
+- A board behind the shed with the alphabet painted on it and a bulb over each letter. On a dark night it spells something.
+- A husky at the far fence that Doggo growls at. Walk up to it and there's nobody there.
+
+**New memories (4)**: The other way out, Somebody smaller, Zero-five, Lit up.
+**New achievements (7)**: Out the Window, Smells Worse Inside, Triple Dare, Same Day Again, Spelled Out, Not a Dog, Out Back.
+
+**Debug**
+- `2` hops you out back, next to the snow beast.
+- `test/shots.inc`: a small script runner for screenshots on a virtual screen. Only built with `-DSHOTS`.
+
 ## What's in v0.14.0
 Built on the branch `claude-batch-v0.14-hinges-de`, on top of v0.13.0 (`claude-batch-v0.13-hinges`). Not merged. Expansion 1 of 4 is now complete: hinges D and E. All five pieces can be found. The true ending that uses them is not built yet. The story test now has 67 memories and the same 8 endings.
 

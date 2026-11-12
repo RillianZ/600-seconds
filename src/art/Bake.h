@@ -66,10 +66,11 @@ static const Color kTrim = { 232, 226, 212, 255 };
 
 struct Canvas {
     int w = 0, h = 0;
+    int oy = 0;   // v0.15: pixel row of the canvas's first line. The world canvas starts above 0 (the backyard)
     std::vector<Color> px;
-    void Init(int W, int H, Color c = { 0, 0, 0, 0 }) { w = W; h = H; px.assign((size_t)W * H, c); }
-    void Set(int x, int y, Color c) { if (x >= 0 && y >= 0 && x < w && y < h) px[(size_t)y * w + x] = c; }
-    Color Get(int x, int y) const { return (x >= 0 && y >= 0 && x < w && y < h) ? px[(size_t)y * w + x] : Color{ 0, 0, 0, 0 }; }
+    void Init(int W, int H, Color c = { 0, 0, 0, 0 }) { w = W; h = H; oy = 0; px.assign((size_t)W * H, c); }
+    void Set(int x, int y, Color c) { y -= oy; if (x >= 0 && y >= 0 && x < w && y < h) px[(size_t)y * w + x] = c; }
+    Color Get(int x, int y) const { y -= oy; return (x >= 0 && y >= 0 && x < w && y < h) ? px[(size_t)y * w + x] : Color{ 0, 0, 0, 0 }; }
     void Rect(int x, int y, int rw, int rh, Color c) { for (int j = 0; j < rh; ++j) for (int i = 0; i < rw; ++i) Set(x + i, y + j, c); }
     // darken or lighten what is already there
     void Shade(int x, int y, float k) {
@@ -84,10 +85,10 @@ struct WorldBaker {
     Canvas& c;
     WorldBaker(const World& W, Canvas& C) : w(W), c(C) {}
 
-    Tile T(int x, int y) const { return (x < 0 || y < 0 || x >= World::W || y >= World::H) ? Tile::Void : w.tiles[y][x]; }
-    Room Rm(int x, int y) const { return (x < 0 || y < 0 || x >= World::W || y >= World::H) ? Room::Vidda : w.rooms[y][x]; }
+    Tile T(int x, int y) const { return (x < 0 || y < World::TOP || x >= World::W || y >= World::H) ? Tile::Void : w.tiles[y][x]; }
+    Room Rm(int x, int y) const { return (x < 0 || y < World::TOP || x >= World::W || y >= World::H) ? Room::Vidda : w.rooms[y][x]; }
     bool Wall(int x, int y) const { return T(x, y) == Tile::Wall; }
-    static bool Out(Tile t) { return t == Tile::Grass || t == Tile::Gravel || t == Tile::Vidda || t == Tile::Fence; }
+    static bool Out(Tile t) { return t == Tile::Grass || t == Tile::Gravel || t == Tile::Vidda || t == Tile::Fence || t == Tile::Bush || t == Tile::Chain || t == Tile::ChainGap || t == Tile::Ice; }
     static bool FloorLike(Tile t) { return t == Tile::Floor || t == Tile::ShedFloor || t == Tile::BasementDoor || t == Tile::Door; }
 
     // ---------------------------------------------------------------- ground
@@ -153,6 +154,28 @@ struct WorldBaker {
         float crack = std::fabs(Fbm(gx / 22.0f, gy / 22.0f, 43) - 0.5f);
         if (crack < 0.012f) v -= 0.3f;
         return Ramp(kConcrete, 5, v, gx, gy);
+    }
+
+    // v0.15: the frozen stream out back. Grey-blue ice, swept clean in streaks, snow banked along both edges
+    Color IceAt(int gx, int gy, int tx, int ty) const {
+        (void)tx; (void)ty;
+        static const Color kIce[5] = { { 96, 122, 168, 255 }, { 120, 148, 190, 255 }, { 146, 172, 208, 255 }, { 172, 196, 226, 255 }, { 200, 218, 240, 255 } };
+        // a bending stream inside a straight band of tiles (rows -23 to -21)
+        float cy = -22 * TS_ + 8 + std::sin(gx / 58.0f) * 9 + std::sin(gx / 21.0f) * 2.5f;
+        float half = 9.5f + std::sin(gx / 37.0f + 1.0f) * 2.0f;
+        float d = gy - cy;
+        if (std::fabs(d) > half + 1.5f) {
+            Color sn = Snow(gx, gy, false);
+            if (std::fabs(d) < half + 4.0f) return MixC(sn, Color{ 150, 166, 210, 255 }, 0.25f);   // the bank's shadow
+            return sn;
+        }
+        if (std::fabs(d) > half) return Ramp(kSnow, 6, 0.95f, gx, gy);                     // the lip of snow over the edge
+        float v = 0.45f + (Fbm(gx / 20.0f, gy / 6.0f, 153) - 0.5f) * 0.6f;
+        if (Fbm(gx / 40.0f + gy / 9.0f, gy / 3.0f, 154) > 0.62f) v += 0.35f;               // wind-swept snow on the ice
+        float crack = std::fabs(Fbm(gx / 14.0f, gy / 14.0f, 155) - 0.5f);
+        if (crack < 0.018f) v -= 0.35f; else if (crack < 0.03f) v += 0.12f;
+        if (d < -half + 2) v -= 0.25f;                                                       // the shadow under the far bank
+        return Ramp(kIce, 5, v, gx, gy);
     }
 
     // ---------------------------------------------------------------- walls
@@ -233,8 +256,9 @@ struct WorldBaker {
     }
 
     void Bake() {
-        c.Init(World::W * TS_, World::H * TS_, Color{ 0, 0, 0, 255 });
-        for (int ty = 0; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
+        c.Init(World::W * TS_, World::ROWS * TS_, Color{ 0, 0, 0, 255 });
+        c.oy = World::TOP * TS_;
+        for (int ty = World::TOP; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
             Tile t = T(tx, ty);
             Room r = Rm(tx, ty);
             for (int ly = 0; ly < TS_; ++ly) for (int lx = 0; lx < TS_; ++lx) {
@@ -242,7 +266,8 @@ struct WorldBaker {
                 Color col = { 4, 4, 8, 255 };
                 switch (t) {
                 case Tile::Vidda: col = Snow(gx, gy, true); break;
-                case Tile::Grass: case Tile::Fence: col = Snow(gx, gy, ty == 0 || tx == 0 || ty >= 30 || tx == World::W - 1); break;
+                case Tile::Grass: case Tile::Fence: case Tile::Bush: case Tile::Chain: case Tile::ChainGap: col = Snow(gx, gy, ty == World::TOP || tx == 0 || ty >= 30 || tx == World::W - 1); break;
+                case Tile::Ice: col = IceAt(gx, gy, tx, ty); break;
                 case Tile::Gravel: col = Road(gx, gy, tx); break;
                 case Tile::Door: {
                     bool outer = Out(T(tx, ty + 1)) || Out(T(tx, ty - 1));
@@ -289,13 +314,15 @@ struct WorldBaker {
         Occlusion();
         Rugs();
         Fences();
+        ChainFence();
+        Backyard();
         Rocks();
         Drifts();
     }
 
     // soft shadow where a floor meets a wall, and under the eaves outside
     void Occlusion() {
-        for (int ty = 0; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
+        for (int ty = World::TOP; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
             Tile t = T(tx, ty);
             bool fl = t == Tile::Floor || t == Tile::ShedFloor || t == Tile::Door || t == Tile::BasementDoor;
             bool out = Out(t) && t != Tile::Fence;
@@ -403,7 +430,7 @@ struct WorldBaker {
     // ---------------------------------------------------------------- fences, rocks, drifts
     void Fences() {
         Color wood = { 104, 74, 50, 255 }, dark = { 70, 50, 38, 255 }, cap = { 240, 244, 252, 255 }, sh = { 132, 150, 200, 255 };
-        for (int ty = 0; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
+        for (int ty = World::TOP; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
             if (T(tx, ty) != Tile::Fence) continue;
             int px = tx * TS_, py = ty * TS_;
             bool vertical = T(tx, ty - 1) == Tile::Fence && T(tx, ty + 1) == Tile::Fence && T(tx - 1, ty) != Tile::Fence;
@@ -425,8 +452,60 @@ struct WorldBaker {
             }
         }
     }
+    // v0.15: the old chain-link fence across the backyard. You see straight through it
+    void ChainFence() {
+        Color post = { 70, 74, 88, 255 }, postL = { 120, 126, 142, 255 }, mesh = { 92, 98, 116, 255 }, sh = { 150, 166, 210, 255 }, cap = { 244, 248, 254, 255 };
+        for (int ty = World::TOP; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
+            Tile t = T(tx, ty);
+            if (t != Tile::Chain && t != Tile::ChainGap) continue;
+            int px = tx * TS_, py = ty * TS_;
+            bool gap = t == Tile::ChainGap;
+            for (int lx = 0; lx < TS_; ++lx) {
+                c.Shade(px + lx, py + 13, -0.12f);                              // its thin shadow on the snow
+                c.Set(px + lx, py + 2, Tone(post, 14));                         // top rail
+                c.Set(px + lx, py + 3, post);
+                if (lx % 3 == 0 && R01(px + lx, py, 161) > 0.3f) c.Set(px + lx, py + 1, cap);   // snow on the rail
+            }
+            for (int ly = 4; ly < 13; ++ly) for (int lx = 0; lx < TS_; ++lx) {
+                int gx = px + lx, gy = py + ly;
+                bool diag = ((gx + gy) % 4 == 0) || ((gx - gy + 400) % 4 == 0);
+                if (!diag) continue;
+                if (gap) {
+                    // torn: the mesh curls back from a hole in the middle
+                    float d = std::hypot(lx - 8.0f, (ly - 9.0f) * 1.3f);
+                    if (d < 5.0f) continue;
+                    if (d < 6.2f) { c.Set(gx, gy, Tone(mesh, 30)); continue; }
+                }
+                Color under = c.Get(gx, gy);
+                c.Set(gx, gy, MixC(under, mesh, 0.62f));
+                if ((gx + gy) % 8 == 0 && R01(gx, gy, 162) > 0.6f) c.Set(gx, gy - 1, cap);   // frost caught in the links
+            }
+            if (tx % 3 == 0 || (T(tx - 1, ty) != Tile::Chain && T(tx - 1, ty) != Tile::ChainGap)) {
+                c.Rect(px + 1, py + 1, 2, 13, post); c.Rect(px + 1, py + 1, 1, 13, postL); c.Rect(px + 1, py, 2, 2, cap);
+                c.Rect(px + 3, py + 13, 3, 1, sh);
+            }
+        }
+    }
+    // v0.15: small boot prints that start at the swing and walk north. Then stop. The snow never fills them
+    void Backyard() {
+        Color pr = { 120, 138, 190, 255 }, lip = { 250, 252, 255, 255 };
+        float x0 = 21 * TS_ + 8.0f, y0 = -7 * TS_ + 2.0f, x1 = 23 * TS_ + 8.0f, y1 = -10 * TS_ + 9.0f;
+        int n = 11;
+        for (int i = 0; i < n; ++i) {
+            float k = i / (float)(n - 1);
+            int x = (int)(x0 + (x1 - x0) * k) + ((i % 2) ? 2 : -2), y = (int)(y0 + (y1 - y0) * k);
+            c.Rect(x, y, 2, 3, pr); c.Rect(x, y + 3, 2, 1, lip); c.Rect(x, y - 1, 2, 1, Tone(pr, 30));
+        }
+        // a trodden ring around the swing, filled with new snow except where somebody stood
+        for (int a = 0; a < 40; ++a) {
+            float ang = a * 0.157f;
+            int x = 21 * TS_ + 8 + (int)(std::cos(ang) * 11), y = -7 * TS_ + 12 + (int)(std::sin(ang) * 4);
+            c.Shade(x, y, -0.08f);
+        }
+    }
+
     void Rocks() {
-        for (int ty = 0; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
+        for (int ty = World::TOP; ty < World::H; ++ty) for (int tx = 0; tx < World::W; ++tx) {
             if (T(tx, ty) != Tile::Vidda) continue;
             unsigned h = H2(tx, ty, 131);
             if (h % 11 != 0) continue;
@@ -439,7 +518,7 @@ struct WorldBaker {
     }
     // snow lies up against the south wall of the house and the shed
     void Drifts() {
-        for (int ty = 1; ty < 34; ++ty) for (int tx = 0; tx < World::W; ++tx) {
+        for (int ty = World::TOP + 1; ty < 34; ++ty) for (int tx = 0; tx < World::W; ++tx) {
             if (!Wall(tx, ty) || !Out(T(tx, ty + 1))) continue;
             for (int lx = 0; lx < TS_; ++lx) {
                 int gx = tx * TS_ + lx;

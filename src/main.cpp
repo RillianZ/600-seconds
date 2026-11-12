@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.14.0";
+static const char* kVersion = "v0.15.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -149,6 +149,12 @@ static void ResetHunt() {
     stamina = breath = 1; breathHeardT = wetT = wetCD = vStepAcc = 0; winded = holdingBreath = gasped = false;
     marbles.clear(); rings.clear(); vSure = false; vShowT = 0.4f; vHearCD = 0;
 }
+// v0.15: climbing through a window. Takes a few seconds, it's loud, and he can pull you back
+static bool climbing = false, climbOut = false, climbBanged = false, climbDoggo = false;
+static float climbT = 0, climbDur = 0;
+static std::string climbWin;
+static Vector2 climbFrom{}, climbTo{};
+static float beamAng = 1.5708f;        // which way his torch points (radians, 0 = east)
 static std::vector<int> vSpots;        // hiding spots (obj index) still to check in this room
 static int vRoom = -1, vSweep = 0, vSpotObj = -1;
 static bool vRoomDone[16] = {};
@@ -450,8 +456,8 @@ static bool CanStand(float cx, float cy) {
 static Vector2 NextStep(Vector2 from, int tx, int ty, bool basement) {
     int fx = TX(from.x), fy = TX(from.y);
     if (fx == tx && fy == ty) return TileCenter(tx, ty);
-    static int dist[World::H][World::W];
-    for (auto& row : dist) for (int& d : row) d = -1;
+    static Rows<int, World::ROWS, World::W, World::TOP> dist;
+    for (auto& row : dist.d) for (int& d : row) d = -1;
     std::queue<std::pair<int, int>> q;
     if (!story.world.InBounds(tx, ty)) return from;
     dist[ty][tx] = 0; q.push({ tx, ty });
@@ -464,6 +470,7 @@ static Vector2 NextStep(Vector2 from, int tx, int ty, bool basement) {
             if (!story.world.InBounds(nx, ny) || dist[ny][nx] >= 0) continue;
             bool ok = story.world.Walkable(nx, ny, basement) || (nx == fx && ny == fy);
             if (ok && gMover == 2 && story.DoorClosed(nx, ny) && !(nx == fx && ny == fy)) ok = false;   // Doggo can't open doors
+            if (ok && gMover == 1 && story.world.tiles[ny][nx] == Tile::ChainGap) ok = false;          // v0.15: a kid fits through the torn fence. He doesn't
             if (!ok) continue;
             dist[ny][nx] = dist[y][x] + 1;
             q.push({ nx, ny });
@@ -552,8 +559,8 @@ static void AddBubble(const std::string& who, const std::string& text, float lif
 
 // ============================================================ the visitor searches (v0.4)
 static const Room kSearchRooms[] = { Room::LivingRoom, Room::Kitchen, Room::Hallway, Room::KidsRoom,
-                                     Room::Bathroom, Room::ParentsRoom, Room::Shed, Room::Outside, Room::Basement };
-static const int kRoomCount = 9;   // v0.13: the basement, only while its door is unlocked
+                                     Room::Bathroom, Room::ParentsRoom, Room::Shed, Room::Outside, Room::Basement, Room::Backyard };
+static const int kRoomCount = 10;  // v0.13: the basement, only while its door is unlocked. v0.15: the backyard, last
 
 static bool BlocksSight(int x, int y) {
     if (!story.world.InBounds(x, y)) return true;
@@ -569,11 +576,26 @@ static bool LineOfSight(Vector2 a, Vector2 b) {
     }
     return true;
 }
+// v0.15: outside, after the power dies, he has a big torch
+static bool OutdoorsAt(Vector2 p) { Room r = story.world.RoomAt(TX(p.x), TX(p.y)); return IsYard(r) || r == Room::Vidda; }
+static bool TorchOn() { return visitor.visible && (story.PowerOut() || story.collection) && OutdoorsAt(visitor.pos) && visitor.pos.y < 34 * TS; }
+static bool seenFar = false;   // the last sighting was his torch, from far away
 static bool VisitorSeesKid() {
+    seenFar = false;
     if (hidden || visitorBlind) return false;
     float dx = player.pos.x - visitor.pos.x, dy = player.pos.y - visitor.pos.y;
     float d = std::hypot(dx, dy);
-    if (d > TS * 7) return false;
+    if (d > TS * 7) {
+        // v0.15: his torch reaches across the yard, through bushes and the chain fence. Red sweater, reflective stripes
+        if (!TorchOn() || !OutdoorsAt(player.pos)) return false;
+        float range = TS * (story.hasCoat ? 20.0f : 15.0f);
+        if (d > range) return false;
+        float diff = std::fabs(std::remainder(std::atan2(dy, dx) - beamAng, 6.2831853f));
+        if (diff > 0.42f) return false;
+        if (!LineOfSight(visitor.pos, player.pos)) return false;
+        seenFar = true;
+        return true;
+    }
     if (d > 26) {
         // he looks where he's walking: a wide cone, not eyes in the back of his head
         const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
@@ -609,10 +631,15 @@ static void PlanRoom(int ri) {
         const int pts[4][2] = { { 6, 23 }, { 25, 26 }, { 33, 12 }, { 20, 27 } };
         int start = GetRandomValue(0, 3);
         for (int k = 0; k < 4; ++k) vPath.push_back(TileCenter(pts[(start + k) % 4][0], pts[(start + k) % 4][1]));
+    } else if (r == Room::Backyard) {
+        // v0.15: he sweeps the backyard with his torch from a few spots
+        const int pts[6][2] = { { 12, 0 }, { 26, -6 }, { 18, -9 }, { 31, -14 }, { 20, -16 }, { 12, -22 } };
+        int start = GetRandomValue(0, 1) * 3;
+        for (int k = 0; k < 6; ++k) vPath.push_back(TileCenter(pts[(start + k) % 6][0], pts[(start + k) % 6][1]));
     } else {
         std::vector<Vector2> tiles;
         float cx = 0, cy = 0;
-        for (int y = 0; y < World::H; ++y) for (int x = 0; x < World::W; ++x)
+        for (int y = World::TOP; y < World::H; ++y) for (int x = 0; x < World::W; ++x)
             if (story.world.RoomAt(x, y) == r && story.world.tiles[y][x] != Tile::Door && story.world.Walkable(x, y, false)) {
                 tiles.push_back(TileCenter(x, y)); cx += x; cy += y;
             }
@@ -647,11 +674,12 @@ static void PickNextRoom() {
             if (r == Room::Basement && !story.BasementInHunt()) continue;
             // rough distance to the room, house first, yard and shed last
             float sx = 0, sy = 0; int n = 0;
-            for (int y = 0; y < World::H; y += 2) for (int x = 0; x < World::W; x += 2)
+            for (int y = World::TOP; y < World::H; y += 2) for (int x = 0; x < World::W; x += 2)
                 if (story.world.RoomAt(x, y) == r) { sx += x; sy += y; ++n; }
             if (!n) continue;
             float d = std::hypot(sx / n * TS - visitor.pos.x, sy / n * TS - visitor.pos.y);
             if (r == Room::Outside || r == Room::Shed) d += 260;
+            if (r == Room::Backyard) d += 420;
             d += GetRandomValue(0, 60);
             if (vSweep == 0) for (auto& o : story.world.objs)   // v0.12: the rooms he has found you in come first
                 if (IsHideObj(o.id) && story.world.RoomAt(o.x, o.y) == r) d -= 3000.0f * story.CaughtIn(o.id);
@@ -737,6 +765,22 @@ static void StartNextBeat() {
             if (b.id == "minigame") {
                 miniOpen = true; miniY = MINI_H * 0.5f; miniV = 0; miniT = 0; miniScore = 0; miniDead = false; miniStarted = false; miniDeadT = 0; miniPipes.clear();
                 return;   // the beat queue waits until the game is over
+            }
+            if (b.id.rfind("climb:", 0) == 0) {
+                // v0.15: through a window. Up to the near side first, facing the glass
+                if (const WindowInfo* w = WindowById(b.id.substr(6))) {
+                    int py = TX(player.pos.y);
+                    bool inside = w->wy <= 2 ? py > w->wy : py < w->wy;
+                    climbing = true; climbT = 0; climbWin = w->id; climbOut = inside;
+                    climbFrom = inside ? TileCenter(w->inX, w->inY) : TileCenter(w->outX, w->outY);
+                    climbTo = inside ? TileCenter(w->outX, w->outY) : TileCenter(w->inX, w->inY);
+                    climbBanged = inside && story.WindowSticks(w->id);
+                    climbDur = 2.5f + (climbBanged ? 1.2f : 0);
+                    climbDoggo = story.DoggoExists() && !story.doggoStay && std::hypot(doggo.pos.x - player.pos.x, doggo.pos.y - player.pos.y) < TS * 6;
+                    player.pos = climbFrom; player.dir = ((w->wy <= 2) == inside) ? 1 : 0;
+                    hidden = false;
+                }
+                continue;
             }
             if (b.id == "dad_runs") scene = SceneMode::DadRuns;
             else if (b.id == "chase") {
@@ -876,7 +920,7 @@ static void UpdateBeat(float dt) {
             prints.clear(); ResetHunt();
             Snap(player, 5, 5); player.dir = 0;
             Snap(mom, 8, 16); Snap(dad, 24, 16); Snap(doggo, 6, 6); Snap(visitor, 20, 29);
-            momDoor = HeldDoor(); dadDoor = HeldDoor(); lastThreats = 0; vDoorT = 0; struggleT = 0;
+            momDoor = HeldDoor(); dadDoor = HeldDoor(); lastThreats = 0; vDoorT = 0; struggleT = 0; climbing = false;
             scene = SceneMode::None; hidden = false; wasCollection = false;
             StartNextBeat();
         }
@@ -917,6 +961,12 @@ static Target FindTarget() {
         Vector2 c = TileCenter(o->x, o->y);
         consider(o->id, o->name, std::hypot(c.x - front.x, c.y - front.y), 20, bias);
     };
+    // v0.15: from outside you climb in by facing the wall under the window
+    for (auto& w : AllWindows()) {
+        if (py != w.outY || std::abs(px - w.outX) > 1) continue;
+        Vector2 c = TileCenter(w.wx, w.wy);
+        consider(w.id, "Window", std::hypot(c.x - front.x, c.y - front.y), 14, 4);
+    }
     objAt(TX(front.x), TX(front.y), 3);   // the tile you face counts a little extra
     objAt(px, py, 0);
     for (int k = 0; k < 4; ++k) {
@@ -936,11 +986,11 @@ static unsigned Hash(int x, int y) { unsigned h = x * 374761393u + y * 668265263
 // v0.5: richer tiles. Same open floor plan, more texture: plank floors, tiled kitchen and bathroom,
 // 3/4 view walls with wallpaper, a red log cabin outside, soft shadows where floors meet walls.
 static Tile TileAt(int x, int y) {
-    if (x < 0 || y < 0 || x >= World::W || y >= World::H) return Tile::Void;
+    if (x < 0 || y < World::TOP || x >= World::W || y >= World::H) return Tile::Void;
     return story.world.tiles[y][x];
 }
 static bool IsWallT(int x, int y) { return TileAt(x, y) == Tile::Wall; }
-static bool IsOutsideT(Tile t) { return t == Tile::Grass || t == Tile::Gravel || t == Tile::Vidda || t == Tile::Fence; }
+static bool IsOutsideT(Tile t) { return t == Tile::Grass || t == Tile::Gravel || t == Tile::Vidda || t == Tile::Fence || t == Tile::Bush || t == Tile::Chain || t == Tile::ChainGap || t == Tile::Ice; }
 static Color Shade(Color c, int d) {
     auto cl = [](int v) { return (unsigned char)std::max(0, std::min(255, v)); };
     return { cl(c.r + d), cl(c.g + d), cl(c.b + d), c.a };
@@ -1265,7 +1315,8 @@ static void DrawChaseBanner() {
         else if (story.threats > 0) h = "Come out and face him (E). Or don't.";
         else h = story.pebbles > 0 ? (touchMode ? "He's searching. Walk, don't run. THROW a marble to move him." : "He's searching. Walk, don't run. Q throws a marble.")
                                    : "He's searching. Walk, don't run. He hears running. Hide (E) or face him (E).";
-        if (story.cold > 0.3f) h = story.hasCoat ? "It's getting into your jacket. Get inside." : "You're freezing. Get inside.";
+        if (story.cold > 0.3f) h = story.Warm() ? "Warm in here. Stay." : "You're freezing. Get inside, or get your jacket.";
+        if (climbing) h = "Climbing. He can hear it.";
         else if (story.doggoWithKid && story.Knows("doggo_stay") && !hidden) h = "Doggo is right next to you. Tell him to stay (E on Doggo).";
         UIText(h, VW / 2.0f - UIMeasure(h, 6) / 2, 54, 6, Fade(WHITE, 0.65f));
         // v0.12: air and legs
@@ -1275,6 +1326,7 @@ static void DrawChaseBanner() {
             DrawRectangleRounded({ x * US, y * US, std::max(0.0f, v) * w * US, 3 * US }, 0.6f, 6, Fade(c, 0.9f));
             UIText(label, x - UIMeasure(label, 5) - 4, y - 1, 5, Fade(WHITE, 0.6f));
         };
+        if (story.cold > 0.02f) bar(78, 1 - story.cold, "WARM", story.cold > 0.6f ? Color{ 240, 80, 80, 255 } : Color{ 200, 230, 255, 255 });   // v0.15
         if (hidden) bar(64, breath, "AIR", breath < 0.3f ? Color{ 240, 80, 80, 255 } : Color{ 150, 200, 255, 255 });
         else if (stamina < 0.995f) bar(64, stamina, "LEGS", winded ? Color{ 240, 80, 80, 255 } : Color{ 240, 210, 110, 255 });
         if (story.pebbles > 0 && !hidden) {
@@ -1333,6 +1385,14 @@ static void DrawHUD() {
         UIText(rs.c_str(), 8, VH - 22, 6, Color{ 120, 220, 140, 200 });
     }
     DrawChaseBanner();
+    if (climbing && scene != SceneMode::Chase) {
+        // v0.15: how far through the window you are
+        float w = 60, x = VW / 2.0f - w / 2, y = 64, v = std::min(1.0f, climbT / std::max(0.1f, climbDur));
+        DrawRectangleRounded({ (x - 1) * US, (y - 1) * US, (w + 2) * US, 5 * US }, 0.6f, 6, Fade(BLACK, 0.6f));
+        DrawRectangleRounded({ x * US, y * US, v * w * US, 3 * US }, 0.6f, 6, Fade(Color{ 200, 230, 255, 255 }, 0.9f));
+        const char* l = climbBanged && climbT < 1.2f ? "STUCK" : "CLIMBING";
+        UIText(l, x - UIMeasure(l, 5) - 4, y - 1, 5, Fade(WHITE, 0.6f));
+    }
     if (IsKeyDown(KEY_T)) UIText(">> waiting", VW / 2.0f - 25, VH - 14, 8, YELLOW);
     else if (!touchMode) UIText("T: wait   J: memory   E: use", 8, VH - 12, 6, Fade(WHITE, 0.45f));
 }
@@ -1899,7 +1959,7 @@ static void StartGame(bool fresh) {
     story.BeginLoop();
     Snap(player, 5, 5); player.dir = 0;
     Snap(mom, 8, 16); Snap(dad, 24, 16); Snap(doggo, 6, 6); Snap(visitor, 20, 29);
-    scene = SceneMode::None; hidden = false; wasCollection = false; flashT = 0; journalOpen = false;
+    scene = SceneMode::None; hidden = false; wasCollection = false; flashT = 0; journalOpen = false; climbing = false;
     screen = Screen::Game;
     SaveGame();
     StartNextBeat();
@@ -2062,6 +2122,9 @@ static void DrawRotateHint() {
     UIText(b, VW / 2.0f - UIMeasure(b, 20) / 2, VH / 2.0f + 22, 20, Fade(WHITE, 0.55f));
 }
 
+#if defined(SHOTS)
+#include "../test/shots.inc"   // v0.15: scripted screenshots on a virtual screen. Never in a release build
+#endif
 // ============================================================ frame
 static void UpdateDrawFrame() {
     float dt = std::min(GetFrameTime(), 0.05f);
@@ -2074,6 +2137,9 @@ static void UpdateDrawFrame() {
     if (cw != SW || ch != SH) { SW = cw; SH = ch; }
     US = std::min(SW / (float)VW, SH / (float)VH);
     UpdateTouch();
+#if defined(SHOTS)
+    ShotsStep();
+#endif
 
     // soundtrack follows the act
     {
@@ -2098,7 +2164,7 @@ static void UpdateDrawFrame() {
             Room r = story.world.RoomAt(px, py);
             bool storm = story.Storm() || story.collection;
             if (story.inBasement || r == Room::Basement) hum = 1;
-            else if (r == Room::Outside || r == Room::Vidda) wind = storm ? 1.0f : 0.32f;
+            else if (IsYard(r) || r == Room::Vidda) wind = storm ? 1.0f : 0.32f;
             else {
                 wind = storm ? 0.42f : 0.07f; bright = 0.3f;   // through the walls
                 float db = std::hypot((float)(px - World::BASEMENT_X), (float)(py - World::BASEMENT_Y));
@@ -2220,8 +2286,28 @@ static void UpdateDrawFrame() {
             else stamina = std::min(1.0f, stamina + dt / ((mv.x != 0 || mv.y != 0) ? 9.0f : 5.0f));
         }
         float speed = story.kidShot ? 26 : running ? 128 : 84;
-        if (IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6)))) speed *= 0.88f;   // v0.8: snow to your shins
-        if (hidden) mv = { 0, 0 };
+        Tile under = TileAt(TX(player.pos.x), TX(player.pos.y + 4));
+        if (IsOutsideT(under)) speed *= 0.88f;   // v0.8: snow to your shins
+        if (under == Tile::Bush) speed *= 0.42f;           // v0.15: pushing through the bushes
+        else if (under == Tile::ChainGap) speed *= 0.35f;  // squeezing through the torn fence
+        if (hidden || climbing) { mv = { 0, 0 }; kidRunning = false; }
+        if (climbing) {
+            // v0.15: a bang first if it's stuck, then up, over the sill and down the other side
+            climbT += dt;
+            float bang = climbBanged ? 1.2f : 0;
+            if (climbBanged && climbT < bang && std::fmod(climbT, 0.6f) < dt) Play("thud");
+            float k = std::max(0.0f, std::min(1.0f, (climbT - bang) / 2.5f));
+            float e = k * k * (3 - 2 * k);
+            player.pos = { climbFrom.x + (climbTo.x - climbFrom.x) * e, climbFrom.y + (climbTo.y - climbFrom.y) * e - std::sin(e * 3.14159f) * 7 };
+            player.anim = climbT > bang ? climbT * 6 : 0;
+            if (climbT >= climbDur) {
+                climbing = false; player.pos = climbTo; player.anim = 0;
+                if (climbOut) player.dir = climbTo.y < climbFrom.y ? 1 : 0;
+                if (!climbOut) wetT = 14;
+                story.OnClimbed(climbWin, climbOut, climbDoggo && story.DoggoExists());
+                if (!story.beats.empty()) StartNextBeat();
+            }
+        }
         if (mv.x != 0 || mv.y != 0) {
             float l = std::hypot(mv.x, mv.y); mv.x /= l; mv.y /= l;
             float nx = player.pos.x + mv.x * speed * dt, ny = player.pos.y + mv.y * speed * dt;
@@ -2244,6 +2330,7 @@ static void UpdateDrawFrame() {
             if (d > 10) { marbles.push_back({ player.pos, land, 0, d / 230.0f, false }); story.pebbles--; }
         }
         if (interactCooldown > 0) interactCooldown -= dt;
+        else if (climbing) {}
         else if (IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
             if (hidden) {
                 hidden = false; breathHeardT = 0; gasped = false;
@@ -2276,6 +2363,7 @@ static void UpdateDrawFrame() {
         if (debugMode && IsKeyPressed(KEY_FOUR) && !story.inBasement && !story.collection) story.DebugToBasement();   // debug: the tape, downstairs
         if (debugMode && IsKeyPressed(KEY_THREE) && !story.inBasement) { Snap(player, 20, 29); player.dir = 0; }   // debug: hop to the gate
         if (debugMode && IsKeyPressed(KEY_FIVE) && !story.inBasement) { Snap(player, 16, 16); player.dir = 3; }   // debug: hop to the living room
+        if (debugMode && IsKeyPressed(KEY_TWO) && !story.inBasement) { Snap(player, 13, -6); player.dir = 3; }   // v0.15 debug: hop out back, next to the snow beast
         if (debugMode && IsKeyPressed(KEY_SIX)) { story.fed = story.trashDone = story.roomClean = story.dishesDone = story.firewoodDone = true; ToastFor("DEBUG", "All five chores done", SKYBLUE); }
         if (debugMode && IsKeyPressed(KEY_SEVEN)) story.Choose("ft_flappy", TX(player.pos.x), TX(player.pos.y));   // debug: jump into the Fliptendo
         if (debugMode && IsKeyPressed(KEY_EIGHT)) story.AdvanceMinutes(5, TX(player.pos.x), TX(player.pos.y));
@@ -2435,6 +2523,7 @@ static void UpdateDrawFrame() {
                 story.OpenDoor(sx, sy);
                 Play("door");
             }
+            if (TileAt(TX(visitor.pos.x), TX(visitor.pos.y + 4)) == Tile::Bush) sp *= 0.6f;   // v0.15: he's slowed by bushes too, less than you
             MoveActor(visitor, tx, ty, sp, dt, false, stop);
             gMover = 0;
             return false;
@@ -2475,6 +2564,14 @@ static void UpdateDrawFrame() {
                     if (downedT <= 0 && story.visitorDowned) { story.OnVisitorUp(); StartNextBeat(); vmode = VMode::Search; PickNextRoom(); }
                 } else {
                     bool sees = VisitorSeesKid();
+                    if (sees && seenFar) { story.OnLitUp(); StartNextBeat(); }
+                    // v0.15: he gets to the window before you're through. He pulls you back
+                    if (climbing && std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y) < 18 && sceneT > 0.4f) {
+                        climbing = false; player.pos = climbFrom;
+                        AddBubble("The visitor", "Not that way.", 1.4f);
+                        caught();
+                        goto chaseDone;
+                    }
                     if (sees && vmode != VMode::Grace && vmode != VMode::GoToHide) {
                         if (vmode != VMode::Chase && vSpotCooldown <= 0) { VisitorBark(kSpotLines, 3); vSpotCooldown = 6; }
                         vmode = VMode::Chase; vLostT = 0; vLastSeen = player.pos;
@@ -2486,7 +2583,7 @@ static void UpdateDrawFrame() {
                     vHearCD -= dt;
                     if (!busy && !hidden && !visitorBlind) {
                         bool loudOut = IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6))) && story.Storm();
-                        if (kidRunning && dk < TS * (loudOut ? 5.0f : 10.0f)) {
+                        if ((kidRunning || climbing) && dk < TS * (loudOut ? 5.0f : 10.0f)) {
                             // running feet carry through walls. In the storm, less
                             if (vHearCD <= 0) { vHearCD = 0.45f; AddRing(player.pos, 1); }
                             bool first = vmode != VMode::Investigate;
@@ -2613,7 +2710,7 @@ static void UpdateDrawFrame() {
                         }
                         // v0.8: outside he reads your tracks
                         vPrintCD -= dt;
-                        if (vPrintCD <= 0 && story.world.RoomAt(TX(visitor.pos.x), TX(visitor.pos.y)) == Room::Outside) {
+                        if (vPrintCD <= 0 && IsYard(story.world.RoomAt(TX(visitor.pos.x), TX(visitor.pos.y)))) {
                             vPrintCD = 1.0f;
                             for (auto it = prints.rbegin(); it != prints.rend(); ++it) {
                                 if (it->who != 0 || it->t > 14) continue;
@@ -2668,6 +2765,7 @@ static void UpdateDrawFrame() {
                         StartNextBeat();
                     }
                 }
+                chaseDone:
                 story.visitorChasing = vmode == VMode::Chase;
             }
         }
@@ -2682,6 +2780,26 @@ static void UpdateDrawFrame() {
         }
         if (visitor.visible) AddPrint(visitor, 1, dt, 0.28f);
         if (doggo.visible && (story.DoggoExists() || (story.doggoOut && !doggoRanOff))) AddPrint(doggo, 2, dt, 0.12f);
+
+        // v0.15: his torch points where he walks, and sweeps a little while he searches
+        {
+            const float da[4] = { 1.5708f, -1.5708f, 3.14159f, 0.0f };
+            float want = da[visitor.dir] + (vmode == VMode::Search ? std::sin(globalT * 1.3f) * 0.35f : 0.0f);
+            beamAng += std::remainder(want - beamAng, 6.2831853f) * std::min(1.0f, dt * 5);
+        }
+        // v0.15: the dog at the far fence. Doggo growls at it. Walk up to it and there's nobody
+        {
+            static int huskyLoop = -1; static bool gone = false; static float growlT = 0;
+            if (story.loop != huskyLoop) { huskyLoop = story.loop; gone = false; }
+            bool want = !story.collection && !story.Tutorial() && story.t >= 40 * 60 && !gone;
+            Vector2 hp = { 12 * TS + 8.0f, World::TOP * TS + 8.0f };
+            if (want && std::hypot(player.pos.x - hp.x, player.pos.y - hp.y) < TS * 6 && !beatActive) { gone = true; story.OnHusky(); StartNextBeat(); }
+            huskyA += ((want ? 1.0f : 0.0f) - huskyA) * std::min(1.0f, dt * (want ? 0.8f : 3.0f));
+            growlT -= dt;
+            if (huskyA > 0.5f && story.DoggoExists() && growlT <= 0 && std::hypot(doggo.pos.x - hp.x, doggo.pos.y - hp.y) < TS * 14) {
+                AddBubble("Doggo", "*low growl*", 1.6f); growlT = 6;
+            }
+        }
 
         // v0.7: Doggo. Follows you unless you told him to stay. Can't open doors.
         if (!story.doggoDead) doggoShownDead = false;
@@ -2785,7 +2903,7 @@ static void UpdateDrawFrame() {
     // ---------------- draw world
     Camera2D cam{};
     float cxw = std::max(VW / 2.0f, std::min(World::W * TS - VW / 2.0f, player.pos.x));
-    float cyw = std::max(VH / 2.0f, std::min(World::H * TS - VH / 2.0f, player.pos.y));
+    float cyw = std::max(World::TOP * TS + VH / 2.0f, std::min(World::H * TS - VH / 2.0f, player.pos.y));
     cam.target = { std::round(cxw), std::round(cyw) };
     cam.offset = { VW / 2.0f, VH / 2.0f };
     cam.zoom = 1;
@@ -2952,6 +3070,9 @@ int main() {
     })();)JS");
 #endif
     Snap(player, 5, 5); Snap(mom, 8, 16); Snap(dad, 24, 16); Snap(doggo, 6, 6); Snap(visitor, 20, 29);
+#if defined(SHOTS)
+    ShotsInit();
+#endif
 
 #if defined(PLATFORM_WEB)
     emscripten_set_main_loop(UpdateDrawFrame, 0, 1);

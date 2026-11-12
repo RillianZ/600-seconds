@@ -46,7 +46,15 @@ static void Drain() {
             s.Choose(id, px, py);
         } break;
         case BeatType::Scene:
-            if (b.id == "dad_runs") s.SceneDone("dad_runs");
+            if (b.id.rfind("climb:", 0) == 0) {
+                // v0.15: the presentation climbs through the window, then tells the story
+                const WindowInfo* w = WindowById(b.id.substr(6));
+                assert(w);
+                bool out = !(px == w->outX && py == w->outY);
+                At(out ? w->outX : w->inX, out ? w->outY : w->inY);
+                s.OnClimbed(w->id, out, false);
+            }
+            else if (b.id == "dad_runs") s.SceneDone("dad_runs");
             else if (b.id == "minigame") s.MinigameDone(4);
             else if (b.id == "chase") {
                 if (chasePlan == "caught") s.OnCaught();
@@ -64,6 +72,7 @@ static void Drain() {
                 else if (chasePlan == "crates") {}   // v0.13: the test drives this hunt by hand
                 else if (chasePlan == "cold") { At(25, 25); s.kidHidden = false; }   // stand out in the storm, no jacket
                 else if (chasePlan == "outside") s.OnLeftPremises();
+                else if (chasePlan == "litup") { s.OnLitUp(); s.OnCaught(); }   // v0.15: his torch, from across the yard
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
             }
             break;
@@ -625,6 +634,70 @@ int main(int argc, char** argv) {
       Use("car", {"car_hide", "cr_stay"});
       assert(s.loop != L && s.Knows("piece_car")); }
     assert(s.HingePieces() == 5 && s.achievements.count("Five of Five") && s.achievements.count("Open House") && s.achievements.count("Stowaway"));
+
+    CleanLoop();
+    Header("LOOP 15: outside. The backyard, the windows, the cold, the six things out back");
+    {
+        // the map grew north into negative rows. Nothing that was there moved
+        const World& w = s.world;
+        assert(w.RoomAt(6, 1) == Room::Backyard && w.RoomAt(6, -20) == Room::Backyard && w.RoomAt(20, 25) == Room::Outside);
+        assert(w.tiles[World::TOP + 1][5] == Tile::Fence && w.RoomAt(29, World::TOP) == Room::Vidda && w.Walkable(29, World::TOP + 1, false));
+        assert(!w.Walkable(5, -12, false) && w.Walkable(6, -12, false) && w.tiles[-12][6] == Tile::ChainGap && w.Walkable(30, -12, false));
+        assert(w.Walkable(5, -3, false) && w.tiles[-3][5] == Tile::Bush);
+        for (auto& win : AllWindows()) {
+            assert(w.tiles[win.wy][win.wx] == Tile::Wall && w.Walkable(win.inX, win.inY, false) && w.Walkable(win.outX, win.outY, false));
+            assert(IsYard(w.RoomAt(win.outX, win.outY)) && !IsYard(w.RoomAt(win.inX, win.inY)));
+        }
+        for (const char* id : {"oldcar", "beast", "spruce"}) assert(Story::IsHideSpot(id));
+        std::puts("  backyard rows -25 to 1, bushes, chain fence with a gap, six windows that work both ways");
+        // grounded: out the window is neutral (Noah)
+        Story g; g.memory = {"loop"}; g.loop = 3; g.BeginLoop(); g.beats.clear(); g.grounded = true;
+        int mood = g.mood, dark = g.darkPoints;
+        g.Interact("window", 6, 3);
+        bool offer = false, stayFirst = false;
+        for (auto& bt : g.beats) if (bt.type == BeatType::Choice) { stayFirst = bt.choices.front().id == "none"; for (auto& ch : bt.choices) if (ch.id == "win_out:window") offer = true; }
+        assert(offer && stayFirst && g.WindowSticks("window"));
+        g.beats.clear(); g.Choose("win_out:window", 6, 3);
+        bool climb = false; for (auto& bt : g.beats) if (bt.type == BeatType::Scene && bt.id == "climb:window") climb = true;
+        assert(climb); g.beats.clear();
+        g.OnClimbed("window", true, true);
+        assert(g.mood == mood && g.darkPoints == dark && g.darkThisLoop == 0 && g.Knows("out_window") && !g.WindowSticks("window"));
+        std::puts("  out the window while grounded: no mood, no dark. It sticks the first time");
+        // the cold: without the jacket you don't make it across the yard, with it you can stay out
+        Story c; c.memory = {"loop"}; c.loop = 3; c.BeginLoop(); c.beats.clear(); c.collection = c.chase = true; c.t = 51 * 60;
+        c.Tick(4.0f, false, 20, -10); assert(c.cold > 0.45f && c.cold < 0.55f && c.chase);
+        c.Tick(4.2f, false, 20, -10); assert(!c.chase && c.Knows("cold"));
+        Story j; j.memory = {"loop"}; j.loop = 3; j.BeginLoop(); j.beats.clear(); j.collection = j.chase = true; j.t = 51 * 60; j.hasCoat = true;
+        for (int i = 0; i < 40; ++i) j.Tick(1.0f, false, 20, -20);
+        assert(j.chase && j.cold == 0);
+        Story b; b.memory = {"loop"}; b.loop = 3; b.BeginLoop(); b.beats.clear(); b.collection = b.chase = true; b.t = 51 * 60; b.cold = 0.9f;
+        b.kidHidden = true; b.hideSpot = "beast"; b.Tick(3.0f, false, 15, -6);
+        assert(b.cold < 0.5f && b.achievements.count("Smells Worse Inside"));
+        std::puts("  no jacket: frozen in about 8 seconds outside. Jacket: never. Inside the snow beast: warm");
+        // a nod, and a dog that isn't there
+        Story n; n.memory = {"loop"}; n.loop = 3; n.BeginLoop(); n.beats.clear();
+        n.Interact("flag", 10, 26); n.beats.clear(); n.Choose("fl_lick", 10, 26);
+        assert(n.achievements.count("Triple Dare") && n.tongueStuck);
+        n.OnHusky(); assert(n.achievements.count("Not a Dog"));
+        n.t = 46 * 60; n.Interact("vane", 32, 3); assert(n.achievements.count("Same Day Again"));
+        n.tainted = true; assert(n.BoardSpells()); n.beats.clear(); n.Interact("lights", 34, 1); assert(n.achievements.count("Spelled Out"));
+        std::puts("  tongue on the flagpole, the dog at the fence, the weathervane, the board that spells BELOW");
+    }
+    // the main story: out your window, the six things out back, then his torch in the dark
+    At(6, 3); Use("window", {"win_out:window"});
+    assert(px == 6 && py == 1 && s.Knows("out_window"));
+    At(9, -7); Use("oldcar", {"oc_look"});
+    At(21, -6); Use("swing", {"sw_swing"});
+    At(23, -10); Use("smallprints");
+    At(4, -2); Use("dish");
+    At(34, -15); Use("grave");
+    At(26, -20); Use("icehole", {"ih_rope"});
+    assert(s.Knows("small_prints") && s.Knows("grave_05") && s.EggsFound() == 6 && s.achievements.count("Out Back"));
+    At(15, -6); Use("beast", {"bst_in"});
+    At(6, 1); Use("window", {"win_in:window"});
+    assert(px == 6 && py == 3);
+    FinishLoop("litup");
+    assert(s.Knows("lit_up"));
 
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {

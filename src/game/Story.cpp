@@ -112,6 +112,14 @@ const std::vector<AchievementEntry>& AllAchievements() {
         {"Open House", "Don't wait for the knock."},
         {"Stowaway", "Ride along. Not in the trunk."},
         {"Five of Five", "Find a piece behind all five doors."},
+        // v0.15: outside
+        {"Out the Window", "Leave a room the other way."},
+        {"Smells Worse Inside", "Out back there's a present nobody unwrapped. Get in."},
+        {"Triple Dare", "Steel, minus twenty-five. Everybody knows. Do it anyway."},
+        {"Same Day Again", "Look up at the shed roof, late in the hour."},
+        {"Spelled Out", "Read the board behind the shed on a dark night."},
+        {"Not a Dog", "Go and see what Doggo growls at."},
+        {"Out Back", "Find all six things somebody left out back."},
     };
     return a;
 }
@@ -126,9 +134,18 @@ const std::vector<MemoryEntry>& AllMemories() {
          "Some days the toilet takes 45 minutes. No matter what. Reality is NOT the same every time.",
          "Some days are... different."},
         {"cold", "The hour", "The snow gets warm",
-         "Out in the storm without my jacket I last less than a minute. The snow stops being cold. That's the bad part.",
+         "Without my jacket I don't even make it across the yard. The snow stops being cold. That's the bad part.",
          "What happens if you stay out in the storm?"},
+        {"lit_up", "The hour", "Lit up",
+         "Out in the dark his torch finds me from across the yard. My red sweater. The stripes on my jacket. I light up like the tree.",
+         "What does he see from far away, out in the dark?"},
         // ---- The house
+        {"out_window", "The house", "The other way out",
+         "My window sticks in the cold. Hit the frame with the heel of your hand and it opens. Every window in the house does, if you're small enough. Doggo can't follow me out.",
+         "Even locked in your room there's another way out."},
+        {"small_prints", "The house", "Somebody smaller",
+         "Small boot prints out back, smaller than mine. They start at the swing and walk north. Then they stop. The snow never fills them in.",
+         "Somebody smaller walked out back."},
         {"handlers", "The house", "They are not my parents",
          "Reports. Phone calls. Radios. Mom and Dad aren't my parents. They're my handlers.",
          "Put the pieces together."},
@@ -303,6 +320,10 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"graduation", "The program", "The entrance exam",
          "APPENDIX C. A subject who kills his collector, and knows to take the switch first, replaces him. Going dark isn't failing their test. It's passing it.",
          "The last page of the protocol. For kids who know about the box on his belt."},
+        // v0.15: out back
+        {"grave_05", "The program", "Zero-five",
+         "Behind the chain fence there's a little wooden cross with 05 carved into it. No name. Dad calls me unit 06. Somebody was here before me. They're still here.",
+         "Behind the chain fence, something small with a number on it."},
         // v0.13: the hinges. One piece behind each door. Together they open the last path (not built yet)
         {"piece_mom", "The program", "Not like with you",
          "Mom was locked in the bathroom when he came, so he talked to her door instead of to me. She told him he used to hum her song under the duvet. Week 612. He said he never lived here.",
@@ -702,14 +723,16 @@ bool Story::TutorialLocked(const std::string& id) const {
         "tv", "couch", "radio", "bins", "doghouse", "gate", "flag", "mom", "dad", "doggo", "woodstove",
         "calendar", "bookshelf", "album", "wardrobe", "woodpile", "marbles", "frontdoor", "visitor",
         "pantry", "sink", "fliptendo", "tree", "car",
-        "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl", "sheddoor"};
+        "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl", "sheddoor",
+        "win_bath", "win_parents", "win_kitchen", "win_living", "win_living2", "beast", "swing", "spruce"};
     return open.count(id) == 0;
 }
 
 bool Story::IsHideSpot(const std::string& id) {
     // v0.12: five more. The yard ones are cold
     return id == "wardrobe" || id == "bed" || id == "pbed" || id == "toolbox" || id == "couch" ||
-           id == "pantry" || id == "tree" || id == "woodpile" || id == "doghouse" || id == "bins" || id == "crates";
+           id == "pantry" || id == "tree" || id == "woodpile" || id == "doghouse" || id == "bins" || id == "crates" ||
+           id == "oldcar" || id == "beast" || id == "spruce";   // v0.15: out back
 }
 bool Story::ShouldHide(const std::string& id) const {
     if (!chase) return false;
@@ -951,6 +974,7 @@ void Story::BeginLoop() {
     phoneUnplugged = momRemorse = sisterNoticed = echoAsked = false;
     momBathLocked = bathLockDark = false; huntStart.clear(); momRoomNow = Room::Kitchen;
     doorGreeted = carHidden = false;
+    windowBanged = tongueStuck = backyardCold = false;
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
@@ -1017,8 +1041,16 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
             for (int n = 1; n <= 3; ++n) if (t >= (56 + n) * 60 && threats < n && !visitorChasing) { Threat(n); break; }
             // v0.8: the storm gets you if you stay out in it. A jacket buys time. Indoors you warm up again
             Room here = world.RoomAt(px, py);
-            // v0.12: the yard has hiding spots now. Out of the wind is slower, not safe
-            if (here == Room::Outside) cold = std::min(1.0f, cold + realDt / ((hasCoat ? 70.0f : 25.0f) * (kidHidden ? 1.8f : 1.0f)));
+            // v0.15 (Noah): without the jacket you don't make it across the yard. With it you can stay out
+            // as long as you like, you just light up in his torch. Out of the wind is slower, not safe
+            if (Warm()) {
+                cold = std::max(0.0f, cold - realDt / 6.0f);   // the snow beast is warm inside
+                if (Once("beast_warm")) { Bubble("You", "(Warmer on the inside. Smells worse, though.)"); Achieve("Smells Worse Inside"); }
+            } else if (IsYard(here) && !hasCoat) {
+                float full = 8.0f;   // real seconds out in the open. Front door to the shed is about five
+                if (kidHidden) full *= hideSpot == "oldcar" ? 2.5f : 1.8f;
+                cold = std::min(1.0f, cold + realDt / full);
+            } else if (IsYard(here)) cold = std::max(0.0f, cold - realDt / 30.0f);
             else cold = std::max(0.0f, cold - realDt / 12.0f);
             if (cold >= 1.0f && Once("cold")) { ColdOut(); return; }
             if (t >= HOUR && Once("tired")) { if (kidHidden) PaidEnding(); else TiredOut(); }
@@ -1038,6 +1070,12 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
         Say("You", "(Footprints in the new snow. Big ones. They come from the gate and stop right under the living room window.)");
         Say("You", "(Dad's boots aren't that big.)");
         AddClue("prints");
+    }
+
+    // v0.15: the first time out back without the jacket
+    if (!collection && !Tutorial() && !hasCoat && !backyardCold && world.RoomAt(px, py) == Room::Backyard) {
+        backyardCold = true;
+        Bubble("You", "(Minus twenty-five back here. Without my jacket I wouldn't last long out here.)");
     }
 
     // Somebody unlocks the front door again
@@ -1636,7 +1674,10 @@ void Story::OnFound() {
     // v0.12: he only says it once it is true. A spot he has found you in is a spot he checks first
     int before = CaughtIn(hideSpot);
     Say("", before > 0 ? "(No searching. The footsteps come straight here. Light. A big hand.)" : "(Light. A big hand.)");
-    if (before == 0) Say("The visitor", "Found you.");
+    if (before == 0 && hideSpot == "beast") { Say("", "(The zip. Slowly, all the way down. Cold air and torchlight.)"); Say("The visitor", "Cosy in there, 06?"); }
+    else if (before == 0 && hideSpot == "oldcar") { Say("", "(The back door of the old car opens with a crunch of ice.)"); Say("The visitor", "This old thing. I used to hide in here too."); }
+    else if (before == 0 && hideSpot == "spruce") { Say("", "(The branches lift. Snow comes down on your neck. Then a torch.)"); Say("The visitor", "Under the tree. Like a present."); }
+    else if (before == 0) Say("The visitor", "Found you.");
     else if (before == 1) Say("The visitor", "Found you. You always pick that one.");
     else Say("The visitor", "This one. Every time, 06. I don't know how I know. I just walk here.");
     if (!hideSpot.empty()) caughtSpots[hideSpot] = before + 1;
@@ -2416,6 +2457,48 @@ void Story::Choose(const std::string& id, int px, int py) {
         ChangeMood(-1);
         return;
     }
+    // ---- v0.15 outside
+    if (id.rfind("win_out:", 0) == 0 || id.rfind("win_in:", 0) == 0) {
+        std::string w = id.substr(id.find(':') + 1);
+        if (WindowSticks(w) && id.rfind("win_out:", 0) == 0) Say("You", "(Frozen shut. You hit the frame with the heel of your hand. Once. Twice.)");
+        SceneBeat("climb:" + w);
+        return;
+    }
+    if (id == "bst_in") {
+        Say("", "(The zip is stiff with frost. You get it halfway and squeeze in.)");
+        FadeFor(Dur(2), "Inside the snow beast");
+        Say("You", "(Warmer on the inside. Smells worse, though.)");
+        Achieve("Smells Worse Inside");
+        return;
+    }
+    if (id == "oc_look") {
+        Say("You", "(A child seat in the back. Small. The straps have been cut through, clean, like somebody was in a hurry.)");
+        if (Stage() >= 2) Say("You", "(Not a family car. A transport.)");
+        return;
+    }
+    if (id == "sw_swing") {
+        FadeFor(Dur(2), "Swinging");
+        Say("You", Stage() >= 2 ? "(On the way down I see small prints in the snow. On the way up they're gone. Down, there. Up, gone.)"
+                                : "(Squeak. Squeak. Squeak. For two minutes I'm just a kid on a swing.)");
+        return;
+    }
+    if (id == "ih_rope") {
+        Say("You", "(It comes up easy. Too easy. The end is frayed. Whatever was on it is still down there.)");
+        if (Stage() >= 3) Say("You", "(Every Christmas Eve somebody cuts this hole open again. Somebody who knows exactly where.)");
+        return;
+    }
+    if (id == "fl_lick") {
+        tongueStuck = true;
+        Say("You", "(Everybody knows you don't. That's exactly why.)");
+        Say("You", "(It sticks. Instantly. Completely.)");
+        Say("You", "Mmf. MMFF.");
+        FadeFor(Dur(3), "Stuck to the flagpole");
+        if (MomHere() && momAtt != Attitude::Scared && momAtt != Attitude::Broken) Say("Mom", "(pouring a glass of warm water over the pole) ...I'm not even going to ask.");
+        else if (DadFree()) Say("Dad", "(with a kettle) Hold still, buddy. Hold STILL.");
+        else Say("You", "(You pull. You leave a little bit of tongue on the pole. It's fine. It's FINE.)");
+        Achieve("Triple Dare");
+        return;
+    }
     if (id == "c_coat") {
         hasCoat = true;
         Say("You", "(Zipped to the chin. Warm. For now.)");
@@ -3109,6 +3192,23 @@ void Story::Interact(const std::string& id, int px, int py) {
     if (chase && id == "stairs") { inBasement = false; FadeFor(0, "", 27, 11); return; }
     if (chase && id == "basement" && basementUnlocked) { inBasement = true; FadeFor(0, "", 6, 38); return; }
     if (chase && id == "screens") { Say("", "(Black. All of them. Only the little one in the corner, on its battery: a watch, counting. " + ClockText() + ".)"); return; }
+    // v0.15: every window is a way through, both ways. In the hunt there's no time to think about it
+    if (const WindowInfo* w = WindowById(id); w && (!collection || chase)) {
+        bool inside = w->wy <= 2 ? py > w->wy : py < w->wy;
+        if (chase) { SceneBeat("climb:" + id); return; }
+        if (Tutorial() && id != "window") { Say("You", "(Minus twenty-five out there. Mom would kill me.)"); return; }
+        std::vector<ChoiceOpt> o = {{"none", inside ? "Stay in." : "Leave it."}};
+        if (inside && id == "window") {
+            if (CarHere()) { Say("You", "(Headlights at the gate. A black car. No plates.)"); See("car"); }
+            else Say("You", Stage() >= 2 ? "(The backyard. And past it the vidda. White and endless. Like it's waiting.)"
+                                         : "(The backyard. Blue dusk. Snow on everything. Nothing out there for kilometres.)");
+            if (Tutorial()) return;
+        }
+        o.push_back({std::string(inside ? "win_out:" : "win_in:") + id, inside ? (WindowSticks(id) ? "Climb out. (It sticks.)" : "Climb out.") : "Climb in."});
+        Choice(inside ? "A window. Outside it's minus twenty-five." : "A window into the house.", o);
+        return;
+    }
+    if (id == "vane" && chase) { Interact("vane_look", px, py); return; }
     if (collection) return;
     if (TutorialLocked(id)) {
         Say("You", "(Not today. Maybe some other time.)");
@@ -3136,10 +3236,6 @@ void Story::Interact(const std::string& id, int px, int py) {
         FadeFor(Dur(6), "Cleaning your room");
         roomClean = true;
         Say("You", "(Room: clean. Ish.)");
-    } else if (id == "window") {
-        if (CarHere()) { Say("You", "(Headlights at the gate. A black car. No plates.)"); See("car"); return; }
-        Say("You", Stage() >= 2 ? "(The vidda. White and endless. Like it's waiting.)"
-                                : "(Blue dusk. Snow on everything. Nothing out there for kilometres.)");
     } else if (id == "toilet") {
         if (pooped) { Say("You", "(Already went. I'm good.)"); return; }
         int dur = shift == Shift::Toilet45 ? 45 : 15;
@@ -3373,6 +3469,8 @@ void Story::Interact(const std::string& id, int px, int py) {
             return;
         }
         Say("You", "(The flag is snapping in the wind. Dad raised it this morning, in this weather. For who?)");
+        // v0.15: a nod. Everybody knows you don't
+        if (!Tutorial() && !tongueStuck) Choice("The flagpole. Steel. Minus twenty-five.", {{"none", "Leave it."}, {"fl_lick", "Lick it."}});
     } else if (id == "generator") {
         Say("You", Knows("dad_radio") ? "(The generator. Nothing wrong with it. It's what he stands next to while he talks on the radio.)"
                                       : "(The generator. Dad's been 'fixing' it for weeks.)");
@@ -3622,7 +3720,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         std::vector<ChoiceOpt> o = {{"g_pet", "Pet Doggo."}};
         if (doggoStay) o.push_back({"g_come", "\"Come on, boy!\" (stop staying)"});
         else o.push_back({"g_sit", Tutorial() ? "\"Sit!\"" : "\"Sit! Stay!\""});
-        if (hasStick && world.RoomAt(px, py) == Room::Outside) o.push_back({"g_stick", "Throw the stick. (5 min)"});
+        if (hasStick && IsYard(world.RoomAt(px, py))) o.push_back({"g_stick", "Throw the stick. (5 min)"});
         else if (!Tutorial()) o.push_back({"g_ball", "Play with his ball. (3 min)"});
         if (!Tutorial()) o.push_back({"g_search", "\"Find it, boy!\" (5 min)"});
         if (!Tutorial()) o.push_back({"g_tail", "Pull his tail."});
@@ -3642,9 +3740,103 @@ void Story::Interact(const std::string& id, int px, int py) {
         if (hasKnife) o.push_back({"v_stab", "Go for him. Now.", false, true});
         o.push_back({"v_leave", "(Back away.)"});
         Choice("A big man in a black coat.", o);
+    } else if (id == "beast") {
+        // v0.15: a nod. A forgotten present the size of a pony
+        Say("You", "(A ride-on snow beast, the size of a pony. Grey-white plush, three horns, two button eyes. Somebody's present, years ago. Somebody forgot it out here.)");
+        if (Stage() >= 2) Say("You", "(Three horns. It's supposed to have two. I don't know how I know that.)");
+        if (Tutorial()) return;
+        Choice("The snow beast. There's a zip down its belly.", {{"none", "Leave it."}, {"bst_in", "Unzip it and climb inside."}});
+    } else if (id == "oldcar") {
+        Egg("oldcar");
+        Say("You", "(An old car, snowed in to the door handles. No wheels. It sits on blocks of wood.)");
+        if (Knows("no_car")) Say("You", "(We don't have a car. We never had a car. Mom said.)");
+        Choice("The old car.", {{"none", "Leave it."}, {"oc_look", "Look in through the back window."}});
+    } else if (id == "swing") {
+        Egg("swing");
+        Say("You", "(A swing set. One seat and one empty chain. The seat is too low for me. It was built for somebody smaller.)");
+        if (Tutorial()) return;
+        Choice("The swing.", {{"none", "Leave it."}, {"sw_swing", "Swing for a bit. (2 min)"}});
+    } else if (id == "smallprints") {
+        Egg("smallprints");
+        Say("You", "(Small boot prints. Smaller than mine. They come from the swing and walk this way.)");
+        Say("You", "(Then they stop. No turning around. No jump. They just stop.)");
+        Say("You", Storm() ? "(It's snowing sideways and they don't fill in.)" : "(The new snow doesn't stay in them.)");
+        AddClue("small_prints");
+        if (sisterNoticed || SawEvent("sister")) Say("You", "(Small enough for a girl. Somebody sang in our bathroom once.)");
+    } else if (id == "spruce") {
+        Say("You", "(The big spruce. The lowest branches lie on the snow like a tent. It's dry under there.)");
+        if (Stage() >= 1) Say("You", "(A good place to hide. Not a good place to be warm.)");
+    } else if (id == "grave") {
+        Egg("grave");
+        Say("You", "(A little wooden cross, half under the snow. No name.)");
+        Say("You", "(Somebody carved 05 into it. Carefully, with a knife.)");
+        if (Knows("dad_radio")) Say("You", "(Unit 06 is stable, Dad told the radio. I'm zero-six. So who was zero-five?)");
+        else Say("You", "(Zero-five. A number, not a name.)");
+        AddClue("grave_05");
+        if (tainted) Say("You", "(There's room next to it.)");
+    } else if (id == "icehole") {
+        Egg("icehole");
+        Say("You", "(A hole in the ice. Round and neat. Somebody cut it. It's already freezing over at the edges.)");
+        Choice("A rope is tied to a stake. It goes down into the black.", {{"none", "Leave it."}, {"ih_rope", "Pull up the rope."}});
+    } else if (id == "dish") {
+        Egg("dish");
+        Say("You", "(A satellite dish on a pole. We don't have satellite TV. We have one channel and it's always the weather.)");
+        Say("You", "(The cable doesn't go into the house. It goes straight down into the snow.)");
+        if (Knows("basement_screens") || Knows("they_listen") || Knows("basement_files")) Say("You", "(Down. Toward the basement. That's how Finse hears us.)");
+    } else if (id == "lights") {
+        // v0.15: a nod. Lights over painted letters. On a dark night they spell
+        if (BoardSpells()) {
+            Say("", "(The bulbs come on one at a time, by themselves. B. E. L. O. W.)");
+            Say("You", "(They aren't plugged in to anything.)");
+            Achieve("Spelled Out");
+            return;
+        }
+        Say("You", "(A sheet of plywood behind the shed. Somebody painted the alphabet on it in house paint and nailed Christmas lights over the letters. One bulb each.)");
+        Say("You", PowerOut() ? "(The power's out. Every bulb is dark.)" : Stage() >= 2 ? "(Like somebody wanted to talk without a phone.)" : "(Weird thing to keep behind a shed.)");
+    } else if (id == "vane" || id == "vane_look") {
+        // v0.15: a nod. Not a rooster
+        Say("You", "(The weathervane on the shed roof. Not a rooster. A fat little rodent with its paws up, pointing into the wind.)");
+        if (t >= 45 * 60 && loop >= 2) { Say("You", "(Same day again, little guy?)"); Achieve("Same Day Again"); }
+        else if (Storm()) Say("You", "(It can't make up its mind. Neither can I.)");
     } else {
         Say("You", "(Huh.)");
     }
+}
+
+// ============================================================ v0.15: outside
+int Story::OutbackEggs(const std::set<std::string>& seen) {
+    int n = 0;
+    for (const char* e : {"egg_oldcar", "egg_smallprints", "egg_grave", "egg_dish", "egg_swing", "egg_icehole"}) n += seen.count(e) ? 1 : 0;
+    return n;
+}
+void Story::Egg(const std::string& id) {
+    See("egg_" + id);
+    if (EggsFound() == 6 && !achievements.count("Out Back")) {
+        Achieve("Out Back");
+        Narrate("Six things out back. A car, a swing, a cross, a dish, a hole in the ice, and prints that stop. Somebody small lived here before me. I don't think they ever left.");
+    }
+}
+void Story::OnClimbed(const std::string& win, bool out, bool doggoLeft) {
+    // Noah: neutral, even while grounded. No mood, no dark
+    if (win == "window") windowBanged = true;
+    if (!Knows("out_window")) {
+        Say("You", out ? "(Out. Snow down my collar. Nobody saw.)" : "(In. Snow all over the floor. Nobody saw.)");
+        AddClue("out_window");
+    }
+    Achieve("Out the Window");
+    if (out && grounded && !collection && Once("grounded_window")) Bubble("You", "(Still grounded. Just grounded outside.)");
+    if (doggoLeft) Bubble("Doggo", "*whines at the glass*");
+}
+void Story::OnLitUp() {
+    if (!chase) return;
+    if (Once("lit_up")) Bubble("The visitor", hasCoat ? "Stripes on your jacket, 06. You shine." : "Red as a postbox. There you are.");
+    AddClue("lit_up");
+}
+void Story::OnHusky() {
+    if (collection) return;
+    if (Once("husky")) Bubble("You", "(Nobody there. No tracks either.)");
+    See("husky");
+    Achieve("Not a Dog");
 }
 
 } // namespace sixhundred

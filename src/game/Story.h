@@ -234,6 +234,10 @@ public:
     // v0.14 per loop: hinges D and E
     bool doorGreeted = false;                  // hinge D: you opened the front door for him before he knocked
     bool carHidden = false;                    // hinge E: you sat under the blanket in his car while he was in it
+    // v0.15 per loop: the outside
+    bool windowBanged = false;                 // your window sticks in the cold. The first time each loop it needs a bang
+    bool tongueStuck = false;                  // the flagpole. Once a loop is plenty
+    bool backyardCold = false;                 // the first time out back without the jacket you notice
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -270,6 +274,16 @@ public:
     void OnTracked();                       // he followed wet prints indoors
     bool OnDecoy();                         // a thrown marble landed where he could hear it. True if he goes to look
     bool VisitorEntersWindow() const { return frontLocked; }
+    // v0.15: the outside
+    static bool IsWindow(const std::string& id) { return WindowById(id) != nullptr; }
+    bool WindowSticks(const std::string& id) const { return id == "window" && !windowBanged; }
+    void OnClimbed(const std::string& win, bool out, bool doggoLeft);   // the presentation finished the climb
+    void OnLitUp();                           // his torch found you from far away, out in the dark
+    void OnHusky();                           // you walked up to the dog at the far fence. Nobody there
+    bool BoardSpells() const { return (tainted || Act() >= 3) && t >= 45 * 60; }   // the lights behind the shed spell at you
+    bool Warm() const { return chase && kidHidden && hideSpot == "beast"; }
+    static int OutbackEggs(const std::set<std::string>& seen);
+    int EggsFound() const { return OutbackEggs(seenEvents); }
     // v0.13: the hinges
     bool MomInBath() const;                 // her two minutes in the bathroom, every loop
     bool BathLockIsDark() const;            // Noah: a trick when she's happy, a dark act when she's scared or you hold the knife
@@ -369,6 +383,7 @@ private:
     void HingeCar();           // v0.14: E, under the blanket in his car
     void GoneEnding();         // v0.14: E, you stayed in the car through the knock
     void PieceCheck();
+    void Egg(const std::string& id);   // v0.15: one of the six things out back
     void AddDark(int n) { darkPoints = std::min(DARK_MAX, darkPoints + n); darkThisLoop += n; }
     void ScreenTimeEnding();
     // v0.10

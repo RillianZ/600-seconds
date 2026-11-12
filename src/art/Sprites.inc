@@ -16,9 +16,11 @@ static Color BulbColor(int k) {
 }
 static float FireFlicker() { return 0.75f + 0.25f * std::sin(globalT * 7) * std::sin(globalT * 3.1f); }
 
+static bool DrawOutback(const Obj& o, float x, float y);   // v0.15: art/Backyard.inc
 static void DrawObj(const Obj& o, Vector2 jit) {
     float x = o.x * TS + jit.x, y = o.y * TS + jit.y;
     const std::string& id = o.id;
+    if (DrawOutback(o, x, y)) return;
     auto R = [&](float ox, float oy, float w, float h, Color c) { DrawRectangle((int)(x + ox), (int)(y + oy), (int)w, (int)h, c); };
     // a block: outline, body, light on top and left, shade on the right and bottom
     auto B = [&](float ox, float oy, float w, float h, Color c) {
@@ -28,7 +30,7 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         R(ox + w - 1, oy + 1, 1, h - 1, Shade(c, -20)); R(ox, oy + h - 1, w, 1, Shade(c, -28));
     };
     static const char* flat[] = { "toys", "window", "mirror", "calendar", "frontdoor", "sheddoor", "rope", "stairs", "gate", "basement", "screens", "fliptendo",
-                                  "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl", "album" };
+                                  "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl", "album", "win_bath", "win_parents" };
     bool isFlat = false;
     for (auto f : flat) if (id == f) isFlat = true;
     if (!isFlat) {
@@ -54,7 +56,7 @@ static void DrawObj(const Obj& o, Vector2 jit) {
             R(11, 2, 3, 5, Color{ 80, 170, 100, 255 }); R(11, 2, 3, 1, Color{ 130, 210, 140, 255 });
         }
     }
-    else if (id == "window") {
+    else if (id == "window" || id == "win_bath" || id == "win_parents") {
         bool night = story.t > 20 * 60;
         Color glass = story.Storm() ? Color{ 196, 206, 226, 255 } : night ? Color{ 40, 52, 100, 255 } : Color{ 84, 106, 168, 255 };
         R(0, -8, 16, 10, Color{ 236, 230, 216, 255 }); R(1, -7, 14, 8, glass);

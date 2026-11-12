@@ -8,6 +8,7 @@ static float roofA = 1, shedRoofA = 1;                 // 1 = roof on, 0 = you a
 static const int ROOF_X = 2 * TS - 3, ROOF_Y = 2 * TS - 9, ROOF_W = 28 * TS + 5, ROOF_H = 18 * TS + 14;
 static const int SROOF_X = 31 * TS - 3, SROOF_Y = 4 * TS - 9, SROOF_W = 7 * TS + 5, SROOF_H = 6 * TS + 14;
 static const int CHIM_X = 400, CHIM_Y = 232;           // inside the roof texture, over the wood stove
+#include "Backyard.inc"
 
 static Texture2D TexFrom(const art::Canvas& c, bool smooth = false) {
     Image img{ (void*)c.px.data(), c.w, c.h, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
@@ -99,6 +100,14 @@ static void DrawTileFx(int x, int y) {
     case Tile::Wall:
         if (y == 20 && (x == 8 || x == 15 || x == 25)) DrawWindowS(px, py, x, false);
         if (y == 10 && (x == 32 || x == 36)) DrawWindowS(px, py, x, true);
+        if (y == 2 && (x == 6 || x == 13 || x == 20)) {
+            // v0.15: the back windows, seen over the sill from the backyard. Lit while the power is on
+            bool on = Lamps();
+            DrawRectangle(px + 2, py, 12, 4, Color{ 236, 230, 216, 255 });
+            DrawRectangle(px + 3, py + 1, 10, 2, on ? Color{ 255, 214, 140, 255 } : Color{ 30, 38, 66, 255 });
+            DrawRectangle(px + 7, py + 1, 2, 2, Color{ 236, 230, 216, 255 });
+            DrawRectangle(px + 1, py - 1, 14, 1, Color{ 246, 250, 255, 255 });
+        }
         if (y == 20 && x == 21) {
             // the wreath next to the front door
             DrawCircle(px + 8, py + 10, 5.5f, Color{ 20, 44, 36, 255 });
@@ -295,6 +304,9 @@ static void BuildLightmap(Camera2D cam) {
     if (story.Storm()) amb = LerpC(amb, Color{ 108, 114, 150, 255 }, 0.7f);
     bool powerOut = story.PowerOut();
     if (powerOut) amb = Color{ 82, 90, 140, 255 };
+    // v0.15: dark from 16:45, step by step. By 16:53 you can hardly see the yard
+    float night = std::max(0.0f, std::min(1.0f, (m - 45.0f) / 8.0f));
+    if (night > 0) amb = LerpC(amb, Color{ 14, 16, 36, 255 }, night * 0.86f);
     if (viewBelow) amb = Color{ 100, 108, 154, 255 };
     BeginTextureMode(lightRT);
     ClearBackground(amb);
@@ -325,6 +337,7 @@ static void BuildLightmap(Camera2D cam) {
         for (float wx : W) { Glow(tile(wx), 21 * TS + 16.0f, 26, 34, Color{ 150, 96, 30, 255 }, spill); Glow(tile(wx), 21 * TS + 2.0f, 13, 10, Color{ 130, 96, 50, 255 }, spill); }
         Glow(19 * TS + 12.0f, 21 * TS + 4.0f, 44, 40, Color{ 150, 110, 56, 255 }, spill * 0.9f);                    // porch lamp
         Glow(tile(36), 11 * TS + 10.0f, 16, 22, Color{ 140, 92, 30, 255 }, spill); Glow(tile(32), 11 * TS + 10.0f, 16, 22, Color{ 140, 92, 30, 255 }, spill);
+        for (float wx : { 6.0f, 13.0f, 20.0f }) Glow(tile(wx), 1 * TS + 6.0f, 18, 22, Color{ 140, 92, 34, 255 }, spill * 0.8f);   // v0.15: the back windows
     }
     float fire = FireFlicker();
     Glow(tile(27), tile(18) + 2, 50, 46, Color{ 160, 74, 20, 255 }, fire * (0.4f + dusk * 0.6f + (powerOut ? 0.5f : 0)) * inH);
@@ -339,11 +352,22 @@ static void BuildLightmap(Camera2D cam) {
         for (int k = 0; k < 2; ++k) { float hx = 20 * TS - 6 + (k ? 22.5f : 5.5f); Glow(hx, 31 * TS - 34.0f, 22, 56, Color{ 170, 160, 116, 255 }, 0.75f); Glow(hx, 31 * TS + 2.0f, 16, 14, Color{ 170, 160, 116, 255 }, 0.8f); }
         Glow(20 * TS + 8.0f, 33 * TS + 2.0f, 26, 14, Color{ 120, 20, 20, 255 }, 0.6f);
     }
-    if (powerOut) Glow(player.pos.x, player.pos.y - 6, 76, 76, Color{ 66, 68, 92, 255 }, IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y))) ? 0.35f : 1.0f);   // eyes adjusting
+    bool kidOut = IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y)));
+    if (powerOut && !kidOut) Glow(player.pos.x, player.pos.y - 6, 76, 76, Color{ 66, 68, 92, 255 }, 1.0f);   // eyes adjusting
+    if (kidOut && (powerOut || night > 0)) Glow(player.pos.x, player.pos.y - 6, 50, 46, Color{ 84, 90, 132, 255 }, 0.35f + 0.55f * night);   // v0.15: a small circle you can see in
+    if (TorchOn()) {
+        // v0.15: his torch. Long, wide, and it goes straight through bushes and the chain fence
+        float cx = std::cos(beamAng), cy = std::sin(beamAng);
+        Glow(visitor.pos.x + cx * 10, visitor.pos.y - 8 + cy * 10, 16, 16, Color{ 230, 226, 190, 255 }, 0.9f);
+        for (int i = 1; i <= 9; ++i) {
+            float r = 12.0f + 7.5f * i;
+            Glow(visitor.pos.x + cx * 25 * i, visitor.pos.y - 6 + cy * 25 * i, r, r, Color{ 214, 210, 172, 255 }, 0.95f - i * 0.07f);
+        }
+    }
     if (story.hasLight) {
         // Dad's flashlight, a beam in the direction you face
         const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
-        float k = powerOut ? 1.0f : 0.35f;
+        float k = (powerOut || night > 0.3f) ? 1.0f : 0.35f;   // v0.15: in the dark it's a real beam
         for (int i = 1; i <= 4; ++i) Glow(player.pos.x + fx[player.dir] * 22 * i, player.pos.y - 4 + fy[player.dir] * 22 * i, 18.0f + 8 * i, 18.0f + 8 * i, Color{ 176, 170, 132, 255 }, k * (1.1f - i * 0.15f));
     }
     EndBlendMode();
@@ -384,6 +408,9 @@ static void DrawGlows() {
         Glow(20 * TS - 3.0f, 32 * TS + 7.0f, 6, 5, Color{ 255, 40, 40, 255 }, 0.6f); Glow(20 * TS + 19.0f, 32 * TS + 7.0f, 6, 5, Color{ 255, 40, 40, 255 }, 0.6f);
     }
     if (story.hasLight && story.held == Item::Flashlight) Glow(player.pos.x + 10, player.pos.y - 3, 5, 5, Color{ 255, 244, 190, 255 }, 0.7f);
+    // v0.15: the bulbs on the board behind the shed
+    for (int k = 0; k < 26; ++k) if (BoardBulbOn(k)) { Vector2 p = BoardLetter(k); bool spell = BoardLit() >= 0; Glow(BOARD_X + p.x + 1.5f, BOARD_Y + p.y + (spell ? 3.0f : 1.0f), spell ? 11.0f : 5.0f, spell ? 11.0f : 5.0f, BulbCol(k), spell ? 1.0f : 0.45f); }
+    if (TorchOn()) Glow(visitor.pos.x + std::cos(beamAng) * 8, visitor.pos.y - 8 + std::sin(beamAng) * 8, 4, 4, Color{ 255, 250, 220, 255 }, 0.9f);
 }
 
 // ---------------------------------------------------------------- who looks like what
@@ -428,10 +455,11 @@ static void DrawWorld(Camera2D cam) {
     ClearBackground(Color{ 4, 4, 8, 255 });
     BeginMode2D(cam);
     int x0 = std::max(0, TX(cam.target.x - VW / 2.0f) - 1), x1 = std::min(World::W - 1, TX(cam.target.x + VW / 2.0f) + 1);
-    int y0 = std::max(0, TX(cam.target.y - VH / 2.0f) - 1), y1 = std::min(World::H - 1, TX(cam.target.y + VH / 2.0f) + 2);
+    int y0 = std::max(World::TOP, TX(cam.target.y - VH / 2.0f) - 1), y1 = std::min(World::H - 1, TX(cam.target.y + VH / 2.0f) + 2);
     // the basement is underground: only draw it from inside
-    if (below) DrawTextureRec(groundTex, { 0, 34.0f * TS, (float)groundTex.width, 12.0f * TS }, { 0, 34.0f * TS }, WHITE);
-    else { DrawTextureRec(groundTex, { 0, 0, (float)groundTex.width, 34.0f * TS }, { 0, 0 }, WHITE); DrawTexture(southTex, 0, 34 * TS, WHITE); }
+    // v0.15: the ground texture starts at row World::TOP (the backyard)
+    if (below) DrawTextureRec(groundTex, { 0, (34.0f - World::TOP) * TS, (float)groundTex.width, 12.0f * TS }, { 0, 34.0f * TS }, WHITE);
+    else { DrawTextureRec(groundTex, { 0, 0, (float)groundTex.width, (34.0f - World::TOP) * TS }, { 0, (float)World::TOP * TS }, WHITE); DrawTexture(southTex, 0, 34 * TS, WHITE); }
     for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) if (below == (y >= 34)) DrawTileFx(x, y);
 
     DrawPrints();
@@ -444,7 +472,7 @@ static void DrawWorld(Camera2D cam) {
     }
     bool flux = story.Act() >= 2;
     // objects and people, sorted by y
-    struct D { float y; int kind; const Obj* o; const Actor* a; };
+    struct D { float y; int kind; const Obj* o; const Actor* a; int i = 0; };
     std::vector<D> ds;
     for (auto& o : story.world.objs) if (below == (o.y >= 34)) ds.push_back({ o.y * TS + 8.0f, 0, &o, nullptr });
     if (!hidden) ds.push_back({ player.pos.y, 1, nullptr, &player });
@@ -453,6 +481,11 @@ static void DrawWorld(Camera2D cam) {
     if (story.DoggoExists() || story.doggoDead || (story.doggoOut && !doggoRanOff)) ds.push_back({ doggo.pos.y, 4, nullptr, &doggo });
     if (VisitorShown()) ds.push_back({ visitor.pos.y, 5, nullptr, &visitor });
     if (story.CarHere() && !below) ds.push_back({ 31 * TS + 20.0f, 6, nullptr, nullptr });
+    // v0.15: bushes stand up out of the snow, so people walk behind them
+    std::vector<std::pair<int, int>> bushes;
+    if (!below) for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) if (story.world.tiles[y][x] == Tile::Bush) bushes.push_back({ x, y });
+    for (size_t i = 0; i < bushes.size(); ++i) ds.push_back({ bushes[i].second * TS + 13.0f, 7, nullptr, nullptr, (int)i });
+    if (!below && huskyA > 0.01f) ds.push_back({ (float)World::TOP * TS + 13.0f, 8, nullptr, nullptr });
     std::sort(ds.begin(), ds.end(), [](const D& a, const D& b) { return a.y < b.y; });
     for (auto& d : ds) {
         if (d.a && below != (d.a->pos.y >= 34 * TS)) continue;   // and nobody from the other floor
@@ -500,6 +533,8 @@ static void DrawWorld(Camera2D cam) {
         case 4: if (story.doggoDead && doggoShownDead) DrawDoggoDead(*d.a); else DrawDoggo(*d.a); break;
         case 5: DrawPerson(*d.a, LookVisitor()); break;
         case 6: DrawCar(); break;
+        case 7: DrawBush(bushes[d.i].first, bushes[d.i].second); break;
+        case 8: DrawHusky(); break;
         }
     }
     DrawPuffs(0);
@@ -507,6 +542,7 @@ static void DrawWorld(Camera2D cam) {
         // roofs, a metre of snow on each
         if (shedRoofA > 0.01f) DrawTexture(shedRoofTex, SROOF_X, SROOF_Y, Fade(WHITE, shedRoofA));
         if (roofA > 0.01f) DrawTexture(roofTex, ROOF_X, ROOF_Y, Fade(WHITE, roofA));
+        DrawVane();
         DrawEaveLights(false);
         DrawPuffs(2);
         DrawPuffs(1);
