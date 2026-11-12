@@ -34,6 +34,11 @@ inline const std::vector<RumorNode>& AllRumorNodes() {
         // Doggo, and who looks for you
         {"doggo_out", 0, 13}, {"doggo_door", 1, 13}, {"doggo_stay", 2, 13}, {"dad_ran", 3, 13},
         {"doggo_gate", 1, 14}, {"they_hunt", 3, 14}, {"handlers_hunt", 4, 14},
+        // v0.20 merge: the watch, the program, and the story and knife lanes' memories ("no_way_out" stays off the map)
+        {"w_beep", 0, 15}, {"w_screen", 1, 15}, {"w_drift", 2, 15}, {"w_grow", 3, 15}, {"w_wrist", 4, 15},
+        {"confirmed", 0, 16}, {"finse_gate", 1, 16}, {"unit_04", 2, 16}, {"same_number", 3, 16}, {"packing_slip", 4, 16},
+        {"just_like_us", 0, 17}, {"small_hands", 1, 17}, {"brake_line", 2, 17}, {"kid_door", 3, 17}, {"two_remember", 4, 17},
+        {"three_plates", 0, 18}, {"his_dog", 1, 18}, {"under_well", 2, 18},
     };
     return n;
 }
@@ -61,6 +66,10 @@ inline const std::vector<RumorLink>& AllRumorLinks() {
         {"taser", "dad_fought"}, {"dad_fought", "tased_him"},
         {"doggo_out", "doggo_door"}, {"doggo_door", "doggo_stay"}, {"doggo_stay", "dad_ran"}, {"doggo_door", "doggo_gate"},
         {"they_hunt", "handlers_hunt"},
+        // v0.20 merge
+        {"w_beep", "w_screen"}, {"w_screen", "w_drift"}, {"w_drift", "w_grow"}, {"w_grow", "w_wrist"}, {"w_drift", "finse_gate"},
+        {"confirmed", "finse_gate"}, {"finse_gate", "unit_04"}, {"unit_04", "same_number"}, {"same_number", "packing_slip"},
+        {"just_like_us", "small_hands"}, {"just_like_us", "three_plates"}, {"three_plates", "his_dog"},
     };
     return l;
 }
