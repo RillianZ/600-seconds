@@ -408,6 +408,7 @@ public:
     bool DoggoAtDoor() const { return DoggoExists() && !collection && t >= 35 * 60 && t < 40 * 60; }
     bool Spared() const;                                   // nobody confirmed the clean-up and nobody gave him a reason
     bool MomHums() const;                                  // she hums in the kitchen while she thinks nobody listens
+    bool DadHums() const;                                  // v0.20 sound (T-148): he hums at his work, in the shed and at the woodpile
     NpcState Mom() const;
     NpcState Dad() const;
     NpcState Visitor() const;

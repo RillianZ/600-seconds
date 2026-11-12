@@ -1076,6 +1076,14 @@ bool Story::MomHums() const {
     if (MomInBath()) return false;
     return !Mom().facingWall;
 }
+// v0.20 sound (T-148): Dad hums too, lower and slower, while he works. Not on the radio, not with the paper, not once he's scared of you
+bool Story::DadHums() const {
+    if (collection || !DadFree() || dadOnFloor || tainted || dadAtt != Attitude::Normal) return false;
+    if (t < 8 * 60 + 30 || t >= 40 * 60) return false;           // the paper in the living room, then dinner
+    if (t >= 9 * 60 + 30 && t < 11 * 60) return false;           // 16:10, the radio
+    if (t >= 32 * 60 + 30 && t < 34 * 60) return false;          // 16:33, the radio again
+    return true;                                                 // the shed, and the woodpile at 16:36
+}
 
 // v0.13: "in the hallway", for door choices that say where you end up
 static std::string RoomPhrase(Room r) {
@@ -1353,6 +1361,7 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
         bool dadCan = DadFree() && (t < 8 * 60 || t >= 40 * 60);
         if ((momCan || dadCan) && t - frontLockedAt > 90) {
             frontLocked = false;
+            Sound("lock");   // v0.20 sound
             Say(momCan ? "Mom" : "Dad", "(click) Why is the front door locked? We're not expecting anyone.");
         }
     }
@@ -1424,6 +1433,7 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
         if (!phoneAnswered && MomHere()) {
             phoneAnswered = true;
             if (inKitchen) {
+                Sound("phone_pickup");   // v0.20 sound
                 Say("Mom", "(answering) Hello? ...Yes. Today. ...No, he doesn't suspect a thing.");
                 Say("Mom", "(she sees you) Go play, sweetie.");
                 AddClue("phone_mom");
@@ -1432,6 +1442,7 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
     }
     if (Crossed(prev, now, 30) && Once("basement") && MomHere()) {
         if (here == Room::Hallway) {
+            Sound("lock");   // v0.20 sound
             Say("", "(Mom unlocks the basement door. Blue light spills out. Something hums down there.)");
             AddClue("basement_open");
         }
@@ -1491,6 +1502,9 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
             Bubble("Dad", tainted ? "(to Mom, low) Has he said anything to you? ...He keeps looking at the door." : "(to Mom) Smells good, love. Ribbe again?");
         if (nearDad && Crossed(prev, now, 47) && Once("dad_storm") && fresh(47))
             Bubble("Dad", "There it is. Storm's here. Everybody inside, and nobody opens that door.");
+        // v0.20 sound (T-148): walk right up to him while he hums and he stops
+        if (DadHums() && !Tutorial() && std::abs(d.x - px) + std::abs(d.y - py) <= 3 && Once("dad_hum"))
+            Bubble("Dad", "(he stops humming when he sees you) What? A man can hum.");
     }
     if (Crossed(prev, now, 45) && Once("nisse_soon") && fresh(45) && DadFree() && !tainted)
         Bubble("Dad", "Julenissen comes at ten to five, buddy. Better be good.");
@@ -1514,7 +1528,7 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
         if (!inBasement) See("storm");
     }
     if (shift == Shift::EarlyStorm && Crossed(prev, now, 40) && Once("early_power")) {
-        Sound("thud");
+        Sound("power_cut");   // v0.20 sound
         Say("", "(The power dies. It's only 16:40. Nobody is at the door. Not yet.)");
         Achieve("Weather Report");
     }
@@ -1614,6 +1628,7 @@ void Story::StartCollection(const std::string& how) {
     }
     if (how == "door") HingeDoor();   // v0.14: hinge D. No knock. You opened it
     else {
+    Sound("power_cut");   // v0.20 sound: the house goes dark, then he knocks (the presentation waits a second)
     Sound("knock");
     if (downstairs) HingeBasement();
     else Say("", "(The power dies. Then: three slow knocks.)");
@@ -1941,6 +1956,7 @@ void Story::GoneEnding() {
 
 void Story::TutorialCollection() {
     // v0.8: loop 1 is the happiest day of his year. He runs to the door himself.
+    Sound("power_cut");   // v0.20 sound
     Sound("knock");
     Say("", "(The lights go out. Then three slow knocks on the front door.)");
     Say("You", "(JULENISSEN!)");
@@ -2130,6 +2146,7 @@ bool Story::CleanUp() {
     bool named = false;
     if (momLocked) Black("He goes down to the basement. He knows exactly where she is.");
     if (dadLocked) Black("He goes out to the shed. He knows exactly where Dad is.");
+    if (momBathLocked && bathLockDark) Sound("kick");   // v0.20 sound
     if (momBathLocked) Black(bathLockDark ? "He doesn't bother with the key. Two kicks and the bathroom door is just a hole."
                                           : "He opens the bathroom door last. She is sitting on the edge of the bath. She stands up for him.");
     if (!momLocked && MomHere()) {
@@ -2180,6 +2197,7 @@ void Story::CollectionScript() {
     AddClue("visitor_time");
     if (BrakesGo("trunk")) return;   // v0.20 knife: you cut his brakes before he knocked
     if (FullMemory()) {
+        Sound("trunk");   // v0.20 sound
         Black("The lid comes down. A hand comes down too. Stay awake. STAY AWAKE.");
         Beat q; q.type = BeatType::QTE; q.text = "STAY AWAKE"; beats.push_back(q);
         return;
@@ -2194,6 +2212,7 @@ void Story::ExpressDelivery() {
     collection = true; grounded = false; chase = false;
     FadeFor(0, "");
     Sound("hush_on");
+    Sound("trunk");   // v0.20 sound
     Black("You climb in. You pull the lid down yourself. It's easier than you thought.");
     Black("Dark. Oil. A blanket that smells like other people. You wait.");
     Sound("knock");
@@ -2207,6 +2226,7 @@ void Story::ExpressDelivery() {
         Sound("bang"); Black("BANG.");
         if (DoggoExists()) { Sound("bang"); Black("Doggo stops barking."); }
     }
+    Sound("trunk_open");   // v0.20 sound
     Black("Footsteps in the snow. The lid opens.");
     Black("He looks at you. He looks at his clipboard. He looks at you again.");
     Black("\"...Huh. That's a first.\"");
@@ -2275,7 +2295,7 @@ void Story::ShowWrist(bool downed) {
 void Story::TrunkScript(bool quiet) {
     if (lastEnd.empty()) lastEnd = "trunk";
     if (!quiet) {
-        Sound("thud");
+        Sound("trunk");   // v0.20 sound (was a thud)
         Black("The lid comes down. Something hits your head.");
     }
     Sound("bells");
@@ -2453,7 +2473,7 @@ void Story::Threat(int n) {
         Sound("crack");
         if (dad) { Say("", "(A sound from the living room. Dad screams. Then he stops screaming.)"); dadOnFloor = true; dadDown = true; }
         else if (mom) { Say("", "(Mom's voice. Begging. Then a crack. Then just crying.)"); momOnFloor = true; }
-        else if (bath) { Say("", "(The bathroom door. One kick. Two. Mom screams your name through the splinters. Then a crack.)"); momOnFloor = true; }
+        else if (bath) { Sound("kick"); Say("", "(The bathroom door. One kick. Two. Mom screams your name through the splinters. Then a crack.)"); momOnFloor = true; }   // v0.20 sound: kick
         else Say("", "(Something heavy breaks downstairs. He's not looking anymore. He's just breaking things.)");
         DarkAct(1, "", true);
         Say("You", darkPoints >= DARK_REVEL ? "(I could come out. I don't want to.)" : "(I could come out. I could. I'm still hiding.)");
@@ -3222,10 +3242,10 @@ void Story::Choose(const std::string& id, int px, int py) {
         if (act == "open") { OpenDoor(d->x, d->y); Sound("door"); }
         else if (act == "close") { closedDoors.insert(k); Sound("door"); }
         else if (act == "lock" || act == "lockc") {
-            closedDoors.insert(k); lockedDoors.insert(k); Sound("door");
+            closedDoors.insert(k); lockedDoors.insert(k); Sound("door"); Sound("lock");   // v0.20 sound: lock
             Say("You", "(Click.)");
             if (Once("master_key") && !Knows("dad_key")) Say("You", "(The basement key fits. It fits every lock in this house.)");
-        } else if (act == "unlock") { lockedDoors.erase(k); Say("You", "(Click. Unlocked.)"); }
+        } else if (act == "unlock") { lockedDoors.erase(k); Sound("lock"); Say("You", "(Click. Unlocked.)"); }   // v0.20 sound: lock
         return;
     }
     // ---- v0.19: furniture against a door. From the room side, before he comes
@@ -3265,7 +3285,7 @@ void Story::Choose(const std::string& id, int px, int py) {
         bool scared = tainted || momAtt == Attitude::Scared || momAtt == Attitude::Broken;
         closedDoors.insert(k); lockedDoors.insert(k);
         momBathLocked = true;
-        Sound("door");
+        Sound("door"); Sound("lock");   // v0.20 sound: lock
         Say("You", "(Click.)");
         Achieve("Occupied");
         if (dark) {
@@ -3308,6 +3328,7 @@ void Story::Choose(const std::string& id, int px, int py) {
     }
     if (id == "b_unlock") {
         basementUnlocked = true;
+        Sound("lock");   // v0.20 sound
         Say("You", "(Click. The basement door is unlocked now. It stays that way until 17:00.)");
         return;
     }
@@ -3337,6 +3358,7 @@ void Story::Choose(const std::string& id, int px, int py) {
     if (id == "vt_play") {
         Sound("hush_on");   // v0.9: nothing under the tape but the tape
         FadeFor(0, "");
+        Sound("vhs_on");    // v0.20 sound: the tape goes in, and hisses under everything
         Black("The tape crackles. The basement. This basement. The same chair.");
         Black("A boy in the chair. Six, maybe. A watch that's much too big for his wrist.");
         Black("You know the watch. You know the boy.");
@@ -3353,6 +3375,7 @@ void Story::Choose(const std::string& id, int px, int py) {
         Sound("hum_off");
         Sound("hush_off");
         FadeFor(5, "The tape hisses. Snow on the screen.");
+        Sound("vhs_off");   // v0.20 sound
         Say("You", "(I'm shaking. I can't make it stop.)");
         Say("You", "(The juice at 15:55. Every day. Every single day.)");
         Narrate("I never called her Mom again. Not out loud. Not in my head. Not even when it would have helped.");
@@ -4035,6 +4058,7 @@ void Story::Choose(const std::string& id, int px, int py) {
         AddClue("his_car");
         SameNumber();   // v0.20 story
     } else if (id == "car_trunk") {
+        Sound("trunk_open");   // v0.20 sound
         Say("", "(It isn't locked. Oil. Wet dog. A grey blanket.)");
         Say("", "(Two juice boxes, empty, the straws chewed flat. A small mitten. Dog hair on the blanket. Not Doggo's colour.)");
         Say("You", "(The mitten isn't mine. 04 and 05 were in here today. Somebody had a dog.)");
@@ -4110,9 +4134,11 @@ void Story::Choose(const std::string& id, int px, int py) {
         frontLocked = true;
         closedDoors.insert(20 * World::W + 20);
         frontLockedAt = t;
+        Sound("lock");   // v0.20 sound
         Say("You", "(Click. Locked.)");
     } else if (id == "f_unlock") {
         frontLocked = false;
+        Sound("lock");   // v0.20 sound
         Say("You", "(Unlocked.)");
     }
     // ---- shed door
@@ -4136,6 +4162,7 @@ void Story::Choose(const std::string& id, int px, int py) {
     } else if (id == "b_bolt") {
         momLocked = true;
         Say("", "(There's a bolt on the outside of the basement door. Why is there a bolt on the OUTSIDE?)");
+        Sound("lock");   // v0.20 sound: the bolt
         Say("Mom", "(from below) Sweetie? The door. Open the door. OPEN THE DOOR.");
         DarkAct(2, "(Clack.)");
     } else if (id == "b_free") {
@@ -4145,6 +4172,7 @@ void Story::Choose(const std::string& id, int px, int py) {
     } else if (id == "b_down") {
         basementUnlocked = true;
         inBasement = true;
+        Sound("lock");   // v0.20 sound
         FadeFor(1, "Unlocking the basement", 6, 38);
         if (Once("first_down") && !achievements.count("Down the Stairs")) {
             Achieve("Down the Stairs");
@@ -4492,10 +4520,12 @@ void Story::Interact(const std::string& id, int px, int py) {
         bool ringing = t >= pm * 60 && t < pm * 60 + 40;
         if (ringing && !phoneAnswered) {
             phoneAnswered = true;
+            Sound("phone_pickup");   // v0.20 sound
             if (Knows("phone_mom")) {
                 Say("You", "Hello?");
                 Say("Voice", "Handler two, confirm pickup at 16:50. Clean-up is included.");
                 Say("You", "...Clean-up?");
+                Sound("phone_hangup");   // v0.20 sound: they hang up
                 Say("", "*click*");
                 if (MomHere()) Say("Mom", "Who was that? Give me that. Who was it?!");
                 AddClue("phone_answer");
@@ -4508,6 +4538,7 @@ void Story::Interact(const std::string& id, int px, int py) {
                 // v0.10: this used to do nothing at all when Mom wasn't around
                 Say("You", "Hello?");
                 Say("Voice", "Handler two? ...Who is this?");
+                Sound("phone_hangup");   // v0.20 sound
                 Say("", "*click*");
             }
             return;
@@ -4521,6 +4552,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         if (Knows("visitor_time")) o.insert(o.begin(), {"p_113", "Call 113 (emergency).", true});
         if (Knows("phone_answer") && t < pm * 60) o.insert(o.begin(), {"p_unplug", "Pull the plug out of the wall.", true});
         if (hasKnife && darkPoints >= DARK_ARSENAL && t < pm * 60 && (Knows("phone_answer") || Knows("phone_mom"))) o.insert(o.begin(), {"kn_cord", "Cut the cord behind the bench.", false, true});   // v0.20 knife
+        Sound("phone_pickup");   // v0.20 sound
         Say("You", "(Dial tone.)");
         Choice("Who would you even call?", o);
     } else if (id == "fridge") {
