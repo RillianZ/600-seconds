@@ -2,6 +2,55 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.20.0
+New branch `claude-batch-v0.20-finish`, on top of v0.19.0. The finish sprint: the rest of the PRJ-039 task list, built by five parallel lanes and merged into one. The story test now has 106 memories and 13 endings. Every new line is Claude's, for Noah to react to. The full notes for each lane, with every line and every call, are in `docs/lanes/`.
+
+**The knife (T-149, Noah's idea)**
+- Clean jobs, no darkness: slit the tape on the big present (an empty box and a packing slip), do the firewood in 12 minutes instead of 20, cut Doggo out of the present ribbon at 16:15, cut the twine in the torn fence out back so it's a door your size, and skip the bang on your frozen window. Three of them: Blade Down.
+- In the hunt you can grab it from the block, quickly if you had it earlier.
+- Darker jobs as you darken: cut the phone cord (dark 3), his brake line while he's at the window (dark 8: whoever drives his car next goes off the road), the wire to the box on his belt.
+- At the very bottom of the dark path, the bathroom mirror. Off screen, two confirmations, then 16:00 again. The loop doesn't let go. No achievement, and its memory doesn't count toward 100%.
+- Once you know a clean job, the knife block only asks twice.
+
+**Story (T-062, T-064, T-068, T-069, T-084, T-085, T-089)**
+- Every ending now teaches something: a memory, or a new thing to say.
+- New memory topic: The watch (5 entries), plus two more for The program.
+- 6 new questions each for Mom and Dad, and new lines for a tainted kid.
+- 4 new TV episodes that change with how the last loop ended.
+- Two stranger realities: a boy in the photo album who grows up into the man, and a day where Dad calls you oh-seven.
+- Shove Mom, hit Dad. It barely works. Small hands.
+- Tell them what's about to happen before it does: the phone, the flagpole, the storm, the knock. It scares them a step at a time. All four: Fortune Teller.
+
+**Systems (T-083, T-086, T-087, T-088, T-092)**
+- Mom and Dad have fuller days: Kaptein Fjord's Christmas special at 16:15, lefse at 16:40, potatoes, the oven, the path, the stove.
+- The front door fight: lock it and they unlock it, then scold you, then ground you.
+- Nobody Home: door locked, Mom shut away, Dad barred in the shed. He talks to you through the door, then comes in through your window. The hunt starts in your room.
+- Very dark (tainted, 10+): he knocks at 16:48.
+- In the hunt he hears doors open, shut and slam.
+- The rumor map: a new last page in the memory log with your memories as cards and lines between the ones that belong together.
+
+**Look (T-043 to T-049, T-103)**
+- The darkness lives in the house now, not as a number: a tally over your bed, your drawing of the family, scratched-out faces in the hallway photo, a tall shadow with a hat, the watch cracking and showing UNIT 06.
+- From loop 2 small things are wrong: a tilted photo, a stopped clock, a moved mug.
+- At 16:50 the lights die room by room. Lightning shows him in the storm. His headlights sweep the walls at 16:43.
+- Full screen close-ups for the mirror, the screens, the chair and the tape.
+- New portraits with expressions for the kid, Mom, Dad and the visitor (an older you under the hat).
+- A quieter HUD: the watch carries the time, chores are on a note on the fridge.
+- The memory log is in the kid's pencil early, the narrator's hand later, and old entries go cold on the dark path.
+- A small picture on every ending card.
+
+**Sound (T-033, T-034, T-035, T-100, T-148)**
+- New music: title, basement, recap and an ending theme. The hunt music turns harder when he sees you.
+- Sound pass: power cut, locks, the phone, the tape, the trunk, kicks at doors and furniture.
+- Voices and humming are muffled through walls and closed doors. Music goes dull outdoors.
+- Dad hums now: low and slow, in the shed and at the woodpile.
+- Own music: drop `assets/music/<name>.ogg` in and it replaces that code track (D9).
+
+**Release**
+- LICENSE: all rights reserved (Noah). The logo is credited as Noah's, made with AI tools.
+- `PUBLIC=1 ./build_all.sh` and `PUBLIC=1 ./package_play.sh` make builds without the debug panel, Shift+D or `?debug` (T-107).
+- The content note now also covers the darkest path (D10).
+
 ## What's in v0.19.0
 New branch `claude-batch-v0.19-before-knock`, on top of v0.18.0 (`claude-batch-v0.18-parents`). Expansion 4 of the branches map: before the knock. The fifty minutes before he comes are now a place to set the stage, and each thing you set up pays off in the hunt. Each one also has one thing you only hear because you did it. The story test now has 86 memories and 13 endings. Every new line is Claude's, for Noah to react to.
 
