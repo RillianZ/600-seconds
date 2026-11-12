@@ -12,7 +12,7 @@ namespace sixhundred {
 // ============================================================ memory log
 const std::vector<std::string>& AllTopics() {
     static const std::vector<std::string> t = {
-        "The hour", "The house", "Mom", "Dad", "Doggo", "The visitor", "The basement", "The dark"};
+        "The hour", "The house", "Mom", "Dad", "Doggo", "The visitor", "The basement", "The program", "The dark"};
     return t;
 }
 
@@ -25,6 +25,7 @@ const char* ItemName(Item it) {
     case Item::DogFood: return "Dog food";
     case Item::Flashlight: return "Flashlight";
     case Item::Tape: return "VHS tape";
+    case Item::BabyWatch: return "Tiny watch";
     default: return "";
     }
 }
@@ -38,8 +39,73 @@ const std::vector<EndingEntry>& AllEndings() {
         {"escape", "False Hope", "They'd run with you. If they knew what you know."},
         {"doggo", "Good Boy", "Doggo would do anything for you. Don't let him."},
         {"paid", "They Paid", "Stay hidden. No matter what you hear."},
+        {"bells", "One Good Hour", "Running doesn't work. You'd have to know that first. Then stay."},
     };
     return e;
+}
+
+const std::vector<TimelineEntry>& AllTimeline() {
+    static const std::vector<TimelineEntry> t = {
+        {2, 0, "chores", "Mom lists the chores. All five by 16:40.", ""},
+        {8, 0, "dad_out", "Dad goes out to the shed to fix the generator.", ""},
+        {10, 0, "radio", "Dad reports on a radio in the shed.", "dad_radio"},
+        {22, 0, "phone", "The landline rings. Mom answers after 40 seconds.", "phone_mom"},
+        {30, 0, "basement", "Mom unlocks the basement. The door is open for two minutes.", "basement_open"},
+        {35, 0, "doggo_door", "Doggo whines at the front door until 16:40.", "doggo_out"},
+        {40, 0, "present", "Mom checks the chores. Dad comes in from the shed.", ""},
+        {43, 0, "car", "Headlights at the gate. A black car, no plates.", "his_car"},
+        {44, 20, "window", "The man stands at the living room window and looks in.", "prints"},
+        {44, 40, "flag44", "Dad checks a tiny box at the bottom of the flagpole.", ""},
+        {46, 30, "car_in", "The man goes back and sits in his car.", ""},
+        {47, 0, "storm", "The snowstorm hits. The road closes behind him.", ""},
+        {49, 0, "car_out", "He gets out again. Something under his coat.", ""},
+        {50, 0, "knock", "The power dies. Three slow knocks.", "visitor_time"},
+        {57, 0, "threat", "If he can't find me he starts on them. One a minute.", "they_paid"},
+        {60, 0, "bells", "Bells, far away. The watch beeps. 16:00 again.", "loop"},
+    };
+    return t;
+}
+
+const std::vector<AchievementEntry>& AllAchievements() {
+    static const std::vector<AchievementEntry> a = {
+        {"Grounded", "Push Mom far enough."},
+        {"Constipated by Fate", "Some days the toilet takes its time."},
+        {"Should've Gone", "Some days you really should have gone."},
+        {"Who's a Good Boy?", "Some days the bowl is nobody's."},
+        {"Weather Report", "Some days the storm is early."},
+        {"Table for Four", "Some days somebody else is in the bathroom."},
+        {"Previously On", "Watch TV once you know who they are."},
+        {"Down the Stairs", "Get into the basement."},
+        {"Session One", "Play what is in Dad's cabinet."},
+        {"Looked It Up", "Find Dad's key at exactly the right minute, without being shown."},
+        {"A Nod Across the Yard", "Be out in the yard when Dad and the man are both there."},
+        {"Run, Boy", "Give Doggo what he asks for at 16:35."},
+        {"Clerical Error", "Make sure nobody confirms anything. Then behave."},
+        {"Express Delivery", "Save him the trouble."},
+        {"Say It Again", "Make her hear the song."},
+        {"Not Alone", "Make them believe you."},
+        {"Ten Seconds", "Be worth fighting for."},
+        {"Hide and Seek", "Get found."},
+        {"Nowhere to Run", "Leave through the gate."},
+        {"Tired Out", "Keep running until the bells."},
+        {"Snow Angel", "Stay out in the storm."},
+        {"Fortress", "Lock him out."},
+        {"Home Alone (Realistic Edition)", "Prepare the house for him."},
+        {"Interrogation", "Ask Dad the hard way."},
+        {"Point of No Return", "Do something you can't take back."},
+        {"Who's There?", "Look in the mirror after."},
+        {"Entrance Exam", "Read the last page of the protocol."},
+        {"Good Boy", "An ending. Doggo would do anything for you."},
+        {"Screen Time", "An ending. Just one more game."},
+        {"They Paid", "An ending. Stay hidden."},
+        {"False Hope", "An ending. Run together."},
+        {"One Good Hour", "An ending. Stay together."},
+        {"Monster", "An ending. Somebody has to stop him."},
+        {"End of the Program", "An ending. Stop him, and know where the machine is."},
+        {"The Longest Survivor", "An ending. Remember everything."},
+        {"Total Recall", "Fill the memory log."},
+    };
+    return a;
 }
 
 const std::vector<MemoryEntry>& AllMemories() {
@@ -95,6 +161,9 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"book_notes", "Mom", "Notes in the margins",
          "\"Raising Exceptional Children.\" Mom wrote in the margins: dose, drift, week 400 stable.",
          "Mom reads a lot. What, though?"},
+        {"my_name", "Mom", "I have a name",
+         "I hummed her song back at her. At the end she turned around in the kitchen door and said a name. Mine. The bang came before I could keep it.",
+         "She hums so she won't hear. Make her hear."},
         // ---- Dad
         {"told_dad", "Dad", "Telling Dad makes it worse",
          "I told Dad. He said \"let me make a call.\" The man came at 16:40 instead.",
@@ -118,6 +187,9 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"doggo_stay", "Doggo", "He'll jump in front of me",
          "When the man gets close, Doggo jumps between us. Tell him to stay. Or shut him behind a door. He can't open doors.",
          "Doggo would do anything for you."},
+        {"doggo_out", "Doggo", "He lives if he's outside",
+         "At 16:35 he whines at the front door. I opened it. When the banging started, the barking was already far away.",
+         "He asks for something every day at 16:35."},
         // ---- The visitor
         {"visitor_time", "The visitor", "The man comes at 16:50",
          "Power cuts out. A knock. I thought it was Julenissen. A big, calm man. He takes me. The others don't make it.",
@@ -152,6 +224,18 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"prints", "The visitor", "Someone was here",
          "Big footprints in the new snow, from the gate to the living room window. He looks in at us before he knocks.",
          "Look at the snow outside. Before the storm covers it."},
+        {"his_car", "The visitor", "His clipboard",
+         "On the passenger seat: 04, ticked. 05, ticked. 06: COLLECT 1, CLEAN 2. And a bun from the bakery in Geilo.",
+         "His car is empty while he's at the window."},
+        {"trunk", "The visitor", "I'm the third one today",
+         "His trunk: a grey blanket, two empty juice boxes, a small mitten that isn't mine. Dog hair that isn't Doggo's.",
+         "His trunk isn't locked."},
+        {"off_hook", "The visitor", "No call, no clean-up",
+         "I pulled the phone out of the wall before it rang. Nobody confirmed anything. He took me and left them standing in the doorway. Alive.",
+         "What does he do without his orders? Keep everybody calm and find out."},
+        {"echo", "The visitor", "He doesn't remember",
+         "\"We do this every time.\" I asked him what he meant. He didn't know he'd said it. He doesn't loop. Something in him leaks anyway.",
+         "He repeats himself. Ask him about it before he knocks."},
         // ---- The basement
         {"basement_open", "The basement", "Mom goes down at 16:30",
          "At 16:30 Mom unlocks the basement. Blue light. A hum. The door is open for about two minutes.",
@@ -177,6 +261,22 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"they_listen", "The basement", "They listen",
          "I used their radio. \"That's not handler two. Stay where you are, 06.\" He came early.",
          "Talk to them on their own radio."},
+        // ---- The program
+        {"baby_watch", "The program", "I've always worn it",
+         "A tiny Origin in Dad's cabinet. The strap would fit a baby. Scratched into the back: ANCHOR 06. DO NOT REMOVE.",
+         "There's more than a tape in Dad's cabinet."},
+        {"protocol", "The program", "The watch is the anchor",
+         "ORIGIN PROTOCOL. When I die I wake up in the version where I didn't. The watch pins it to 16:00. Today's juice was just juice. They wanted me to keep this one.",
+         "The filing cabinet has more than one folder."},
+        {"collector", "The program", "He wears one too",
+         "Under his glove: an Origin, scratched grey, the strap replaced over and over. He was a subject once. They don't come off.",
+         "Show him something small. Or look at his wrist when he can't stop you."},
+        {"leash", "The program", "31 kilometres",
+         "We got 31 kilometres. Then the scar behind my ear beeped. Behind Mom's too. And Dad's. That's how long the leash is. For all of us.",
+         "They'd run with you. See how far."},
+        {"graduation", "The program", "The entrance exam",
+         "APPENDIX C. A subject who kills his collector, and knows to take the switch first, replaces him. Going dark isn't failing their test. It's passing it.",
+         "The last page of the protocol. For kids who know about the box on his belt."},
         // ---- The dark
         {"first_dark", "The dark", "I can't undo it",
          "I did something I can't take back. The game remembers. So do I.",
@@ -215,6 +315,9 @@ void Story::NewGame() {
     achievements.clear();
     endings.clear();
     seenLines.clear();
+    seenEvents.clear();
+    dryLoops = 0;
+    lastEnd.clear();
     seenToilet45 = false;
     prototypeEndShown = false;
     cleanStreak = 0;
@@ -227,7 +330,7 @@ void SeedShifts(unsigned seed) { shiftRng.seed(seed); }
 static int ShiftRoll100() { return (int)(shiftRng() % 100); }
 
 const char* ShiftName(Shift s) {
-    return s == Shift::Toilet45 ? "45 minute toilet" : s == Shift::NoDoggo ? "no Doggo" : s == Shift::EarlyStorm ? "early storm" : "normal";
+    return s == Shift::Toilet45 ? "45 minute toilet" : s == Shift::NoDoggo ? "no Doggo" : s == Shift::EarlyStorm ? "early storm" : s == Shift::Sister ? "the bathroom" : "normal";
 }
 
 std::string ShiftConfig::Save() const {
@@ -261,6 +364,7 @@ Shift Story::RollShift() {
     std::vector<Shift> others;
     if (c.noDoggo) others.push_back(Shift::NoDoggo);
     if (c.earlyStorm) others.push_back(Shift::EarlyStorm);
+    if (c.sister) others.push_back(Shift::Sister);
     if (others.empty()) return Shift::Toilet45;
     Shift other = others[ShiftRoll100() % others.size()];
     if (!c.toilet) return other;
@@ -273,7 +377,8 @@ void Story::Hold(Item it, bool quiet) {
     if (held != Item::None && it != Item::None && !quiet) {
         static const char* back[] = { "", "(You put the knife back in the block first.)", "(You put the key back where it was first.)",
             "(You drop the stick by the woodpile first.)", "(You put the trash bag back first.)", "(You put the dog food back in the pantry first.)",
-            "(You put the flashlight back in the pantry first.)", "(You put the tape back in Dad's cabinet first.)" };
+            "(You put the flashlight back in the pantry first.)", "(You put the tape back in Dad's cabinet first.)",
+            "(You put the tiny watch back in Dad's cabinet first.)" };
         Say("You", back[(int)held]);
     }
     held = it;
@@ -302,6 +407,10 @@ std::string Story::SaveString() const {
     for (auto& e : endings) o << e << ",";
     o << "|" << cleanStreak << "|";
     for (unsigned h : seenLines) o << std::hex << h << std::dec << ",";
+    // v0.10: fields 11 to 13. Older builds stop reading at 10
+    o << "|";
+    for (auto& e : seenEvents) o << e << ",";
+    o << "|" << dryLoops << "|" << lastEnd;
     return o.str();
 }
 
@@ -339,6 +448,10 @@ void Story::LoadSave(const std::string& s) {
             std::set<std::string> hs; split(parts[10], hs);
             for (auto& h : hs) seenLines.insert((unsigned)std::strtoul(h.c_str(), nullptr, 16));
         }
+        seenEvents.clear(); dryLoops = 0; lastEnd.clear();
+        if (parts.size() >= 12) split(parts[11], seenEvents);
+        if (parts.size() >= 13) dryLoops = std::atoi(parts[12].c_str());
+        if (parts.size() >= 14) lastEnd = parts[13];
     }
 }
 
@@ -536,7 +649,7 @@ bool Story::TutorialLocked(const std::string& id) const {
         "bed", "toys", "window", "toilet", "mirror", "fridge", "stove", "trashcan", "bowl",
         "tv", "couch", "radio", "bins", "doghouse", "gate", "flag", "mom", "dad", "doggo", "woodstove",
         "calendar", "bookshelf", "album", "wardrobe", "woodpile", "marbles", "frontdoor", "visitor",
-        "pantry", "sink", "fliptendo", "tree",
+        "pantry", "sink", "fliptendo", "tree", "car",
         "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl", "sheddoor"};
     return open.count(id) == 0;
 }
@@ -572,6 +685,8 @@ NpcState Story::Dad() const {
     if (collection) { n.x = 18; n.y = 17; return n; }
     if (t < 8 * 60) { n.x = 24; n.y = 16; return n; }
     if (t < 40 * 60) { n.x = 35; n.y = 8; return n; }
+    // v0.10: every Christmas Eve at 16:44 he checks that the key is still under the flagpole
+    if (t >= 43 * 60 + 30 && t < 45 * 60 + 30 && dadAtt != Attitude::Broken && dadAtt != Attitude::Scared) { n.x = 11; n.y = 26; return n; }
     n.x = 10; n.y = 17;
     return n;
 }
@@ -600,6 +715,98 @@ void Story::VisitorNoticesYou() {
     Say("", "(He looks at you a moment longer. Then he checks his watch and walks back to his car.)");
 }
 
+// ============================================================ v0.10 queries
+bool Story::KnowsEvent(const std::string& id) const {
+    if (seenEvents.count(id)) return true;
+    for (auto& e : AllTimeline()) if (e.id == id) return !e.memory.empty() && Knows(e.memory);
+    return false;
+}
+bool Story::CarEmpty() const {
+    int left = visitorTime - (int)t;
+    return !collection && left <= VISIT_WALK - 20 && left > VISIT_BACK;
+}
+bool Story::Spared() const {
+    // He follows the last orders he got. Without the 16:22 call that is "pickup". Unless you give him a reason
+    return phoneUnplugged && !visitorInjured && threats == 0 && darkThisLoop == 0 && !dadDown && !doggoDead &&
+           !kidShot && !momLocked && !dadLocked;
+}
+bool Story::MomHums() const {
+    if (collection || momLocked || tainted || momRemorse || momAtt != Attitude::Normal) return false;
+    int phone = Stage() >= 2 ? 21 : 22;
+    if (t >= phone * 60 - 30 && t < (phone + 2) * 60) return false;
+    if (t >= 28 * 60 && t < 33 * 60) return false;
+    return !Mom().facingWall;
+}
+
+// The narrator picks up where the last loop left off. Otherwise a line for the stage he is in
+void Story::LoopOpener(const std::string& how) {
+    const char* r = nullptr;
+    bool alt = loop % 2 == 0;
+    if (how == "cold") r = alt ? "I could still feel the snow in my fingers. It wasn't there. It had been." : "A warm bed. I didn't trust warm any more.";
+    else if (how == "toilet") r = alt ? "We are not talking about the last one." : "Moving on.";
+    else if (how == "switch") r = alt ? "The place behind my ear still felt hot. I didn't touch it." : "I had killed a man an hour ago. An hour from now. It was getting hard to keep straight.";
+    else if (how == "vidda") r = "My legs remembered the snow. All 31 kilometres I never got through.";
+    else if (how == "doggo" || how == "ending:doggo") r = DoggoExists() ? "Doggo was asleep on my feet. Breathing. I lay still for a while and let him." : "I listened for Doggo. Nothing. Not in this one.";
+    else if (how == "spared") r = "They were alive when he carried me out. First time. I held on to that.";
+    else if (how == "express") r = "I had climbed into his trunk by myself. I'm not proud of it. It was a little bit funny.";
+    else if (how == "dadran") r = "Dad had gone at him with a lamp. For me. He wouldn't remember it. I would.";
+    else if (how == "name") r = "She had said my name. I lay there trying to get it back. It was like trying to remember a smell.";
+    else if (how == "ending:escape") r = "31 kilometres. I had counted every one of them from the back seat.";
+    else if (how == "ending:bells") r = "I could still hear the bells. From inside the house. That one time.";
+    else if (how == "ending:monster" || how == "ending:program") r = "A new 16:00. The same hands.";
+    else if (how == "ending:screen") r = "I had spent a whole hour of my life on a paper plane. Well. The same hour.";
+    else if (how == "ending:paid") r = "I had let them pay for me. The house didn't know. I did.";
+    if (r) { Narrate(r); return; }
+    static const char* s1[] = {
+        "16:00. Same bed. Same watch. Same me. Mostly.",
+        "I stopped counting the loops. The watch didn't.",
+        "Again. Fine. Let's see what I missed.",
+        "16:00. I knew that ceiling better than my own face.",
+        "One hour. I had all the time in the world, one hour at a time.",
+        "The watch beeped. Downstairs, ribbe. Outside, a car that wasn't here yet.",
+    };
+    static const char* s2[] = {
+        "They were never my parents. I just didn't know it yet. Well. Now I did.",
+        "Same hour. Same lies. The house was starting to forget its lines.",
+        "I knew the script better than they did now. That should have scared me more.",
+        "Handler one. Handler two. Unit zero six. I said it under my breath until it stopped sounding like us.",
+        "They would smile at me in a minute. I would smile back. We were all very good at it.",
+        "16:00. Fifty minutes of pretending. I was getting better at it than they were.",
+    };
+    static const char* s3[] = {
+        "I didn't correct myself anymore. Why would I.",
+        "16:00. They'd be scared of me again by 16:05. Fine.",
+        "The watch beeped. I didn't flinch. I used to flinch.",
+        "I got up. I didn't bother being quiet on the stairs any more.",
+        "The house knew what I was now. Only the people in it were behind.",
+        "16:00. I checked my hands. Clean. That never lasted.",
+    };
+    static const char* s4[] = {
+        "They locked me in a chair for what I'd become. So I became it. Now we're even.",
+        "I knew what was in the basement. I knew what was in me. Same thing.",
+        "Every loop the house got quieter around me. Like it was holding its breath.",
+        "I knew where the chair was. I knew whose voice was on the tape. I got up anyway.",
+        "There was nothing left in that house I hadn't opened. Including them.",
+        "16:00. The basement hummed under my bed like it was glad to see me.",
+    };
+    const char** pool = Stage() >= 4 ? s4 : Stage() >= 3 ? s3 : Stage() >= 2 ? s2 : s1;
+    Narrate(pool[(loop * 5 + (int)memory.size()) % 6]);
+}
+
+// Three loops with nothing new: the narrator points at the next thing worth finding
+void Story::Nudge() {
+    static const char* order[] = { "calendar", "no_car", "no_baby", "book_notes", "presents", "phone_mom", "reports", "dad_radio",
+        "basement_open", "basement_screens", "phone_answer", "dad_goodbye", "prints", "his_car", "trunk", "doggo_basement", "doggo_out",
+        "hiding", "he_runs_fast", "told_mom", "told_dad", "doggo_gate", "echo", "off_hook", "dad_key", "basement_files" };
+    const MemoryEntry* pick = nullptr;
+    for (const char* id : order) if (!Knows(id)) { pick = FindMemory(id); break; }
+    if (!pick) for (auto& m : AllMemories()) if (!Knows(m.id)) { pick = &m; break; }
+    if (!pick) return;
+    Narrate("I was going in circles. Small ones, inside the big one.");
+    Say("You", "(A thought that won't go away. " + pick->hint + ")");
+    dryLoops = 0;
+}
+
 // ============================================================ loop
 void Story::BeginLoop() {
     loop += 1;
@@ -625,6 +832,8 @@ void Story::BeginLoop() {
     dadOnFloor = momOnFloor = kidHidden = doggoWithKid = false;
     momAtt = dadAtt = Attitude::Normal;
     pendingKnifeAct.clear(); knifeChecks = 0;
+    phoneUnplugged = momRemorse = sisterNoticed = echoAsked = false;
+    std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
     rng = std::fmod(0.37f + loop * 0.1618f, 1.0f);
@@ -650,34 +859,19 @@ void Story::BeginLoop() {
         Say("You", "(Everything is open now. J opens your memory log. Things you remember unlock new choices.)");
         Say("You", "(Knowing stuff lets you skip lines. Press Tab during talking.)");
     } else {
-        static const char* s1[] = {
-            "16:00. Same bed. Same watch. Same me. Mostly.",
-            "I stopped counting the loops. The watch didn't.",
-            "Again. Fine. Let's see what I missed.",
-        };
-        static const char* s2[] = {
-            "They were never my parents. I just didn't know it yet. Well. Now I did.",
-            "Same hour. Same lies. The house was starting to forget its lines.",
-            "I knew the script better than they did now. That should have scared me more.",
-        };
-        static const char* s3[] = {
-            "I didn't correct myself anymore. Why would I.",
-            "16:00. They'd be scared of me again by 16:05. Fine.",
-            "The watch beeped. I didn't flinch. I used to flinch.",
-        };
-        static const char* s4[] = {
-            "They locked me in a chair for what I'd become. So I became it. Now we're even.",
-            "I knew what was in the basement. I knew what was in me. Same thing.",
-            "Every loop the house got quieter around me. Like it was holding its breath.",
-        };
-        const char** pool = Stage() >= 4 ? s4 : Stage() >= 3 ? s3 : Stage() >= 2 ? s2 : s1;
-        Narrate(pool[loop % 3]);
+        LoopOpener(how);
     }
     if (tainted && loop >= 2) Say("Mom", "(from the kitchen) ...Is that you? You're up. Good. Good.");
 
     if (shift == Shift::Toilet45) Say("You", "(My stomach just made a noise like a dying whale.)");
     if (shift == Shift::NoDoggo) Say("You", "(It's quiet. Too quiet. Something's missing.)");
     if (shift == Shift::EarlyStorm) Say("You", "(The wind is already up. That's not how today goes.)");
+    if (shift == Shift::Sister) {
+        // v0.10: somebody is in the bathroom. She stays in there all hour
+        closedDoors.insert(9 * World::W + 13); lockedDoors.insert(9 * World::W + 13);
+        Say("You", "(Somebody is singing in the bathroom. Nobody in this house sings.)");
+    }
+    if (loop >= 4 && dryLoops >= 3 && !FullMemory()) Nudge();
 }
 
 void Story::EndLoop() {
@@ -689,6 +883,7 @@ void Story::EndLoop() {
         AddClue("first_dark");
         Achieve("Point of No Return");
     }
+    if (loopNew.empty()) ++dryLoops; else dryLoops = 0;
     BeginLoop();
 }
 
@@ -750,6 +945,7 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
         Black("He isn't even out of breath. He carries you in like a sack of potatoes.");
         AddClue("run_fail");
         Achieve("Nowhere to Run");
+        lastEnd = "vidda";
         t = (float)visitorTime;
         StartCollection("run");
     }
@@ -776,10 +972,12 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
     auto fresh = [&](int minute) { return now - minute * 60 < 90; };
     if (Crossed(prev, now, 2) && Once("chores") && MomHere() && fresh(2)) {
         Bubble("Mom", "Chores! Doggo, trash, dishes, firewood, your room. ALL done by 16:40 and you can open a present before dinner!");
+        See("chores");
         if (Tutorial()) Bubble("You", "(A present! Then Julenissen at ten to five! Best day of the year.)");
     }
     if (Crossed(prev, now, 8) && Once("dad_out") && fresh(8)) {
         Bubble("Dad", "Gonna fix the generator before the storm hits. Holler if you need me.");
+        See("dad_out");
     }
     if (Crossed(prev, now, 10) && Once("radio_report")) {
         if (here == Room::Shed && DadFree()) {
@@ -788,11 +986,13 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
             AddClue("dad_radio");
         }
     }
-    if (Crossed(prev, now, phoneMin) && Once("phone")) {
+    if (Crossed(prev, now, phoneMin) && Once("phone") && !phoneUnplugged) {
         Sound("ring");
-        if (inKitchen || here == Room::Hallway || here == Room::LivingRoom) Say("", "*RING RING* (the landline)");
+        if (inKitchen || here == Room::Hallway || here == Room::LivingRoom) { Say("", "*RING RING* (the landline)"); See("phone"); }
     }
-    if (Crossed(prev, now, phoneMin, 40) && Once("phone_mom")) {
+    if (Crossed(prev, now, phoneMin, 40) && phoneUnplugged && Once("phone_dead") && MomHere() && inKitchen)
+        Bubble("Mom", "(she looks at the phone. Then at the clock. Then at the phone.)");
+    if (Crossed(prev, now, phoneMin, 40) && !phoneUnplugged && Once("phone_mom")) {
         if (!phoneAnswered && MomHere()) {
             phoneAnswered = true;
             if (inKitchen) {
@@ -818,11 +1018,15 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
         }
     }
     if (Crossed(prev, now, 35) && Once("doggo_door")) {
-        if (fresh(35) && DoggoExists() && (here == Room::LivingRoom || here == Room::Hallway))
+        if (fresh(35) && DoggoExists() && (here == Room::LivingRoom || here == Room::Hallway)) {
             Bubble("Doggo", "*whines at the front door*");
+            See("doggo_door");
+            if (!Tutorial() && !Knows("doggo_out") && Once("doggo_door_think")) Bubble("You", "(Every day at 16:35. He wants out.)");
+        }
     }
     if (Crossed(prev, now, 40) && Once("allowance")) {
         allowanceChecked = true;
+        if (!grounded && MomHere()) See("present");
         if (!grounded && MomHere() && momAtt == Attitude::Scared) {
             Say("", "(16:40. Mom doesn't mention the chores. She doesn't mention anything.)");
         } else if (!grounded && MomHere()) {
@@ -838,6 +1042,7 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
                 Say("Mom", "Nothing? Not one chore? Unbelievable.");
                 ChangeMood(-2);
             }
+            if (doggoOut) Say("Mom", "And where's the dog? ...Fine. He'll scratch at the door when he's cold.");
         }
     }
     if (Crossed(prev, now, 45) && Once("nisse_soon") && fresh(45) && DadFree() && !tainted)
@@ -849,6 +1054,7 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
         Black("You didn't make it.");
         Black("In this reality, the toilet always wins.");
         Achieve("Should've Gone");
+        lastEnd = "toilet";
         AddClue("poop45");
         seenToilet45 = true;
         Narrate("No. That's... that is NOT how it went. We're not telling it like that.");
@@ -856,8 +1062,10 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
         collection = true; // freeze the clock
         return;
     }
-    if (shift == Shift::EarlyStorm && Crossed(prev, now, 37) && Once("storm"))
+    if (shift == Shift::EarlyStorm && Crossed(prev, now, 37) && Once("storm")) {
         Say("", "(The snowstorm hits. Ten minutes early. It has never been early.)");
+        if (!inBasement) See("storm");
+    }
     if (shift == Shift::EarlyStorm && Crossed(prev, now, 40) && Once("early_power")) {
         Sound("thud");
         Say("", "(The power dies. It's only 16:40. Nobody is at the door. Not yet.)");
@@ -865,27 +1073,47 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
     }
     if (Crossed(prev, now, 47) && Once("storm")) {
         Say("", "(The snowstorm hits. The lights flicker. You can't see the gate any more.)");
+        if (!inBasement) See("storm");
+    }
+    // v0.10: Dad and the box under the flagpole. You have to be out there to see it
+    if (Crossed(prev, now, 44, 40) && Once("flag44") && !Tutorial() && DadFree() && Dad().x == 11 && here == Room::Outside &&
+        std::abs(px - 10) + std::abs(py - 26) <= 16 && now - (44 * 60 + 40) < 90) {
+        Say("", "(Dad crouches at the bottom of the flagpole. A tiny box, painted the same colour as the pole. He opens it, looks, closes it.)");
+        int left = visitorTime - (int)now;
+        if (left <= VISIT_LOOK && left > VISIT_BACK) {
+            Say("", "(Then he looks up, across the yard, at the big man by the living room window. Dad nods. The man nods back.)");
+            Say("You", "(They know each other.)");
+            Achieve("A Nod Across the Yard");
+        }
+        Say("You", "(Flag. Forty-four. That's what he mutters in the shed. He's checking that something is still there.)");
+        See("flag44");
     }
     if (now >= visitorTime - VISIT_ARRIVE && Once("car")) {
-        if (here == Room::Outside || here == Room::KidsRoom)
+        if (here == Room::Outside || here == Room::KidsRoom) {
             Say("", "(Headlights at the gate. A black car. No plates.)");
+            See("car");
+        }
     }
     // v0.9.2: he has a look at the family first, then fetches what he came with
     if (!collection) {
         int left = visitorTime - (int)now;
         if (left <= VISIT_LOOK && left > VISIT_BACK) {
             visitorLooked = true;
-            if (here == Room::LivingRoom && Once("face"))
+            if (here == Room::LivingRoom && Once("face")) {
                 Say("", Tutorial() ? "(A big shape outside the window. Julenissen is early!)"
                                    : "(A face at the window, close to the glass. It's looking right at you. Then it's gone.)");
+                See("window");
+            }
         }
         if (left <= VISIT_IN_CAR && left > VISIT_OUT && Once("car_in") && here == Room::Outside) {
             Sound("thud");
             Say("", "(He gets back into the car. The door shuts. The engine keeps running.)");
+            See("car_in");
         }
         if (left <= VISIT_OUT && Once("car_out") && here == Room::Outside) {
             Sound("thud");
             Say("", "(The car door opens. There's something under his coat that wasn't there before.)");
+            See("car_out");
         }
     }
     if (now >= visitorTime && !collection) {
@@ -949,12 +1177,22 @@ void Story::StartCollection(const std::string& how) {
         if (stance == Stance::Dark) Say("Mom", "(she won't look at you) Just take him.");
         else if (stance == Stance::Befriended) Say("Mom", "(her voice cracks) He's been so good.");
         else Say("Mom", "(very quietly) ...He's been good.");
+        if (phoneUnplugged) {
+            // v0.10: nobody confirmed anything at 16:22
+            Say("The visitor", "(to her) You didn't pick up.");
+            Say("Mom", "It never rang.");
+            Say("The visitor", "(he looks at the phone. Then at you, one second too long.) ...No. I suppose it didn't.");
+        }
+        if (momRemorse && stance != Stance::Dark) Say("Mom", "(she isn't looking at him. She's looking at you. She's been crying.)");
     }
 
     // v0.7: they believe you, and they know what clean-up means now
     if (parentsAllied && stance == Stance::Befriended && MomHere() && DadFree() && !visitorDowned) {
         Say("Mom", "(she grabs your hand, so hard it hurts) Car. NOW.");
-        Choice("Mom is already pulling you toward the door.", {{"e_run", "Run for his car with Mom and Dad."}, {"e_stay", "No. Hide. Dad, don't!"}});
+        std::vector<ChoiceOpt> o = {{"e_run", "Run for his car with Mom and Dad."}, {"e_stay", "No. Hide. Dad, don't!"}};
+        // v0.10: you have seen where the road ends
+        if (Knows("leash")) o.insert(o.begin() + 1, {"e_dinner", "\"We can't outrun it. Sit down. Please.\"", true});
+        Choice("Mom is already pulling you toward the door.", o);
         return;
     }
     if (DadFree() && dadAtt == Attitude::Broken) {
@@ -1002,6 +1240,7 @@ void Story::ColdOut() {
     Black("White.");
     AddClue("cold");
     Achieve("Snow Angel");
+    lastEnd = "cold";
     Narrate("No. That's not how it went. The snow didn't get me. Not that time.");
     Beat e; e.type = BeatType::EndLoop; beats.push_back(e);
 }
@@ -1014,6 +1253,7 @@ void Story::SceneDone(const std::string& id) {
         Bubble("Mom", "No no no. Get up. Please get up.");
         AddClue("dad_ran");
         Achieve("Ten Seconds");
+        lastEnd = "dadran";
         Bubble("The visitor", "Now. Where were we, 06?");
         SceneBeat("chase");
     }
@@ -1023,6 +1263,7 @@ void Story::VisitorChoice() {
     std::vector<ChoiceOpt> o;
     if (visitorDowned && hasKnife && tainted) o.push_back({"c_finish", "Finish it.", false, true});
     if (visitorDowned && !hasKnife) o.push_back({"c_kick", "Kick him while he's down."});
+    if (visitorDowned && !Knows("collector")) o.push_back({"c_wrist", "Look at his wrist."});
     o.push_back({"c_go", threats > 0 ? "\"Stop! I'm here. Leave them alone.\"" : "Go with him."});
     if (!visitorDowned) {
         if (hasKnife) o.push_back({"c_knife", "Pull the knife.", false, true});
@@ -1066,6 +1307,7 @@ void Story::OnLeftPremises() {
     Say("The visitor", "(out of the white, carrying you back like a sack of potatoes) 31 kilometres, 06. In this? You walked in a circle.");
     AddClue("run_fail");
     Achieve("Nowhere to Run");
+    lastEnd = "vidda";
     CollectionScript();
 }
 
@@ -1075,28 +1317,63 @@ void Story::OnVisitorUp() {
     Say("The visitor", "(getting up, slow, one arm hanging wrong) ...Okay. That one hurt.");
 }
 
-void Story::CollectionScript() {
-    chase = false;
-    FadeFor(0, "");
-    Sound("hush_on");   // v0.9: no music for this part
-    Black("Rope. The couch. He ties knots like he's done it a thousand times.");
+// v0.10: what he does to the handlers and to Doggo, as black screen lines. True if they lived
+bool Story::CleanUp() {
     bool momLeft = MomHere() || momLocked;
     bool dadLeft = !dadDown;
+    if (Spared()) {
+        Black("He stands in the doorway with you over his shoulder and looks at them for a long time.");
+        Black("\"No confirmation came through.\" He says it to nobody. \"Pickup only, then.\"");
+        Black("He nods at them. \"God jul.\"");
+        if (stance == Stance::Dark) Black("They stand in the door and watch him carry you to the car. Nobody waves.");
+        else Black("They stand in the door and watch him carry you to the car. Mom lifts her hand. Like you're going to camp.");
+        if (DoggoExists()) Black("Doggo follows you all the way to the gate. He lets him.");
+        if (shift == Shift::Sister) Black("Upstairs, behind the bathroom door, somebody is still singing.");
+        AddClue("off_hook");
+        Achieve("Clerical Error");
+        lastEnd = "spared";
+        return true;
+    }
+    bool named = false;
     if (momLocked) Black("He goes down to the basement. He knows exactly where she is.");
     if (dadLocked) Black("He goes out to the shed. He knows exactly where Dad is.");
     if (!momLocked && MomHere()) {
-        if (tainted) Black("He walks Mom into the kitchen. She doesn't look at you on the way.");
+        if (momRemorse) {
+            Black("He walks Mom into the kitchen. In the doorway she turns around and says a name.");
+            Black("Not Kiddo. Not sweetie. Not 06. A name. Yours.");
+            named = true;
+        }
+        else if (tainted) Black("He walks Mom into the kitchen. She doesn't look at you on the way.");
         else Black("He walks Mom into the kitchen. She goes quietly. Like she doesn't understand yet.");
     }
     if (!dadLocked && dadLeft && dadOnFloor) Black("He drags Dad in after her. Dad is trying to say your name.");
     else if (!dadLocked && dadLeft) Black("Dad goes too. He tries to say something to you. The man shakes his head.");
     if (DoggoExists()) Black("Doggo follows them. Wagging.");
     if (doggoDead) Black("You look for Doggo. Then you remember.");
-    if (momLeft) { Sound("bang"); Black("BANG."); }
+    bool doggoSafe = doggoOut && shift != Shift::NoDoggo && !doggoGone && !doggoDead;
+    if (shift == Shift::Sister) {
+        Black("He counts on his clipboard. Two handlers. One subject. He looks up at the bathroom door for a long time.");
+        Black("He doesn't open it. He writes something down.");
+    }
+    if (momLeft) { Sound("bang"); Black(named ? "The bang comes before you can keep it." : "BANG."); }
     if (dadLeft) { Sound("bang"); Black("BANG."); }
     if (DoggoExists()) { Sound("bang"); Black("Doggo stops barking."); }
+    if (doggoSafe) {
+        Black("Somewhere out past the fence, barking. Getting further away. He isn't coming back for this.");
+        AddClue("doggo_out");
+        Achieve("Run, Boy");
+    }
+    if (named) { AddClue("my_name"); Achieve("Say It Again"); lastEnd = "name"; }
     if (stance == Stance::Normal && (momLeft || dadLeft)) Black("They never knew they were part of the clean-up. Somehow that's worse.");
-    Black("He carries you out into the storm.");
+    return false;
+}
+
+void Story::CollectionScript() {
+    chase = false;
+    FadeFor(0, "");
+    Sound("hush_on");   // v0.9: no music for this part
+    Black("Rope. The couch. He ties knots like he's done it a thousand times.");
+    if (!CleanUp()) Black("He carries you out into the storm.");
     Black("The trunk smells like oil and wet dog.");
     AddClue("visitor_time");
     if (FullMemory()) {
@@ -1107,9 +1384,95 @@ void Story::CollectionScript() {
     TrunkScript();
 }
 
-void Story::TrunkScript() {
-    Sound("thud");
-    Black("The lid comes down. Something hits your head.");
+// v0.10: the joke one. You save him the trouble
+void Story::ExpressDelivery() {
+    stance = CurrentStance();
+    t = (float)visitorTime;
+    collection = true; grounded = false; chase = false;
+    FadeFor(0, "");
+    Sound("hush_on");
+    Black("You climb in. You pull the lid down yourself. It's easier than you thought.");
+    Black("Dark. Oil. A blanket that smells like other people. You wait.");
+    Sound("knock");
+    Black("Far away: three slow knocks. Voices. Then nothing for a while.");
+    if (Spared()) {
+        Black("You wait for the bangs. They don't come.");
+        AddClue("off_hook");
+        Achieve("Clerical Error");
+    } else {
+        if (MomHere() || momLocked) { Sound("bang"); Black("BANG."); }
+        Sound("bang"); Black("BANG.");
+        if (DoggoExists()) { Sound("bang"); Black("Doggo stops barking."); }
+    }
+    Black("Footsteps in the snow. The lid opens.");
+    Black("He looks at you. He looks at his clipboard. He looks at you again.");
+    Black("\"...Huh. That's a first.\"");
+    Black("He starts to say something else and stops. He frowns, like a man who has lost his place in a book.");
+    Black("He closes the lid. Gently, this time.");
+    AddClue("visitor_time");
+    Achieve("Express Delivery");
+    lastEnd = "express";
+    TrunkScript(true);
+}
+
+// v0.10: the clean ending. Nobody is saved. That was never on the table
+void Story::DinnerEnding() {
+    chase = false;
+    solemn = true;
+    Say("You", "No. We don't run. I've seen where that road ends. Thirty-one kilometres. For all three of us.");
+    Say("Dad", "(his hand goes to the place behind his ear. Then he puts the lamp down.)");
+    Say("Mom", "...Then what do we do?");
+    Say("You", "It's Christmas Eve. We sit down.");
+    solemn = false;
+    FadeFor(0, "");
+    Sound("hush_on");
+    Black("Mom lights the candles, because the power is out. Dad carves the ribbe. His hands only shake a little.");
+    Sound("knock");
+    Black("He knocks again. Nobody gets up. After a while he lets himself in.");
+    Black("He stands in the kitchen doorway with snow on his shoulders and looks at the table. Four chairs. Three plates.");
+    Black("\"Has he been good?\"");
+    Black("\"He's the best thing we ever did,\" Mom says. \"Sit down or get out.\"");
+    Black("He looks at his watch. Then he pulls out the fourth chair and sits. He keeps his coat on.");
+    Black("Nobody talks. Dad passes him the potatoes. He takes two.");
+    if (DoggoExists()) Black("Doggo lies on your feet under the table. He growls the whole time, very quietly, and nobody tells him to stop.");
+    Sound("hum_on");
+    Black(Knows("the_tape") ? "Mom hums. You let her. Just this once." : "Mom hums. The carol she always hums.");
+    Sound("hum_off");
+    Sound("bells");
+    Black("Then, far away, through the storm: bells. Every church in the country.");
+    Black("You have never heard them from inside the house. Not once, in all those hours.");
+    Black("\"God jul,\" says Dad. His voice breaks on it.");
+    Black("The man puts his fork down. \"Time.\"");
+    Black("You get up by yourself. You put your jacket on by yourself. Mom zips it to your chin.");
+    Sound("beep");
+    Black("BEEP BEEP.");
+    Narrate("It didn't save anyone. It wasn't for that.");
+    Narrate("Out of all those hours, that is the one I would keep.");
+    endings.insert("bells");
+    Achieve("One Good Hour");
+    lastEnd = "ending:bells";
+    Beat e; e.type = BeatType::Ending; e.id = "bells"; e.speaker = "ENDING";
+    e.text = "ONE GOOD HOUR\n\nThey sat down. He heard the bells.";
+    beats.push_back(e);
+}
+
+void Story::ShowWrist(bool downed) {
+    if (downed) Say("", "(His glove came off when he fell. On his wrist: an Origin. Scratched grey. The strap has been replaced so many times it doesn't match.)");
+    else {
+        Say("The visitor", "(he looks at the tiny watch for a long time) They kept that? Sentimental.");
+        Say("", "(He pulls his glove back. An Origin. Scratched grey. The strap has been replaced so many times it doesn't match.)");
+    }
+    Say("The visitor", downed ? "(through his teeth) They don't come off, 06. You grow into them." : "They don't come off, 06. You grow into them.");
+    Say("You", "(He was one of us. He was a kid in a house like this one.)");
+    AddClue("collector");
+}
+
+void Story::TrunkScript(bool quiet) {
+    if (lastEnd.empty()) lastEnd = "trunk";
+    if (!quiet) {
+        Sound("thud");
+        Black("The lid comes down. Something hits your head.");
+    }
     Sound("bells");
     Black("Far away, through the storm, church bells. Christmas is being rung in.");
     static const char* lines1[] = {
@@ -1161,6 +1524,7 @@ void Story::SecretEnding() {
     darkPoints = DARK_MAX;   // v0.7: the darkest ending. You wake up as dark as it gets
     tainted = true;
     endings.insert("secret");
+    lastEnd = "ending:secret";
     Achieve("The Longest Survivor");
     Beat e; e.type = BeatType::Ending; e.id = "secret"; e.speaker = "SECRET ENDING";
     e.text = "THE LONGEST SURVIVOR\n\nHe set them free. He never got to leave.";
@@ -1179,11 +1543,18 @@ void Story::MonsterEnding() {
     }
     if (!endProgram) {
         Black("The storm blows itself out by morning. You walk out into the white. Nobody follows. Nobody calls your name.");
-        Narrate("I survived. That's all I did.");
+        if (Knows("graduation")) {
+            // v0.10: you read Appendix C. You know what this was
+            Black("His car is still at the gate. On the seat, his radio crackles. \"Collector, confirm.\"");
+            Black("You look at it for a long time. Then you press the button.");
+            Black("\"Confirmed.\" Your voice doesn't shake at all.");
+            Narrate("I survived. They had a job waiting for the one who did.");
+        } else Narrate("I survived. That's all I did.");
         endings.insert("monster");
+        lastEnd = "ending:monster";
         Achieve("Monster");
         Beat e; e.type = BeatType::Ending; e.id = "monster"; e.speaker = "ENDING";
-        e.text = "MONSTER\n\nHe lived. Nobody wanted him to.";
+        e.text = Knows("graduation") ? "MONSTER\n\nHe lived. That was the test." : "MONSTER\n\nHe lived. Nobody wanted him to.";
         beats.push_back(e);
         return;
     }
@@ -1193,11 +1564,13 @@ void Story::MonsterEnding() {
     Black("You find the machine. It hums like the basement.");
     Sound("glass");
     Black("You break it. You keep breaking it after it stops humming.");
+    if (Knows("graduation")) Black("A speaker in the ceiling, over the alarms. A calm voice. \"Outstanding, 06.\"");
     Narrate("I thought that would end it. The loop. Mine.");
     Sound("beep");
     Black("BEEP BEEP. 16:00.");
     Narrate("It didn't. It only ended theirs.");
     endings.insert("program");
+    lastEnd = "ending:program";
     Achieve("End of the Program");
     Beat e; e.type = BeatType::Ending; e.id = "program"; e.speaker = "ENDING";
     e.text = "END OF THE PROGRAM\n\nThe machine is gone. The loop isn't.";
@@ -1230,6 +1603,7 @@ void Story::ScreenTimeEnding() {
     Black("You play the whole drive. You never look up. You never find out where you went.");
     Narrate("The longest loop I ever had was the one where I didn't notice.");
     endings.insert("screen");
+    lastEnd = "ending:screen";
     Achieve("Screen Time");
     Beat e; e.type = BeatType::Ending; e.id = "screen"; e.speaker = "JOKE ENDING";
     e.text = "SCREEN TIME\n\nHe reached the last dungeon. He didn't notice anything else.";
@@ -1250,6 +1624,7 @@ void Story::TiredOut() {
 void Story::Threat(int n) {
     // v0.7: he can't find you, so he makes them pay. A blink of black hides him walking back to them.
     threats = n;
+    See("threat");
     bool dad = DadFree() || dadOnFloor, mom = MomHere() && !momLocked;
     FadeFor(0, "");
     if (n == 1) {
@@ -1290,6 +1665,7 @@ void Story::PaidEnding() {
     Black("You don't cry. You notice that you don't cry.");
     DarkAct(2, "", true);
     endings.insert("paid");
+    lastEnd = "ending:paid";
     Achieve("They Paid");
     Beat e; e.type = BeatType::Ending; e.id = "paid"; e.speaker = "ENDING";
     e.text = "THEY PAID\n\nHe stayed hidden. Someone always pays.";
@@ -1304,6 +1680,7 @@ void Story::EscapeEnding() {
     Black("The car smells like oil and wet dog. Mom drives into the storm. Dad holds his ribs in the back seat and laughs.");
     Black("You've never heard him laugh like that. Like it isn't for you.");
     if (DoggoExists()) Black("Doggo is in your lap. His heart is going as fast as yours.");
+    else if (doggoOut && shift != Shift::NoDoggo && !doggoGone) Black("At the gate a shape comes out of the snow, running flat out beside the car. Dad opens the door. Doggo lands in your lap, soaked.");
     Black("His tracks are already filling in. The road is closing behind you. Nobody follows. Nobody could.");
     Black("Mom keeps checking the mirror. After a while she stops checking.");
     Black("\"Where do we go?\" \"Anywhere. Anywhere at all.\"");
@@ -1315,6 +1692,8 @@ void Story::EscapeEnding() {
     Sound("bang");
     Black("White.");
     Narrate("31 kilometres. Exactly as far as the leash goes. For all of us.");
+    AddClue("leash");   // v0.10: the ending teaches you something you can use
+    lastEnd = "ending:escape";
     endings.insert("escape");
     Achieve("False Hope");
     Beat e; e.type = BeatType::Ending; e.id = "escape"; e.speaker = "ENDING";
@@ -1358,9 +1737,11 @@ void Story::DoggoSacrifice() {
     AddClue("doggo_stay");
     if (first) {
         Say("You", "(He got in front of me. I never told him to stay.)");
+        lastEnd = "doggo";
         CollectionScript();
         return;
     }
+    lastEnd = "ending:doggo";
     Achieve("Good Boy");
     FadeFor(0, "");
     Black("You don't fight when he picks you up. You can't stop looking back.");
@@ -1374,13 +1755,20 @@ void Story::DoggoSacrifice() {
 void Story::ConvinceParents(const std::string& who) {
     // v0.7: befriended + proof. They didn't know they were part of the clean-up.
     bool proofPhone = Knows("phone_answer");
+    bool proofFiles = Knows("basement_files"), proofCar = Knows("his_car");
     solemn = true;
     Say("You", "I need you to listen. Really listen. The man at 16:50. The clean-up. It's not just me. It's you too.");
     if (tainted) Narrate("I said it the way they taught me to say things. Soft. Scared. Every word exactly where it would hurt. It worked.");
     Say(who, who == "Mom" ? "(she laughs, then stops) Clean-up is... no. We're being reassigned. They promised." : "(he rubs his face) Buddy, no. We're done after today. We retire. They promised.");
     if (proofPhone) Say("You", "\"Handler two, confirm pickup. Clean-up included.\" That's what they said on the phone. Clean-up is you.");
-    else Say("You", "The files in the basement. Handlers are not to be informed. They think they're retiring. That's you.");
-    Say(who, "(very quietly) ...How do you know those words?");
+    else if (proofFiles) Say("You", "The files in the basement. Handlers are not to be informed. They think they're retiring. That's you.");
+    else if (proofCar) Say("You", "His clipboard. I've seen it. 06: collect one, clean two. I'm the one. You're the two.");
+    else {
+        Say("You", "Feel behind your ear. Go on. The little scar. I've got one too. So has " + std::string(who == "Mom" ? "Dad" : "Mom") + ".");
+        Say(who, "(a hand goes up. It stops there.)");
+        Say("You", "We ran once. All three of us. We got 31 kilometres. Then all three of them beeped.");
+    }
+    Say(who, proofPhone || proofFiles ? "(very quietly) ...How do you know those words?" : "(very quietly) ...How do you know that?");
     if (who == "Mom") Say("Mom", "(she sits down on the kitchen floor. Just sits.) ...Get your father.");
     else Say("Dad", "(he puts the wrench down very carefully) ...Get your mother.");
     FadeFor(5, "At the kitchen table. All three of you.");
@@ -1407,8 +1795,39 @@ void Story::DeadSwitchLoop() {
     Flash();
     Black("White.");
     AddClue("dead_switch");
+    lastEnd = "switch";
     Narrate("He took me with him. Of course he did. They'd never send him without a leash on me.");
     Beat e; e.type = BeatType::EndLoop; beats.push_back(e);
+}
+
+// ============================================================ v0.10 things to ask because you remember
+// The menus got too long for the screen, so everything a memory unlocks sits one step down
+std::vector<ChoiceOpt> Story::MomQuestions() const {
+    std::vector<ChoiceOpt> o;
+    if (Knows("loop")) o.push_back({"m_loop", "Mom, this day keeps repeating.", true});
+    if (Knows("no_car")) o.push_back({"m_car", "Why don't we have a car?", true});
+    if (Knows("no_baby")) o.push_back({"m_baby", "Why are there no baby photos?", true});
+    if (Knows("calendar")) o.push_back({"m_pickup", "What's the pickup?", true});
+    if (Knows("phone_mom") && t < 22 * 60) o.push_back({"m_phone", "Who's calling at 16:22?", true});
+    if (Knows("reports")) o.push_back({"m_weeks", "What's week 612?", true});
+    if (Knows("book_notes")) o.push_back({"m_chair", "What chair did I ask about?", true});
+    if (Knows("juice")) o.push_back({"m_juice", "What's in my juice?", true});
+    if (Knows("leash")) o.push_back({"m_scar", "What's that behind your ear?", true});
+    if (Knows("handlers")) o.push_back({"m_real", "Are you even my mom?", true});
+    if (shift == Shift::Sister && sisterNoticed) o.push_back({"m_sister", "Who's in the bathroom?"});
+    return o;
+}
+std::vector<ChoiceOpt> Story::DadQuestions() const {
+    std::vector<ChoiceOpt> o;
+    if (Knows("loop")) o.push_back({"d_loop", "Dad, I'm stuck in a loop.", true});
+    if (Knows("calendar")) o.push_back({"d_pickup", "What's the pickup?", true});
+    if (Knows("dad_radio")) o.push_back({"d_report", "Who do you report to?", true});
+    if (Knows("dad_goodbye") && !Knows("dad_key") && !SawEvent("flag44")) o.push_back({"d_flag", "What happens at forty-four?", true});
+    if (Knows("basement_files")) o.push_back({"d_retire", "What will you do when you retire?", true});
+    if (Knows("leash")) o.push_back({"d_scar", "What's that behind your ear?", true});
+    if (Knows("the_tape")) o.push_back({"d_tape", "\"Subject is resisting.\"", true});
+    if (shift == Shift::Sister && sisterNoticed) o.push_back({"d_sister", "Who's in the bathroom?"});
+    return o;
 }
 
 // ============================================================ knife
@@ -1455,6 +1874,8 @@ void Story::Choose(const std::string& id, int px, int py) {
         return;
     }
     if (id == "e_run") { EscapeEnding(); return; }
+    if (id == "e_dinner") { DinnerEnding(); return; }
+    if (id == "c_wrist") { ShowWrist(true); return; }
     if (id == "e_stay") {
         Say("Mom", "(she lets go of your hand) ...Okay. Okay. Hide. HIDE.");
         parentsAllied = false;
@@ -1474,6 +1895,21 @@ void Story::Choose(const std::string& id, int px, int py) {
         else Say("You", "(You take the tape again.)");
         return;
     }
+    if (id == "cab_watch") {
+        // v0.10: the old watch was never just set dressing
+        bool hadKey = hasKey;
+        if (hadKey) keyInDrawer = true;
+        Hold(Item::BabyWatch, hadKey);
+        if (hadKey) keyInDrawer = true;
+        if (Once("watch_take")) {
+            Say("", "(Not an old watch. A small one. An Origin like yours, but tiny. The strap would fit around two of your fingers.)");
+            Say("", "(Scratched into the back: ANCHOR 06. DO NOT REMOVE.)");
+            Say("You", "(Zero six. That's me. I wore this before I could walk.)");
+            if (Knows("no_baby")) Say("You", "(No baby photos. But they kept this.)");
+            AddClue("baby_watch");
+        } else Say("You", "(You take the tiny watch again.)");
+        return;
+    }
     if (id == "cab_key") { Hold(Item::Key, true); keyInDrawer = false; Say("You", "(You take the key back out of the lock.)"); return; }
     if (id == "vt_play") {
         Sound("hush_on");   // v0.9: nothing under the tape but the tape
@@ -1484,12 +1920,14 @@ void Story::Choose(const std::string& id, int px, int py) {
         Black("Dad's voice, off camera, bored. \"Session one, week three hundred and twelve. Subject is resisting.\"");
         Black("You don't watch the next part. You can't. You hear it anyway.");
         Black("You hear yourself. You didn't know you could make that sound.");
+        Sound("hum_on");   // v0.10: the tune from the kitchen, alone
         Black("You hear Mom. She's humming. The same carol she hums in the kitchen every Christmas Eve.");
         Black("It goes on for a long time. The clock in the corner of the tape says forty-one minutes.");
         Black("Then Mom walks into the picture with a glass of juice. A straw in it. She smiles at the camera.");
         Black("\"There we go, sweetie. Drink up. You won't remember any of this.\"");
         Black("The boy drinks. He stops crying. He smiles back at her.");
         Black("That's the worst part. You're smiling.");
+        Sound("hum_off");
         Sound("hush_off");
         FadeFor(5, "The tape hisses. Snow on the screen.");
         Say("You", "(I'm shaking. I can't make it stop.)");
@@ -1504,7 +1942,7 @@ void Story::Choose(const std::string& id, int px, int py) {
     if (id == "it_back") {
         static const char* line[] = { "", "(You put the knife back in the block.)", "(You put the key back in the little box.)",
             "(You drop the stick on the woodpile.)", "(You put the trash bag back in the bin.)", "(You put the dog food back.)", "(You put the flashlight back.)",
-            "(You put the tape back and take the key out of the lock.)" };
+            "(You put the tape back and take the key out of the lock.)", "(You put the tiny watch back in Dad's cabinet.)" };
         if (held == Item::Tape) { Say("You", line[(int)held]); Hold(Item::Key, true); keyInDrawer = false; return; }
         Say("You", line[(int)held]);
         Hold(Item::None);
@@ -1655,6 +2093,100 @@ void Story::Choose(const std::string& id, int px, int py) {
         knifeChecks = 0;
         Say("You", "(You put it back. Your hand is sweating.)");
     }
+    // ---- v0.10 asking about what you remember
+    else if (id == "m_ask") {
+        std::vector<ChoiceOpt> o = MomQuestions();
+        o.push_back({"none", "Never mind."});
+        Choice("What do I ask her?", o);
+    } else if (id == "d_ask") {
+        std::vector<ChoiceOpt> o = DadQuestions();
+        o.push_back({"none", "Never mind."});
+        Choice("What do I ask him?", o);
+    } else if (id == "m_weeks") {
+        Say("You", "What's week 612?");
+        Say("Mom", "(the glass in her hand stops halfway to the shelf) ...Where did you see that?");
+        Say("You", "On your desk.");
+        Say("Mom", "It's how long we've lived up here. I count. It's silly.");
+        Say("You", "(612 weeks is eleven years and nine months. That's not the house. That's me.)");
+        ChangeMood(-1);
+    } else if (id == "m_chair") {
+        Say("You", "What chair did I ask about?");
+        Say("Mom", "(too fast) Your high chair. You loved that high chair.");
+        Say("You", "(She wrote that note at week 400. I was almost eight.)");
+    } else if (id == "m_juice") {
+        Say("You", "What's in my juice?");
+        Say("Mom", "Apple. (she smiles) It's always apple, sweetie.");
+        Say("You", "(She didn't ask why I'm asking.)");
+        if (tainted) Say("Mom", "(the smile stays on a second too long) ...You did drink it today. Didn't you?");
+        ChangeMood(-1);
+    } else if (id == "m_scar") {
+        Say("You", "What's that behind your ear?");
+        Say("Mom", "(her hand goes to it) Chicken pox. From when I was little.");
+        Say("You", "Mine is in the same place. So is Dad's.");
+        Say("Mom", "(she's still touching it) ...Is it?");
+        Say("You", "(She really doesn't know. They did it to them too.)");
+    } else if (id == "m_sister") {
+        Say("You", "Who's in the bathroom?");
+        Say("Mom", "(she laughs) Your sister. Who else? She'll be an hour, you know how she is.");
+        Say("You", "(I don't. I really don't.)");
+        Say("Mom", "Set the table when you've got a minute. Four, like always.");
+        Achieve("Table for Four");
+    } else if (id == "d_sister") {
+        Say("You", "Who's in the bathroom?");
+        Say("Dad", "Your sister, buddy. Don't start with her today. It's Christmas.");
+        Say("You", "(He said it like he's said it a hundred times. He's never said it before.)");
+        Achieve("Table for Four");
+    } else if (id == "m_watch") {
+        Say("Mom", "(her whole face changes) Oh. Look at that.");
+        Say("Mom", "You were so small. It went around your arm twice. You screamed the whole first night.");
+        Say("", "(She's smiling. A real one. You've never seen that one before.)");
+        Say("Mom", "(then she remembers who she's talking to) ...Put that back where you found it. Before your father sees.");
+        if (momAtt == Attitude::Normal && Once("mom_watch_mood")) ChangeMood(-1);
+    } else if (id == "m_hum") {
+        // v0.10: the tape pays off on her, not just on you
+        solemn = true;
+        Say("You", "(You hum it. The carol. All the way through, the way she does.)");
+        Say("Mom", "(she smiles) You know that one? I didn't think you ever...");
+        Say("Mom", "(the smile goes) Where did you hear that?");
+        Say("You", "From you. Week three hundred and twelve. You hummed it the whole time.");
+        Sound("glass");
+        Say("", "(The plate slips out of her hands. She doesn't look at the pieces.)");
+        Say("Mom", "(very quietly) You drank the juice. I watched you drink it.");
+        Say("You", "Every time.");
+        Say("Mom", "(she sits down on the kitchen floor, in the pieces) I hummed so I wouldn't hear it. That's all it was. So I wouldn't hear.");
+        Say("You", tainted ? "(I watch her cry. I notice that I'm taking notes.)" : "(I wait to feel better. I don't.)");
+        momRemorse = true;
+        solemn = false;
+    } else if (id == "d_flag") {
+        Say("You", "What happens at forty-four?");
+        Say("Dad", "(he drops the wrench) ...What?");
+        Say("You", "You said it. Flag. Forty-four.");
+        Say("Dad", "(he picks the wrench up very slowly) Just a thing I check. Before the storm. Go on in, buddy.");
+        Say("You", "(16:44. The flagpole. He goes out there and checks something. I could be out there too.)");
+    } else if (id == "d_retire") {
+        Say("You", "What will you do when you retire?");
+        Say("Dad", "(he actually smiles) A boat. Nothing fancy. Hardangerfjord, somewhere the phone doesn't reach.");
+        Say("Dad", "Your mother wants chickens. I said fine. Chickens on a boat.");
+        Say("Dad", "(he looks at you) ...You'd have liked the boat, buddy.");
+        Say("You", "(Handlers are not to be informed. I don't inform him.)");
+    } else if (id == "d_scar") {
+        Say("You", "What's that behind your ear?");
+        Say("Dad", "Old shrapnel. From before.");
+        Say("You", "(He doesn't say before what. I don't think he knows.)");
+    } else if (id == "d_tape") {
+        Say("You", "\"Subject is resisting.\"");
+        Say("Dad", "(all the colour goes out of him)");
+        Say("Dad", "That was... we had orders. Buddy. We had orders.");
+        Say("You", "(He sounded bored on the tape. He doesn't sound bored now.)");
+        dadAtt = Attitude::Scared;
+        Once("dad_sorry_scared");
+    } else if (id == "d_watch") {
+        Say("Dad", "Where did you... (you can watch him check the cabinet key in his head)");
+        Say("Dad", "Give me that.");
+        Say("You", "(I don't.)");
+        Say("Dad", "(he looks at it in your hand for a long time) ...Fine. It's yours anyway. Always was.");
+        if (dadAtt == Attitude::Normal) dadAtt = Attitude::Cold;
+    }
     // ---- bed
     else if (id == "m_nisse") {
         Say("You", "Is Julenissen really coming?");
@@ -1692,7 +2224,7 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("Mom", "Excuse me? Try that again and see what happens.");
         ChangeMood(-1);
     } else if (id == "m_loop" && Befriended()) {
-        if (Knows("phone_answer") || Knows("basement_files")) ConvinceParents("Mom");
+        if (HasProof()) ConvinceParents("Mom");
         else {
             Say("You", "Mom, this day keeps happening. A man comes at 16:50 and...");
             Say("Mom", "(she looks at you for a long time) ...I believe that you believe it, sweetie.");
@@ -1762,7 +2294,7 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("You", "Why does it say PICKUP behind door 24?");
         Say("Dad", "...Presents. Mom's thing.");
         Say("You", "(He doesn't look at me when he says it.)");
-    } else if (id == "d_loop" && Befriended() && (Knows("phone_answer") || Knows("basement_files"))) {
+    } else if (id == "d_loop" && Befriended() && HasProof()) {
         ConvinceParents("Dad");
     } else if (id == "d_loop" && Befriended()) {
         Say("You", "Dad. I'm stuck. The same hour keeps repeating and a man is coming.");
@@ -1875,6 +2407,76 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("", "(Nothing. Not even a dial tone anymore.)");
         Say("You", "(The line only goes one place. Not the police.)");
     }
+    else if (id == "p_unplug") {
+        phoneUnplugged = true;
+        Say("You", "(Behind the bench, where nobody looks. One tug.)");
+        Say("You", "(No call. No \"confirm pickup\". Let's see what he does without his orders.)");
+    } else if (id == "p_plug") {
+        phoneUnplugged = false;
+        Say("You", "(Back in. Dial tone.)");
+    }
+    // ---- v0.10 his car
+    else if (id == "car_look") {
+        Say("", "(A clipboard on the passenger seat. Three lines. 04, ticked. 05, ticked. 06 - 16:50 - COLLECT 1, CLEAN 2.)");
+        Say("", "(A thermos. A paper bag from the bakery in Geilo. He stopped for a bun on his way to do this.)");
+        Say("You", Knows("handlers") ? "(Collect one. That's me. Clean two. That's them. They have no idea.)" : "(Collect one. Clean two. There are three of us in the house. Four with Doggo.)");
+        AddClue("his_car");
+    } else if (id == "car_trunk") {
+        Say("", "(It isn't locked. Oil. Wet dog. A grey blanket.)");
+        Say("", "(Two juice boxes, empty, the straws chewed flat. A small mitten. Dog hair on the blanket. Not Doggo's colour.)");
+        Say("You", "(The mitten isn't mine. 04 and 05 were in here today. Somebody had a dog.)");
+        AddClue("trunk");
+    } else if (id == "car_in") {
+        ExpressDelivery();
+    }
+    // ---- v0.10 Doggo wants out
+    else if (id == "g_out") {
+        doggoOut = true; doggoStay = false;
+        closedDoors.erase(20 * World::W + 20);
+        Sound("door");
+        Say("Doggo", "*shoots out into the snow like he's been waiting all day. Straight through the gate. He doesn't look back.*");
+        Say("You", Knows("visitor_time") ? "(Go on. Run. Don't come back before five.)" : "(He'll scratch at the door when he's cold.)");
+    }
+    // ---- v0.10 the filing cabinet
+    else if (id == "fi_order") {
+        FadeFor(5, "Reading the files");
+        Say("", "SUBJECT 06. Loop-aware candidate. Suppression: daily. Sessions: weekly. Handlers: 2.");
+        Say("", "IF SUBJECT SHOWS VIOLENCE: COLLECT IMMEDIATELY.");
+        Say("", "Clean-up of both handlers at collection. Handlers are NOT to be informed. Compliance is better when they believe they are retiring.");
+        Say("You", "(They don't know. They think they get to leave after today.)");
+        if (tainted) Say("", "(The page on top is new. Today's date. SUBJECT HAS SHOWN VIOLENCE. The ink is still wet.)");
+        Say("", "(A letterhead: FINSE FACILITY. Under it, THE MACHINE, underlined three times.)");
+        bool first = !Knows("basement_files");
+        AddClue("basement_files");
+        AddClue("program_hq");
+        if (first) {
+            if (tainted) Narrate("They were right about me. They were right to be scared. I made sure of it.");
+            else Narrate("If I never hurt anyone, they'd never have a reason. And they took me anyway.");
+        }
+        if (!Knows("protocol")) Say("You", "(There's a thinner folder behind this one. No label on it.)");
+    } else if (id == "fi_protocol") {
+        FadeFor(5, "Reading the thin folder");
+        Say("", "ORIGIN PROTOCOL. Internal. Do not copy.");
+        Say("", "A subject cannot experience his own death. In every branch where he dies there is nobody left to notice. What he experiences is the branch where he did not.");
+        Say("", "From the inside he reports it as waking up. Same bed. Same hour.");
+        Say("", "The watch fixes the anchor. For collection day the anchor is 16:00.");
+        Say("", "We cannot see the branches. We only see drift: a child who knows things nobody told him.");
+        Say("", "Daily suppression keeps the count at zero. On collection day the dose is a placebo. We need him to keep this one.");
+        Say("You", "(Today's juice was just juice. They wanted me to remember this hour. All of it. On purpose.)");
+        bool first = !Knows("protocol");
+        AddClue("protocol");
+        if (first) Narrate("I wasn't stuck in that hour. I was being kept in it. There's a difference. It took me years to feel it.");
+        if (tainted || Knows("dead_switch")) {
+            Say("", "(One more page, clipped to the back. APPENDIX C: GRADUATION.)");
+            Say("", "The collector carries a paired switch. A subject who kills his collector dies with him.");
+            Say("", "A subject who learns this across branches, and removes the switch first, has shown everything we select for: memory, planning, and the will to use both.");
+            Say("", "Such a subject is not a failed collection. He is the result. He replaces the collector.");
+            Say("You", "(\"They said you'd get there eventually.\")");
+            bool firstG = !Knows("graduation");
+            AddClue("graduation");
+            if (firstG) { Achieve("Entrance Exam"); Narrate("It was never a way out. It was the entrance exam."); }
+        } else Say("You", "(A page has been torn off the back. APPENDIX C. Just the staple is left.)");
+    }
     // ---- front door
     else if (id == "f_lock") {
         frontLocked = true;
@@ -1955,6 +2557,19 @@ void Story::Choose(const std::string& id, int px, int py) {
         VisitorNoticesYou();
     } else if (id == "v_leave") {
         VisitorNoticesYou();
+    } else if (id == "v_watch") {
+        ShowWrist(false);
+        VisitorNoticesYou();
+    } else if (id == "v_every") {
+        echoAsked = true;
+        Say("You", "\"We do this every time.\" What did you mean?");
+        Say("The visitor", "(he tilts his head) Did I say that?");
+        Say("You", "Not today.");
+        Say("The visitor", "(a long pause. Snow settles on his shoulders.) ...Huh.");
+        Say("", "(For one second he looks at you the way you'd look at a person. Then it's gone.)");
+        Say("The visitor", "Go inside, 06.");
+        AddClue("echo");
+        VisitorNoticesYou();
     } else if (id == "v_stab") {
         Say("", "(You go for him. He catches your wrist like he's been expecting it.)");
         AddDark(1);
@@ -1997,6 +2612,16 @@ void Story::Interact(const std::string& id, int px, int py) {
         else Choice("An open door.", {{std::string("dr_close:") + id, "Close it."}, {std::string("dr_lockc:") + id, "Close it and lock it."}, {"none", "Leave it."}});
         return;
     }
+    if (id == "door_bath" && shift == Shift::Sister && !collection && !brokenDoors.count(9 * World::W + 13)) {
+        // v0.10: a reality where somebody else lives here
+        Say("", "(Occupied. Running water. Somebody singing a carol, badly.)");
+        Say("A girl's voice", "Go AWAY. I'm not done!");
+        Say("You", "(I don't have a sister.)");
+        if (hasKey) Say("You", "(The key turns. The door doesn't move. Something is holding it from the other side.)");
+        sisterNoticed = true;
+        Achieve("Table for Four");
+        return;
+    }
     if (id == "doggo" && chase) {
         if (doggoStay) Choice("Doggo is flat on the floor, staying.", {{"g_come", "\"Come on, boy!\""}, {"none", "(Let him stay.)"}});
         else Choice("Doggo is pressed against your legs, growling at the dark.", {{"g_sit", "\"Stay!\""}, {"none", "(Keep him close.)"}});
@@ -2011,6 +2636,17 @@ void Story::Interact(const std::string& id, int px, int py) {
     bool dadInShed = world.RoomAt(Dad().x, Dad().y) == Room::Shed && DadFree();
     bool dadAtShed = world.RoomAt(Dad().x, Dad().y) == Room::Shed && !dadDown;
 
+    if (id == "car") {
+        // v0.10: his car stands empty at the gate while he is at the window
+        if (Tutorial()) { Say("You", "(A black car at our gate. Julenissen has a CAR? Where are the reindeer?)"); return; }
+        if (!CarEmpty()) { Say("You", "(He's right there. Not now.)"); return; }
+        See("car");
+        std::vector<ChoiceOpt> o = {{"car_look", "Look in through the window."}, {"car_trunk", "Open the trunk."}};
+        if (Knows("visitor_time")) o.push_back({"car_in", "Get in the trunk and pull the lid down.", true});
+        o.push_back({"none", "Get away from it."});
+        Choice("His car. The engine is running. Nobody is in it.", o);
+        return;
+    }
     if (id == "bed") {
         Choice("Lie down for a bit? (10 min)", {{"bed_sleep", "Nap."}, {"none", "Nah."}});
     } else if (id == "toys") {
@@ -2019,7 +2655,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         roomClean = true;
         Say("You", "(Room: clean. Ish.)");
     } else if (id == "window") {
-        if (CarHere()) { Say("You", "(Headlights at the gate. A black car. No plates.)"); return; }
+        if (CarHere()) { Say("You", "(Headlights at the gate. A black car. No plates.)"); See("car"); return; }
         Say("You", Stage() >= 2 ? "(The vidda. White and endless. Like it's waiting.)"
                                 : "(Blue dusk. Snow on everything. Nothing out there for kilometres.)");
     } else if (id == "toilet") {
@@ -2034,6 +2670,8 @@ void Story::Interact(const std::string& id, int px, int py) {
             seenToilet45 = true;
         }
     } else if (id == "mirror") {
+        if (shift == Shift::Sister) { Say("You", "(The mirror is fogged up. Somebody drew a smiley face in it. The tap is still warm.)"); return; }
+        if (held == Item::BabyWatch && Once("mirror_watch")) Say("You", "(I hold the tiny watch up next to mine. Same watch. One of us grew.)");
         if (Stage() == 0) Say("You", "(That's me. Messy hair. Origin watch. Looking cool.)");
         else if (Stage() == 1) Say("You", "(That's me. Right? Yeah. That's me.)");
         else if (Stage() == 2) Say("You", "(My reflection blinks a little late. I'm sure it does.)");
@@ -2053,16 +2691,19 @@ void Story::Interact(const std::string& id, int px, int py) {
             ChangeMood(-2);
         }
     } else if (id == "pbed") {
-        Say("You", "(Two pillows. Perfectly made. It doesn't look slept in.)");
+        Say("You", Stage() >= 2 ? "(Two pillows. No dents in either. I don't think they sleep in here. I think they wait.)"
+                                : "(Two pillows. Perfectly made. It doesn't look slept in.)");
     } else if (id == "drawer") {
         // v0.7: Dad's cabinet. Same lock as the basement.
         if (drawerOpen) {
             std::vector<ChoiceOpt> o;
             if (held == Item::Tape) o.push_back({"it_back", "Put the tape back and take the key."});
+            else if (held == Item::BabyWatch) o.push_back({"it_back", "Put the tiny watch back."});
             else {
                 if (keyInDrawer) o.push_back({"cab_key", "Take the key out of the lock."});
                 if (keyInDrawer || hasKey) o.push_back({keyInDrawer ? "cab_tape2" : "cab_tape", keyInDrawer ? "Take the tape." : "Take the tape. (leave the key in the lock)"});
             }
+            if (held != Item::BabyWatch) o.push_back({"cab_watch", "Take the old watch."});
             o.push_back({"none", "Leave it."});
             Choice("Dad's cabinet is open. Papers, an old watch, a VHS tape: S06 - SESSION 1 - WEEK 312.", o);
             return;
@@ -2071,7 +2712,7 @@ void Story::Interact(const std::string& id, int px, int py) {
             drawerOpen = true;
             Say("You", "(The basement key fits Dad's cabinet too. Of course it does.)");
             Say("", "(Papers. An old watch. A VHS tape with a label in Dad's handwriting: S06 - SESSION 1 - WEEK 312.)");
-            Choice("The tape.", {{"cab_tape", "Take the tape. (leave the key in the lock)"}, {"none", "Leave it."}});
+            Choice("Dad's cabinet.", {{"cab_tape", "Take the tape. (leave the key in the lock)"}, {"cab_watch", "Take the old watch. (leave the key in the lock)"}, {"none", "Leave it."}});
             return;
         }
         Say("You", "(Dad's cabinet. Locked. Dad says he keeps the basement key on him. Always. He says it a lot.)");
@@ -2120,11 +2761,22 @@ void Story::Interact(const std::string& id, int px, int py) {
                 Say("Mom", "(snatching the phone) I've got it, sweetie.");
                 Say("Mom", "Hello? ...Yes. Today. ...No, he doesn't suspect a thing.");
                 AddClue("phone_mom");
+            } else {
+                // v0.10: this used to do nothing at all when Mom wasn't around
+                Say("You", "Hello?");
+                Say("Voice", "Handler two? ...Who is this?");
+                Say("", "*click*");
             }
+            return;
+        }
+        if (phoneUnplugged) {
+            Say("You", "(Dead. The plug is behind the bench, where I left it.)");
+            Choice("The landline.", {{"p_plug", "Plug it back in."}, {"none", "Leave it."}});
             return;
         }
         std::vector<ChoiceOpt> o = {{"none", "Hang up."}};
         if (Knows("visitor_time")) o.insert(o.begin(), {"p_113", "Call 113 (emergency).", true});
+        if (Knows("phone_answer") && t < pm * 60) o.insert(o.begin(), {"p_unplug", "Pull the plug out of the wall.", true});
         Say("You", "(Dial tone.)");
         Choice("Who would you even call?", o);
     } else if (id == "fridge") {
@@ -2138,6 +2790,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         Hold(Item::Bag);
         Say("You", "(You grab the trash bag. It's leaking. Bins are out in the yard.)");
     } else if (id == "bowl") {
+        if (doggoOut) { Say("You", "(His bowl. He's out there somewhere, running. Good.)"); return; }
         if (!DoggoExists()) {
             Say("You", "(An empty dog bowl. Whose is this? We don't have a dog. Do we?)");
             if (shift == Shift::NoDoggo) Achieve("Who's a Good Boy?");
@@ -2151,7 +2804,14 @@ void Story::Interact(const std::string& id, int px, int py) {
     } else if (id == "tv") {
         if (PowerOut()) { Say("You", "(No power. Just my own face in the glass.)"); return; }
         FadeFor(Dur(20), "Watching TV");
-        if (Knows("handlers")) {
+        if (Knows("handlers") && Knows("static_tv") && loop % 3 == 1) {
+            // v0.10: it isn't always the same wrong episode
+            Say("", "(A cooking show. The chef is making ribbe. He looks into the camera.)");
+            Say("", "(\"Twelve years on a low heat. Then you take it out.\")");
+        } else if (Knows("handlers") && Knows("static_tv") && loop % 3 == 2) {
+            Say("", "(The weather. The map only has one house on it.)");
+            Say("", "(\"Clear skies everywhere else,\" says the weather lady. She sounds sorry about it.)");
+        } else if (Knows("handlers")) {
             Say("", "(Same channel. Different episode. A boy in a box. The audience laughs.)");
             Say("", "(The host looks straight at you. \"See you at ten to five, Subject 06!\")");
             if (!Knows("static_tv")) {
@@ -2160,14 +2820,29 @@ void Story::Interact(const std::string& id, int px, int py) {
             }
         } else {
             Say("", "(The Kaptein Fjord Christmas special. You've seen it. Twice. Three times. Ten times.)");
+            if (loop >= 6) Say("You", "(\"See you next year, kids!\" He has no idea.)");
+            else if (loop >= 3) Say("You", "(I can do his lines with him now. I'm a little bit ahead of him.)");
         }
     } else if (id == "couch") {
         FadeFor(Dur(10), "Rotting on the couch");
-        Say("You", "(Ten minutes of nothing. Worth it.)");
+        Say("You", Stage() >= 2 ? "(Ten minutes of nothing. I count the seconds anyway. All 600.)" : "(Ten minutes of nothing. Worth it.)");
     } else if (id == "radio") {
-        Say("", "(Radio) ...storm warning for Hardangervidda. The road closes at 16:50 and stays closed until the 27th. Do not travel tonight. God jul.");
+        // v0.10: the radio follows the hour
+        if (PowerOut()) { Say("You", "(Dead. No power.)"); return; }
+        if (t < 15 * 60) Say("", "(Radio) ...storm warning for Hardangervidda. The road closes at 16:50 and stays closed until the 27th. Do not travel tonight. God jul.");
+        else if (t < 30 * 60) {
+            Say("", "(Radio) ...and now the boys' choir. (Singing. A carol. You know this one. Mom hums it in the kitchen.)");
+            if (Knows("the_tape")) Say("You", "(I turn it off.)");
+        } else if (t < 45 * 60) {
+            Say("", "(Radio) ...and at five o'clock the bells will ring Christmas in from every church in the country, as they have for...");
+            if (Stage() >= 1) Say("You", "(I have never heard them from inside the house. Not once.)");
+        } else {
+            Say("", "(Radio) (Static. The storm is in the antenna.)");
+            if (Stage() >= 2) Say("", "(Under the static, very faint: ...zero six... ten to five...)");
+        }
     } else if (id == "woodstove") {
-        Say("You", "(Warm. The only thing in this house that doesn't feel weird.)");
+        Say("You", Stage() >= 3 ? "(Warm. I hold my hand close until it hurts. Just checking that it still does.)"
+                                : "(Warm. The only thing in this house that doesn't feel weird.)");
     } else if (id == "bins") {
         if (trashDone) { Say("You", "(Trash is out. Chore done.)"); return; }
         if (!hasBag) { Say("You", "(The bins. I need the bag from the kitchen first.)"); return; }
@@ -2175,7 +2850,8 @@ void Story::Interact(const std::string& id, int px, int py) {
         trashDone = true; Hold(Item::None);
         Say("You", "(Trash: out. Sock: ruined.)");
     } else if (id == "doghouse") {
-        if (!DoggoExists()) {
+        if (doggoOut) Say("You", "(Empty. His tracks go straight past it and out through the gate.)");
+        else if (!DoggoExists()) {
             Say("You", "(A doghouse. Empty. Nobody remembers anyone living here. Nobody but me.)");
             if (shift == Shift::NoDoggo) Achieve("Who's a Good Boy?");
         } else {
@@ -2189,6 +2865,15 @@ void Story::Interact(const std::string& id, int px, int py) {
         if (Knows("dad_key")) {
             if (hasKey) { Choice("The little box at the bottom of the flagpole.", {{"it_back", "Put the key back."}, {"none", "Keep it."}}); return; }
             Choice("The little box at the bottom of the flagpole.", {{"fl_key", "Take the key."}, {"none", "Leave it."}});
+            return;
+        }
+        if (SawEvent("flag44")) {
+            // v0.10: the clean route you can actually find. You watched him check it
+            Say("You", "(The tiny box. Painted the same colour as the pole. I'd never have seen it if I hadn't watched him.)");
+            Say("You", "(A key. THE key.)");
+            Hold(Item::Key);
+            AddClue("dad_key");
+            Narrate("Every Christmas Eve at 16:44 he checked that it was still where he'd hidden it from me. That's how I found it.");
             return;
         }
         flagTouches++;
@@ -2207,7 +2892,8 @@ void Story::Interact(const std::string& id, int px, int py) {
         }
         Say("You", "(The flag is snapping in the wind. Dad raised it this morning, in this weather. For who?)");
     } else if (id == "generator") {
-        Say("You", "(The generator. Dad's been 'fixing' it for weeks.)");
+        Say("You", Knows("dad_radio") ? "(The generator. Nothing wrong with it. It's what he stands next to while he talks on the radio.)"
+                                      : "(The generator. Dad's been 'fixing' it for weeks.)");
     } else if (id == "bench") {
         if (dadInShed) {
             Say("Dad", "Hands off the bench, buddy. Sharp stuff.");
@@ -2228,6 +2914,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         Choice("The pantry. Knekkebrød, brunost, dog food, a big flashlight.", o);
     } else if (id == "sink") {
         if (dishesDone) { Say("You", "(Dishes: done. My fingers are prunes.)"); return; }
+        if (shift == Shift::Sister) { Say("You", "(Four plates in the rack. Four glasses. Four.)"); sisterNoticed = true; }
         FadeFor(Dur(3), "Doing the dishes");
         dishesDone = true;
         Say("You", "(Ribbe fat. The worst kind of fat.)");
@@ -2254,7 +2941,8 @@ void Story::Interact(const std::string& id, int px, int py) {
     }
     // ---- v0.2 objects
     else if (id == "wardrobe") {
-        Say("You", "(My clothes. Every label says S06. I always thought that was a size.)");
+        if (shift == Shift::Sister) { Say("You", "(My clothes on the left. On the right, dresses. A size bigger than me. They smell like somebody.)"); sisterNoticed = true; return; }
+        Say("You", Knows("reports") ? "(My clothes. S06 on every label. It was never a size.)" : "(My clothes. Every label says S06. I always thought that was a size.)");
     } else if (id == "calendar") {
         Say("", "(The advent calendar. Door 24 is open. No chocolate. One word in Mom's handwriting: PICKUP.)");
         AddClue("calendar");
@@ -2263,8 +2951,16 @@ void Story::Interact(const std::string& id, int px, int py) {
         Say("", "(\"dose\", \"drift\", \"week 400: stable\", \"he asked about the chair again\".)");
         AddClue("book_notes");
     } else if (id == "album") {
-        Say("You", "(Me at 4. Me at 6. Me at 9 with a fish.)");
-        Say("You", "(No baby photos. Not one. The album just... starts.)");
+        if (shift == Shift::Sister) {
+            Say("You", "(Me at 4. Me at 6, and a girl holding my hand. Me at 9 with a fish. She's holding the fish.)");
+            Say("You", "(She's in every picture. She's taller than me. I have never seen her before in my life.)");
+            Say("You", "(Still no baby photos. Of either of us.)");
+            sisterNoticed = true;
+            Achieve("Table for Four");
+        } else {
+            Say("You", "(Me at 4. Me at 6. Me at 9 with a fish.)");
+            Say("You", "(No baby photos. Not one. The album just... starts.)");
+        }
         AddClue("no_baby");
     } else if (id == "woodpile") {
         std::vector<ChoiceOpt> o;
@@ -2296,7 +2992,11 @@ void Story::Interact(const std::string& id, int px, int py) {
     } else if (id == "frontdoor") {
         bool closed = closedDoors.count(20 * World::W + 20) > 0;
         if (frontLocked) Choice("The front door is locked.", {{"f_unlock", "Unlock it."}, {"none", "Leave it locked."}});
-        else Choice("The front door.", {{closed ? "dr_open:frontdoor" : "dr_close:frontdoor", closed ? "Open it." : "Close it."}, {"f_lock", "Lock it."}, {"none", "Leave it."}});
+        else {
+            std::vector<ChoiceOpt> o = {{closed ? "dr_open:frontdoor" : "dr_close:frontdoor", closed ? "Open it." : "Close it."}, {"f_lock", "Lock it."}, {"none", "Leave it."}};
+            if (DoggoAtDoor() && !Tutorial()) o.insert(o.begin(), {"g_out", "Let Doggo out."});
+            Choice(DoggoAtDoor() ? "The front door. Doggo is whining at it." : "The front door.", o);
+        }
     } else if (id == "sheddoor") {
         if (dadLocked) {
             Say("Dad", "(through the door) Please. Whatever you think is happening...");
@@ -2322,17 +3022,9 @@ void Story::Interact(const std::string& id, int px, int py) {
         Say("", "(One small screen in the corner just shows a watch. Counting. " + ClockText() + ".)");
         AddClue("basement_screens");
     } else if (id == "files") {
-        FadeFor(5, "Reading the files");
-        Say("", "SUBJECT 06. Loop-aware candidate. Suppression: daily. Sessions: weekly. Handlers: 2.");
-        Say("", "IF SUBJECT SHOWS VIOLENCE: COLLECT IMMEDIATELY.");
-        Say("", "Clean-up of both handlers at collection. Handlers are NOT to be informed. Compliance is better when they believe they are retiring.");
-        Say("You", "(They don't know. They think they get to leave after today.)");
-        if (tainted) Say("", "(The page on top is new. Today's date. SUBJECT HAS SHOWN VIOLENCE. The ink is still wet.)");
-        Say("", "(A letterhead: FINSE FACILITY. Under it, THE MACHINE, underlined three times.)");
-        AddClue("basement_files");
-        AddClue("program_hq");
-        if (tainted) Narrate("They were right about me. They were right to be scared. I made sure of it.");
-        else Narrate("If I never hurt anyone, they'd never have a reason. And they took me anyway.");
+        if (!Knows("basement_files")) { Choose("fi_order", px, py); return; }
+        Choice("The filing cabinet. Two folders.", {{"fi_protocol", Knows("protocol") ? "The thin folder at the back. (5 min)" : "The thin folder at the back. No label. (5 min)"},
+               {"fi_order", "SUBJECT 06: the collection order. (5 min)"}, {"none", "Leave it."}});
     } else if (id == "chair") {
         Say("", "(A chair with straps. Kid-sized. Worn smooth where wrists go.)");
         Say("You", "(My wrists itch. I don't know why. I do know why.)");
@@ -2367,6 +3059,11 @@ void Story::Interact(const std::string& id, int px, int py) {
         else Say("Mom", "(not looking up) Did I say you could come out of your room?");
         Choice(MomName(), {{"m_sorry", "\"Sorry, Mom.\""}, {"none", "(Go.)"}});
     } else if (id == "mom") {
+        if (momRemorse) {
+            Say("Mom", "(she starts a sentence. She stops. She starts the same sentence again.)");
+            Say("You", "(She can't look at me. Good. No. Not good. I don't know.)");
+            return;
+        }
         if (Knows("the_tape") && Once("tape_mom")) Say("You", "(She smiles at me. I can hear her humming. I smile back. I learned that from her.)");
         if (hasKnife && !tainted && Once("mom_sees_knife")) {
             Say("Mom", "Why are you holding that? Put. It. Down.");
@@ -2381,12 +3078,9 @@ void Story::Interact(const std::string& id, int px, int py) {
         if (!Tutorial()) o.push_back({"m_snack", "Can I have a snack? (5 min)"});
         if (Stage() >= 1) o.push_back({"m_born", "Where was I born?"});
         if (!Tutorial()) o.push_back({"m_back", "[Talk back] Chores are stupid."});
-        if (Knows("no_car")) o.push_back({"m_car", "Why don't we have a car?", true});
-        if (Knows("no_baby")) o.push_back({"m_baby", "Why are there no baby photos?", true});
-        if (Knows("calendar")) o.push_back({"m_pickup", "What's the pickup?", true});
-        if (Knows("loop")) o.push_back({"m_loop", "Mom, this day keeps repeating.", true});
-        if (Knows("phone_mom") && t < 22 * 60) o.push_back({"m_phone", "Who's calling at 16:22?", true});
-        if (Knows("handlers")) o.push_back({"m_real", "Are you even my mom?", true});
+        if (size_t n = MomQuestions().size()) o.push_back({"m_ask", "Ask about something I remember. (" + std::to_string(n) + ")", true});
+        if (Knows("the_tape") && !momRemorse) o.push_back({"m_hum", "(Hum her song back to her.)", true});
+        if (held == Item::BabyWatch) o.push_back({"m_watch", "Show her the tiny watch."});
         if (hasKnife) o.push_back({"m_knife", "Show her the knife.", false, true});
         o.push_back({"none", "Never mind."});
         o.insert(o.begin() + 1, {"m_nisse", "Is Julenissen really coming?"});
@@ -2416,9 +3110,8 @@ void Story::Interact(const std::string& id, int px, int py) {
         std::vector<ChoiceOpt> o = {{"d_what", "What are you doing?"}};
         if (dadInShed && !helpedDad) o.insert(o.begin(), {"d_help", "Need help? (15 min)"});
         if (!dadInShed && !Tutorial()) o.push_back({"d_cards", "Wanna play cards? (10 min)"});
-        if (Knows("calendar")) o.push_back({"d_pickup", "What's the pickup?", true});
-        if (Knows("loop")) o.push_back({"d_loop", "Dad, I'm stuck in a loop.", true});
-        if (Knows("dad_radio")) o.push_back({"d_report", "Who do you report to?", true});
+        if (size_t n = DadQuestions().size()) o.push_back({"d_ask", "Ask about something I remember. (" + std::to_string(n) + ")", true});
+        if (held == Item::BabyWatch) o.push_back({"d_watch", "Show him the tiny watch."});
         if (hasKnife && dadAtShed && darkPoints >= DARK_INTERROGATE && !Knows("dad_key"))
             o.push_back({"d_talk", "Make him tell you where the basement key is.", false, true});
         else if (hasKnife) o.push_back({"d_knife", "Show him the knife.", false, true});
@@ -2435,8 +3128,9 @@ void Story::Interact(const std::string& id, int px, int py) {
         if (!Tutorial()) o.push_back({"g_search", "\"Find it, boy!\" (5 min)"});
         if (!Tutorial()) o.push_back({"g_tail", "Pull his tail."});
         if (hasKnife) o.push_back({"g_shed", "Take him out to the shed.", false, true});
+        if (DoggoAtDoor() && !Tutorial() && !frontLocked) o.insert(o.begin() + 1, {"g_out", "Open the front door for him."});
         o.push_back({"none", "Leave him."});
-        Choice("Doggo", o);
+        Choice(DoggoAtDoor() ? "Doggo. He keeps looking at the front door." : "Doggo", o);
     } else if (id == "visitor") {
         if (DoggoExists()) {
             Say("Doggo", "*hides behind your legs. Shaking.*");
@@ -2444,6 +3138,8 @@ void Story::Interact(const std::string& id, int px, int py) {
         }
         std::vector<ChoiceOpt> o = {{"v_who", "Who are you?"}};
         if (Stage() >= 2) o.push_back({"v_program", "You're from the program.", true});
+        if (held == Item::BabyWatch && !Knows("collector")) o.push_back({"v_watch", "(Hold up the tiny watch.)"});
+        if ((Knows("hiding") || Knows("he_runs_fast")) && !Knows("echo")) o.push_back({"v_every", "\"We do this every time.\" What does that mean?", true});
         if (hasKnife) o.push_back({"v_stab", "Go for him. Now.", false, true});
         o.push_back({"v_leave", "(Back away.)"});
         Choice("A big man in a black coat.", o);

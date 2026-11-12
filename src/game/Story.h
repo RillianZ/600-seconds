@@ -68,14 +68,14 @@ struct NpcState {
     bool facingWall = false;
 };
 
-enum class Shift { None, Toilet45, NoDoggo, EarlyStorm };
+enum class Shift { None, Toilet45, NoDoggo, EarlyStorm, Sister };
 
 // v0.5: how a parent feels about you right now (per loop). Big choices lock them into a state,
 // so you can't chat about dinner with someone you just pulled a knife on.
 enum class Attitude { Normal, Cold, Scared, Broken };
 
 // v0.6: the kid holds one thing at a time
-enum class Item { None, Knife, Key, Stick, Bag, DogFood, Flashlight, Tape };
+enum class Item { None, Knife, Key, Stick, Bag, DogFood, Flashlight, Tape, BabyWatch };
 
 // v0.7: how the parents act when he comes. Normal = reluctantly hand you over (they don't know they're
 // next). Dark = they want him gone. Befriended = all chores, nothing dark this loop: they fight for you.
@@ -91,6 +91,13 @@ const char* ItemName(Item it);
 struct EndingEntry { std::string id, title, hint; };
 const std::vector<EndingEntry>& AllEndings();
 
+// v0.10: the hour as a list. An entry shows once you have seen it happen (or hold the memory that proves it)
+struct TimelineEntry { int minute, second; std::string id, text, memory; };
+const std::vector<TimelineEntry>& AllTimeline();
+// v0.10: every achievement, with a nudge for the ones you don't have
+struct AchievementEntry { std::string name, hint; };
+const std::vector<AchievementEntry>& AllAchievements();
+
 // v0.4.2: how often reality shifts. Tweakable live from the debug panel (O with ?debug).
 // Default: never two anomalies within 5 loops, and one is guaranteed within 10.
 struct ShiftConfig {
@@ -98,6 +105,7 @@ struct ShiftConfig {
     bool toilet = true;          // the 45 minute toilet
     bool noDoggo = true;         // the reality without Doggo
     bool earlyStorm = true;      // v0.9: the storm at 16:37, the power out at 16:40
+    bool sister = true;          // v0.10: somebody is in the bathroom. Not saved, no panel row yet
     int chance = 20;             // % chance per loop once the cooldown is over
     int minGap = 4;              // normal loops needed after an anomaly before the next one can happen
     int maxGap = 9;              // after this many normal loops one is guaranteed (0 = never forced)
@@ -139,6 +147,10 @@ public:
     bool prototypeEndShown = false;
     int cleanStreak = 0;       // normal loops in a row since the last reality shift
     std::set<unsigned> seenLines;   // v0.9: hashes of every line already read (so it can be skipped)
+    // v0.10 persistent
+    std::set<std::string> seenEvents;   // things you watched happen: they fill in the timeline
+    int dryLoops = 0;                   // loops in a row without a new memory (the narrator nudges at 3)
+    std::string lastEnd;                // how the last loop ended, so the next one can mention it
     // ---- darkness. Survives even a New Game. You can't undo it.
     int darkPoints = 0;
     bool tainted = false;
@@ -201,6 +213,11 @@ public:
     // v0.8 per loop
     bool hasCoat = false, openedEarly = false;
     float cold = 0;                            // 0 to 1 outside in the storm during the chase. 1 = the snow gets you
+    // v0.10 per loop
+    bool phoneUnplugged = false;               // no call, no confirmation
+    bool momRemorse = false;                   // you hummed it back to her
+    bool sisterNoticed = false;
+    bool echoAsked = false;
     std::string pendingKnifeAct;
     int knifeChecks = 0;
 
@@ -253,10 +270,18 @@ public:
     bool PowerOut() const { return collection || t >= visitorTime || (shift == Shift::EarlyStorm && t >= 40 * 60); }
     bool Storm() const { return t >= (shift == Shift::EarlyStorm ? 37 : 47) * 60; }
     bool CarHere() const { return t >= visitorTime - VISIT_ARRIVE || collection; }
-    bool DoggoExists() const { return shift != Shift::NoDoggo && !doggoGone && !doggoDead; }
+    bool DoggoExists() const { return shift != Shift::NoDoggo && !doggoGone && !doggoDead && !doggoOut; }   // v0.10: out = safe, and not in the house
     bool MomHere() const { return !momLocked; }
     bool DadFree() const { return !dadLocked && !dadDown; }
     bool FullMemory() const { return memory.size() >= AllMemories().size(); }
+    // v0.10
+    bool KnowsEvent(const std::string& id) const;          // timeline: seen it, or hold the memory for it
+    bool SawEvent(const std::string& id) const { return seenEvents.count(id) > 0; }
+    bool HasProof() const { return Knows("phone_answer") || Knows("basement_files") || Knows("his_car") || Knows("leash"); }
+    bool CarEmpty() const;                                 // he is at the window, the car is running at the gate
+    bool DoggoAtDoor() const { return DoggoExists() && !collection && t >= 35 * 60 && t < 40 * 60; }
+    bool Spared() const;                                   // nobody confirmed the clean-up and nobody gave him a reason
+    bool MomHums() const;                                  // she hums in the kitchen while she thinks nobody listens
     NpcState Mom() const;
     NpcState Dad() const;
     NpcState Visitor() const;
@@ -293,7 +318,7 @@ private:
     void CollectionScript();
     void TutorialCollection();
     void ColdOut();
-    void TrunkScript();
+    void TrunkScript(bool quiet = false);
     void SecretEnding();
     void MonsterEnding();
     void DeadSwitchLoop();
@@ -310,6 +335,16 @@ private:
     void ConvinceParents(const std::string& who);
     void AddDark(int n) { darkPoints = std::min(DARK_MAX, darkPoints + n); darkThisLoop += n; }
     void ScreenTimeEnding();
+    // v0.10
+    void See(const std::string& ev) { seenEvents.insert(ev); }
+    bool CleanUp();                 // the black screen lines for the handlers and Doggo. True if they lived
+    void DinnerEnding();
+    void ExpressDelivery();
+    void ShowWrist(bool downed);
+    void LoopOpener(const std::string& how);
+    void Nudge();
+    std::vector<ChoiceOpt> MomQuestions() const;   // what you can ask her because of what you remember
+    std::vector<ChoiceOpt> DadQuestions() const;
     void FliptendoPlayed(const std::string& what);
     int Dur(int minutes) const { return Tutorial() ? minutes * 2 : minutes; }
     bool TutorialLocked(const std::string& id) const;

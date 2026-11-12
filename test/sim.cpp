@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
     At(4, 15); WaitUntil(21);
     Use("phone");
     At(18, 5); Use("desk");
-    At(35, 7); Use("dad", {"d_loop"});
+    At(35, 7); Use("dad", {"d_ask", "d_loop"});
     assert(s.visitorTime == 40 * 60);
     gShiftCfg.forceNext = Shift::Toilet45;   // the debug "force the next loop" knob
     FinishLoop("c_know");
@@ -242,7 +242,7 @@ int main(int argc, char** argv) {
 
     Header("LOOP 5: help Dad, tell Mom, TV, fight");
     At(35, 7); WaitUntil(9); Use("dad", {"d_help"});
-    At(8, 15); Use("mom", {"m_loop"});
+    At(8, 15); Use("mom", {"m_ask", "m_loop"});
     At(21, 14); Use("tv");
     FinishLoop("c_fight");
 
@@ -377,7 +377,7 @@ int main(int argc, char** argv) {
     CleanLoop();
     Header("LOOP 9f: befriended, then tell Mom about the clean-up (False Hope)");
     chores();
-    At(8, 15); Use("mom", {"m_loop"});
+    At(8, 15); Use("mom", {"m_ask", "m_loop"});
     assert(s.parentsAllied && s.Knows("allies"));
     FinishLoop("caught");          // first choice at the door: run for his car
     assert(endingsSeen.back() == "escape");
@@ -400,6 +400,111 @@ int main(int argc, char** argv) {
     At(6, 6); Use("doggo", {"g_sit"});
     assert(s.doggoStay);
     FinishLoop("run");
+
+    // ------------------------------------------------------------ v0.10
+    CleanLoop();
+    Header("LOOP 11a: Doggo wants out at 16:35. Let him");
+    At(20, 18); WaitUntil(36);
+    assert(s.DoggoAtDoor() && s.SawEvent("doggo_door"));
+    Use("doggo", {"g_out"});
+    assert(s.doggoOut && !s.DoggoExists());
+    FinishLoop("caught");
+    assert(s.Knows("doggo_out") && s.achievements.count("Run, Boy"));
+
+    CleanLoop();
+    Header("LOOP 11b: pull the phone plug. No call, no clean-up");
+    At(4, 15); Use("phone", {"p_unplug"});
+    assert(s.phoneUnplugged);
+    WaitUntil(24);
+    assert(!s.phoneAnswered);
+    FinishLoop("c_go");
+    assert(s.Knows("off_hook") && s.achievements.count("Clerical Error"));
+
+    CleanLoop();
+    Header("LOOP 11c: his car is empty while he looks in the window");
+    At(20, 29); WaitUntil(43);
+    assert(!s.CarEmpty());
+    WaitUntil(45);
+    assert(s.CarEmpty());
+    Use("car", {"car_look"}); Use("car", {"car_trunk"});
+    assert(s.Knows("his_car") && s.Knows("trunk") && s.HasProof());
+    { int was = s.loop; Use("car", {"car_in"}); assert(s.loop == was + 1 && s.achievements.count("Express Delivery")); }
+
+    CleanLoop();
+    Header("LOOP 11d: the tiny watch in Dad's cabinet. Show it to Mom, then to him. Ask him about every time");
+    At(10, 26); Use("flag", {"fl_key"});
+    At(27, 5); Use("drawer", {"cab_watch"});
+    assert(s.held == Item::BabyWatch && s.keyInDrawer && s.Knows("baby_watch"));
+    At(8, 15); Use("mom", {"m_watch"});
+    At(20, 29); WaitUntil(45);
+    Use("visitor", {"v_watch"});
+    assert(s.Knows("collector"));
+    Use("visitor", {"v_every"});
+    assert(s.Knows("echo"));
+    FinishLoop("caught");
+
+    CleanLoop();
+    Header("LOOP 11e: the thin folder. The protocol, and Appendix C");
+    At(10, 26); Use("flag", {"fl_key"});
+    At(28, 10); Use("basement", {"b_down"});
+    At(14, 38); Use("files", {"fi_protocol"});
+    assert(s.Knows("protocol") && s.Knows("graduation") && s.achievements.count("Entrance Exam"));
+    FinishLoop("caught");
+
+    CleanLoop();
+    Header("LOOP 11f: hum her song back to her. She says a name");
+    At(8, 15); Use("mom", {"m_hum"});
+    assert(s.momRemorse && !s.MomHums());
+    FinishLoop("c_go");
+    assert(s.Knows("my_name") && s.achievements.count("Say It Again"));
+
+    CleanLoop();
+    Header("LOOP 11g: befriended, allied, and you know about the leash. Sit down (One Good Hour)");
+    chores();
+    At(8, 15); Use("mom", {"m_ask", "m_loop"});
+    assert(s.parentsAllied && s.Knows("leash"));
+    pickQueue = {"e_dinner"};
+    FinishLoop("caught");
+    pickQueue.clear();
+    assert(endingsSeen.back() == "bells" && s.endings.count("bells"));
+
+    Header("LOOP 11h: somebody is in the bathroom");
+    gShiftCfg.forceNext = Shift::Sister;
+    FinishLoop("caught");
+    assert(s.shift == Shift::Sister && s.DoorLocked(13, 9));
+    At(13, 10); Use("door_bath");
+    At(17, 17); Use("album");
+    At(8, 15); Use("mom", {"m_ask", "m_sister"});
+    assert(s.achievements.count("Table for Four") && s.sisterNoticed);
+    FinishLoop("caught");
+
+    Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
+    {
+        Story k; k.memory = {"loop"}; k.loop = 2;
+        k.BeginLoop(); k.beats.clear();
+        while (k.t < 45 * 60 && !k.collection) { k.Tick(0.5f, false, 13, 27); k.beats.clear(); }
+        assert(k.SawEvent("flag44") && k.KnowsEvent("flag44"));
+        k.Interact("flag", 10, 26);
+        assert(k.hasKey && k.Knows("dad_key") && !k.achievements.count("Looked It Up"));
+        std::puts("  saw him check the box, took the key, no accusation");
+    }
+    Header("The narrator: reacts to the last loop, and nudges after three dry ones");
+    {
+        Story o; o.memory = {"loop"}; o.loop = 5; o.lastEnd = "cold"; o.dryLoops = 3;
+        o.BeginLoop();
+        bool react = false, nudge = false;
+        for (auto& b : o.beats) {
+            if (b.type == BeatType::Narrate && b.text.find("snow") != std::string::npos) react = true;
+            if (b.type == BeatType::Narrate && b.text.find("circles") != std::string::npos) nudge = true;
+        }
+        assert(react && nudge && o.dryLoops == 0 && o.lastEnd.empty());
+        Story p; p.LoadSave(s.SaveString());
+        assert(p.seenEvents == s.seenEvents && p.dryLoops == s.dryLoops);
+        assert(s.KnowsEvent("knock") && s.KnowsEvent("bells") && s.KnowsEvent("car"));
+        size_t known = 0; for (auto& e : AllTimeline()) if (s.KnowsEvent(e.id)) known++;
+        std::printf("  timeline: %zu of %zu known\n", known, AllTimeline().size());
+        for (auto& a : s.achievements) { bool listed = false; for (auto& e : AllAchievements()) if (e.name == a) listed = true; assert(listed); }
+    }
 
     std::printf("\nMemory: %zu / %zu\n", s.memory.size(), AllMemories().size());
     for (auto& e : AllMemories()) if (!s.Knows(e.id)) std::printf("  MISSING %s\n", e.id.c_str());

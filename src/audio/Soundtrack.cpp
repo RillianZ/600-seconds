@@ -151,6 +151,20 @@ static float TrackChase(double t) {
     return v;
 }
 
+// v0.10: Mom's song. The Act 1 lead, an octave down, slow, hummed. One phrase, then a breath.
+// It was in the music the whole time. On the tape it is the only thing left.
+float HumSample(double t) {
+    static const int mel[32] = { 72,0,76,79, 0,76,74,0, 72,0,69,72, 74,0,0,0,
+                                 76,0,79,81, 0,79,76,0, 74,0,72,74, 72,0,0,0 };
+    const double step = 60.0 / 96.0 / 2.0 / 0.62;
+    Voice v = FindVoice([](int s) { return s % 48 < 32 ? mel[s % 48] : 0; }, t, step);
+    if (!v.note) return 0;
+    float f = Mtof((float)v.note - 12.0f);
+    double ph = f * v.age + 0.12 * std::sin(2.0 * PI * 5.1 * t);   // a little vibrato
+    float a = (float)std::min(1.0, v.age / 0.07) * (float)std::min(1.0, std::max(0.0, v.left) / 0.06) * std::exp(-(float)v.age * 0.55f);
+    return a * (OscSin(ph) + 0.16f * OscSin(2.0 * ph) + 0.05f * OscSin(3.0 * ph));
+}
+
 float TrackSample(int track, double t) {
     switch (track) {
     case 1: return TrackCute(t);

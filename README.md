@@ -29,11 +29,11 @@ Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains off scr
 | Tab | Skip talking (from loop 2) and any line you've already read |
 | P or Esc | Pause: music, sound, text speed, flashes |
 
-Debug: add `?debug` to the URL, or press Shift+D on the title screen. `M` opens the jukebox (every song), `5` hops to the living room, `6` marks all five chores done, `7` opens the Fliptendo (Flappy Plane), `8` jumps 5 minutes, `9` jumps to 16:49, `0` jumps straight to the knock at the door. On the title screen, `Shift+R` twice is a true hard reset (memories, darkness, endings, achievements, save). `O` opens the debug panel (title or in game): reality shift frequency, force the next loop's reality, restart the loop, set dark points, give or clear all memories, make the visitor blind. Panel settings are saved in the browser and only apply in debug mode.
+Debug: add `?debug` to the URL, or press Shift+D on the title screen. `M` opens the jukebox (every song), `3` hops to the gate, `4` goes to the basement with the tape, `5` hops to the living room, `6` marks all five chores done, `7` opens the Fliptendo (Flappy Plane), `8` jumps 5 minutes, `9` jumps to 16:49, `0` jumps straight to the knock at the door. On the title screen, `Shift+R` twice is a true hard reset (memories, darkness, endings, achievements, save). `O` opens the debug panel (title or in game): reality shift frequency, force the next loop's reality, restart the loop, set dark points, give or clear all memories, make the visitor blind. Panel settings are saved in the browser and only apply in debug mode.
 
 Phone: touch the screen and phone mode turns on. D-pad bottom left, E / RUN / WAIT bottom right, SKIP during talk, tap anywhere to use or continue, tap the top left for the memory log, tap a choice to pick it. The first tap goes fullscreen and asks for landscape.
 
-In the Fliptendo mini game: E / Space / tap to flap, Esc to put it down. Memory log: left/right for topics (the last one is Endings), up/down or the mouse wheel to scroll.
+In the Fliptendo mini game: E / Space / tap to flap, Esc to put it down. Memory log: left/right for pages (Timeline first, then the topics, Endings and Awards), up/down or the mouse wheel to scroll.
 
 Progress (memory log, loop count, achievements) is saved in the browser. `N` on the title screen starts over.
 
@@ -57,7 +57,8 @@ web/index.html       itch.io friendly page shell
 - **New object**: add it to `objs` in `World.h`, give it a branch in `Story::Interact`, draw it in `DrawObj` in `main.cpp`.
 - **New memory**: add a line to `AllMemories()` in `Story.cpp`, then call `AddClue("id")` where the kid learns it.
 - **New knowledge choice**: in `Interact`, `if (Knows("id")) o.push_back({"choice_id", "text", true});` and handle `choice_id` in `Choose`.
-- **New timed event**: add a `Crossed(prev, now, minute)` block in `CheckEvents`.
+- **New timed event**: add a `Crossed(prev, now, minute)` block in `CheckEvents`. If the player should see it on the timeline, add a row to `AllTimeline()` and call `See("id")` when they watch it happen.
+- **New achievement**: call `Achieve("Name")` and add the name with a hint to `AllAchievements()`. The test fails if one is missing from the list.
 
 Run the logic test: `g++ -std=c++17 -Isrc test/sim.cpp src/game/Story.cpp -o sim && ./sim`
 

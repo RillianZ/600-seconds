@@ -15,6 +15,9 @@ const char* TrackInfo(int track);
 // One sample of `track` at time `t` seconds (mono, any sample rate)
 float TrackSample(int track, double t);
 
+// v0.10: Mom's song, hummed. The Act 1 lead, slow and an octave down (mono, -1..1)
+float HumSample(double t);
+
 // How much echo each track wants (0..1)
 float TrackEcho(int track);
 

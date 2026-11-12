@@ -2,6 +2,52 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.10.0
+Built on the branch `fable-audit-20261112` after a full audit. Not merged. The audit and the story calls Claude made are in [docs/AUDIT-v0.10.md](docs/AUDIT-v0.10.md).
+
+**New things to find (56 memories now, was 45)**
+- **The tiny watch.** The "old watch" in Dad's cabinet was never used. Now you can take it. It is yours, from when you were a baby: ANCHOR 06. Show it to Mom, to Dad and to the man at the gate.
+- **The thin folder.** The filing cabinet has a second folder, ORIGIN PROTOCOL. It says in plain words why the hour repeats. A last page, Appendix C, only shows if you know about the box on his belt.
+- **His car.** While he stands at the window his car is empty at the gate. Look in through the window, open the trunk, or climb in yourself (Express Delivery).
+- **Doggo wants out.** He whines at the front door at 16:35. Open it and he is far away when the banging starts.
+- **Pull the phone plug.** If you know what the 16:22 call is, you can stop it. No call, no confirmation, and he leaves Mom and Dad alive. If you behave.
+- **Hum her song.** After the tape you can hum the carol back to Mom. At the end she says your name.
+- **Ask him.** "We do this every time." You can ask the man what he meant. He doesn't know he said it.
+- **Dad at the flagpole.** At 16:44 Dad walks out and checks the tiny box under the flag. Watch him do it and you can take the key. The clean route to the basement is now something you can find by paying attention.
+- **A new topic in the log:** The program.
+
+**Endings**
+- **One Good Hour.** A new ending for a kid who never went dark. False Hope now teaches you the leash (a memory), and that unlocks staying instead of running.
+- Monster and End of the Program gain a few lines if you have read Appendix C.
+
+**Reality**
+- **Somebody is in the bathroom.** A fourth reality shift. Achievement: Table for Four.
+
+**The log**
+- **Timeline.** A new first page: the hour from 16:00 to 17:00. Things show up once you have watched them happen.
+- **Awards.** A page with all 36 achievements and a nudge for each one you don't have.
+- A new memory opens the log on the right page.
+
+**The narrator**
+- He now mentions how the last loop ended, and has twice as many opening lines.
+- After three loops with nothing new he drops a hint.
+
+**Talking**
+- Everything a memory lets you ask Mom or Dad sits behind "Ask about something I remember". The lists had grown taller than the screen.
+- 13 new questions and answers for Mom and Dad. Any proof now works on them: the phone call, the files, his clipboard or the scar.
+- The radio follows the hour. The TV has more wrong episodes. Several objects have new lines later in the game.
+
+**Sound (not heard by a person yet)**
+- Wind outside and through the walls, the storm, the hum of the basement, the stove.
+- Footsteps on planks, tiles, snow and gravel. His can be heard through walls, duller and from the side he is on.
+- Mom hums in the kitchen. It is the Act 1 tune, slow. On the tape it is the only sound.
+
+**Fixes**
+- Answering the phone with Mom locked away did nothing at all. Now somebody is on the line.
+- The basement was drawn under the yard when you stood at the gate.
+- His car is solid, so walking up to it no longer sends you running onto the vidda.
+- Debug key 3 hops to the gate.
+
 ## What's in v0.9.3
 - **Debug text on the title** moved to the top left, so it no longer covers the content note.
 - **Debug key 4** takes you to the basement with the tape in your hand.
