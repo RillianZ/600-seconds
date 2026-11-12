@@ -94,6 +94,11 @@ static void DrawRumorCard(float top, float bottom, float cardY) {
     int nl = std::min<int>((int)lines.size(), 6);
     float h = 26 + nl * lineH + 4;
     float y = cardY > (top + bottom) / 2 ? top + 2 : bottom - h - 2;
+    if (touchMode) {
+        // the d-pad and the buttons sit over the bottom of the page on a phone: right under the card, or right over it
+        float below = cardY + 12, above = cardY - 12 - h;
+        y = below + h <= bottom - 44 ? below : std::max(top + 2, above);
+    }
     Panel(x, y, w, h, Color{ 22, 18, 32, 250 }, Color{ 255, 210, 90, 255 });
     UIText(m->title.c_str(), x + 8, y + 5, 10, WHITE);
     std::string topic = m->topic;
