@@ -212,7 +212,7 @@ static volatile float aWindT = 0, aBrightT = 1, aHumT = 0, aStoveT = 0, aMomT = 
 static volatile bool aHumSolo = false;   // the tape, and the dinner: nothing but her
 static bool audioOk = false;
 // v0.9: settings, saved apart from the game
-struct Settings { int music = 7, sfx = 10, text = 1; bool calmFlashes = false; bool roofs = true; };
+struct Settings { int music = 7, sfx = 10, text = 1; bool calmFlashes = false; bool roofs = true; bool blips = true; };   // v0.20.1 sound-look: blips
 static Settings settings;
 static bool pauseOpen = false;
 static int pauseSel = 0, pauseTapRow = -1, pauseTapDir = 0;
@@ -275,6 +275,11 @@ static Sound MakeSound(int frames, float (*f)(float t, int i)) {
 }
 static float Noise(int i) { unsigned x = i * 2654435761u; x ^= x >> 13; x *= 1274126177u; return ((x & 0xffff) / 32768.0f) - 1.0f; }
 #include "audio/SfxV20.inc"   // v0.20 sound: power cut, locks, phone, tape, trunk, kicks
+// v0.20.1 sound-look: thunder and speech blips live in audio/Voices.inc (included after art/LookUI.inc)
+#include "audio/VoiceSynth.h"
+static void InitSoundsV201();
+static void VoiceBubble(const std::string& who, const std::string& text);
+static void VoicesTick(float dt);
 
 static void InitSounds() {
     InitAudioDevice();
@@ -354,6 +359,7 @@ static void InitSounds() {
         return (std::sin(t * 2 * PI * f) * 0.6f + Noise(i) * 0.25f) * std::exp(-t * 14) * (t < 0.2f ? 1 : 0);
     });
     InitSoundsV20();   // v0.20 sound
+    InitSoundsV201();  // v0.20.1 sound-look: blips and thunder
 }
 
 static bool hushMusic = false;   // v0.9: the story asks for silence
@@ -642,6 +648,7 @@ static void AddBubble(const std::string& who, const std::string& text, float lif
     for (size_t i = 0; i < bubbles.size(); ++i) if (bubbles[i].who == who) { bubbles.erase(bubbles.begin() + i); break; }
     if (life < 0) life = 2.4f + text.size() * 0.05f;
     bubbles.push_back({ who, text, 0, life });
+    VoiceBubble(who, text);   // v0.20.1 sound-look: a few soft blips, muffled through walls
 }
 
 // ============================================================ the visitor searches (v0.4)
@@ -1189,6 +1196,7 @@ static void DrawWatch(const std::string& clock, float x, float y, float s) {
     LookWatchFace(bx, by, w, bh, lx, ly, lw, lh);   // v0.20 look: the dot beats, the glass cracks
 }
 #include "art/LookUI.inc"   // v0.20 look: faces, the quiet HUD, the fridge list, log handwriting, close-ups, ending pictures
+#include "audio/Voices.inc"   // v0.20.1 sound-look: thunder after the lightning, speech blips
 
 static Color NarratorColor() {
     int st = story.Stage();
@@ -2086,7 +2094,8 @@ static void DrawTitle() {
 
 // ============================================================ v0.9 pause menu and settings
 static void SaveSettings() {
-    std::string s = std::to_string(settings.music) + "|" + std::to_string(settings.sfx) + "|" + std::to_string(settings.text) + "|" + std::to_string(settings.calmFlashes ? 1 : 0) + "|" + std::to_string(settings.roofs ? 1 : 0);
+    std::string s = std::to_string(settings.music) + "|" + std::to_string(settings.sfx) + "|" + std::to_string(settings.text) + "|" + std::to_string(settings.calmFlashes ? 1 : 0) + "|" + std::to_string(settings.roofs ? 1 : 0)
+        + "|" + std::to_string(settings.blips ? 1 : 0);   // v0.20.1 sound-look
 #if defined(PLATFORM_WEB)
     EM_ASM({ try { localStorage.setItem('600s_settings', UTF8ToString($0)); } catch (e) {} }, s.c_str());
 #else
@@ -2110,22 +2119,22 @@ static void LoadSettings() {
 #else
     if (FileExists("600s_settings.txt")) { char* t = LoadFileText("600s_settings.txt"); if (t) s = t; UnloadFileText(t); }
 #endif
-    int a, b, c, d, e = 1;
-    if (std::sscanf(s.c_str(), "%d|%d|%d|%d|%d", &a, &b, &c, &d, &e) >= 4) {
-        settings.roofs = e != 0;
+    int a, b, c, d, e = 1, f = 1;   // v0.20.1 sound-look: f = voice blips
+    if (std::sscanf(s.c_str(), "%d|%d|%d|%d|%d|%d", &a, &b, &c, &d, &e, &f) >= 4) {
+        settings.roofs = e != 0; settings.blips = f != 0;
         settings.music = std::max(0, std::min(10, a)); settings.sfx = std::max(0, std::min(10, b));
         settings.text = std::max(0, std::min(3, c)); settings.calmFlashes = d != 0;
     }
 }
-static const int PAUSE_ROWS = 7;
+static const int PAUSE_ROWS = 8;   // v0.20.1 sound-look: + Voice blips
 static const float PAUSE_Y = 76, PAUSE_H = 20, PAUSE_X = 110, PAUSE_W = 260;
 static void DrawPause() {
     DrawRectangle(0, 0, (int)(VW * US), (int)(VH * US), Fade(Color{ 8, 8, 14, 255 }, 0.86f));
     UIText("PAUSED", VW / 2.0f - UIMeasure("PAUSED", 16) / 2, 48, 16, Color{ 230, 60, 60, 255 });
     static const char* speed[4] = { "Slow", "Normal", "Fast", "Instant" };
     std::string val[PAUSE_ROWS] = { "", std::to_string(settings.music) + " / 10", std::to_string(settings.sfx) + " / 10", speed[settings.text],
-                                    settings.calmFlashes ? "Calm" : "Normal", settings.roofs ? "On" : "Off", "" };
-    static const char* name[PAUSE_ROWS] = { "Resume", "Music", "Sound", "Text speed", "Flashes", "Roofs", "Back to the title" };
+                                    settings.calmFlashes ? "Calm" : "Normal", settings.roofs ? "On" : "Off", settings.blips ? "On" : "Off", "" };
+    static const char* name[PAUSE_ROWS] = { "Resume", "Music", "Sound", "Text speed", "Flashes", "Roofs", "Voice blips", "Back to the title" };
     for (int i = 0; i < PAUSE_ROWS; ++i) {
         float y = PAUSE_Y + i * PAUSE_H;
         if (i == pauseSel) DrawRectangle((int)(PAUSE_X * US), (int)((y - 3) * US), (int)(PAUSE_W * US), (int)((PAUSE_H - 2) * US), Color{ 50, 40, 80, 255 });
@@ -2149,7 +2158,8 @@ static void UpdatePause() {
     case 3: if (dir) settings.text = std::max(0, std::min(3, settings.text + dir)); break;
     case 4: if (dir || use) settings.calmFlashes = !settings.calmFlashes; break;
     case 5: if (dir || use) settings.roofs = !settings.roofs; break;
-    case 6:
+    case 6: if (dir || use) settings.blips = !settings.blips; break;   // v0.20.1 sound-look
+    case 7:
         if (use) {
             pauseOpen = false; SaveSettings(); SaveGame();
             story.beats.clear(); beatActive = false; hushMusic = false; aHumSolo = false; hidden = false; recapOpen = false; journalOpen = false;
@@ -3548,6 +3558,7 @@ static void UpdateDrawFrame() {
     cam.zoom = 1;
     worldCam = cam;
     LookTick(dt);   // v0.20 look
+    VoicesTick(dt);   // v0.20.1 sound-look: thunder, blips
     BuildLightmap(cam);
     BeginTextureMode(target);
     DrawWorld(cam);

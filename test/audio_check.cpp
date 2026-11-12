@@ -4,6 +4,7 @@
 //   g++ -std=c++17 -O2 -Isrc test/audio_check.cpp src/audio/Soundtrack.cpp -o /tmp/audio_check && /tmp/audio_check
 // Optional: /tmp/audio_check wav   writes each track to /tmp/600s_<track>.wav (20 s) to listen to somewhere else.
 #include "audio/Soundtrack.h"
+#include "audio/VoiceSynth.h"   // v0.20.1 sound-look
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -84,6 +85,94 @@ int main(int argc, char** argv) {
         bool ok = s.jump < 0.08 && s.peak < 0.95;
         std::printf("%-42s %8.4f %8.4f %8.4f %8s %s\n", "crossfade searching -> spotted", s.rms, s.peak, s.jump, "", ok ? "ok" : "FAIL");
         if (!ok) ++fails;
+    }
+    // v0.20.1 sound-look: speech blips and thunder (audio/VoiceSynth.h). What the game plays, after the raylib volume
+    {
+        namespace vsy = voicesynth;
+        // the share of a sound's energy above about 1.5 kHz: muffled versions must have much less of it
+        auto hiShare = [&](const std::vector<float>& v) {
+            // two 2-pole high-passes at 1.5 kHz in a row (24 dB per octave)
+            double all = 0, hi = 0;
+            float k = 2 * std::sin(3.14159265f * 1500 / SR), lo1 = 0, bp1 = 0, lo2 = 0, bp2 = 0;
+            for (float x : v) {
+                float h1 = x - lo1 - 1.4f * bp1; bp1 += k * h1; lo1 += k * bp1;
+                float h2 = h1 - lo2 - 1.4f * bp2; bp2 += k * h2; lo2 += k * bp2;
+                hi += h2 * (double)h2; all += x * (double)x;
+            }
+            return all > 0 ? hi / all : 0.0;
+        };
+        static const char* who[vsy::SP_COUNT] = { "kid", "mom", "dad", "visitor", "radio", "girl" };
+        std::printf("\n%-42s %8s %8s %8s %8s\n", "blip / thunder", "rms", "peak", "jump", "hi%");
+        for (int sp = 0; sp < vsy::SP_COUNT; ++sp) {
+            for (int m = 0; m < vsy::kMuffles; ++m) {
+                std::vector<float> all;
+                double hs = 0, maxEdge = 0;
+                static double hiClear[vsy::SP_COUNT];
+                for (int k = 0; k < vsy::kVariants; ++k) {
+                    auto v = vsy::RenderBlip(sp, k, m);
+                    maxEdge = std::max(maxEdge, (double)std::max(std::fabs(v.front()), std::fabs(v.back())));
+                    hs += hiShare(v) / vsy::kVariants;
+                    float g = vsy::Params(sp).vol * 28000 / 32768.0f;
+                    for (float& x : v) x *= g;
+                    all.insert(all.end(), v.begin(), v.end());
+                    all.insert(all.end(), (size_t)(SR * std::max(0.0f, vsy::Params(sp).gap - v.size() / (float)SR)), 0.0f);   // the gap while typing
+                }
+                Stats s = Measure(all, SR);
+                // quiet: a typing line must sit well under the music (0.03 to 0.07 RMS) and never clip; muffled: little top left
+                bool ok = s.rms > 0.004 && s.rms < 0.03 && s.peak < 0.3 && maxEdge < 0.01 && (m == 0 || hs < hiClear[sp] * (m == 1 ? 0.8 : 0.35));
+                if (m == 0) hiClear[sp] = hs;
+                char name[64]; std::snprintf(name, sizeof name, "blips %s %s", who[sp], m == 0 ? "clear" : m == 1 ? "dull" : "muffled");
+                std::printf("%-42s %8.4f %8.4f %8.4f %7.1f%% %s\n", name, s.rms, s.peak, s.jump, hs * 100, ok ? "ok" : "FAIL");
+                if (!ok) ++fails;
+                if (wav && m != 1) WriteWav(std::string("/tmp/600s_") + name + ".wav", all, SR);
+            }
+        }
+        {
+            auto v = vsy::RenderHuff(0);
+            Stats s = Measure(v, SR);
+            bool ok = s.peak > 0.05 && s.peak < 0.9;
+            std::printf("%-42s %8.4f %8.4f %8.4f %8s %s\n", "huff doggo", s.rms, s.peak, s.jump, "", ok ? "ok" : "FAIL");
+            if (!ok) ++fails;
+        }
+        // the mask: no blips in stage directions or *actions*, nothing for pure humming
+        {
+            bool ok = vsy::SpokenCount("(he stops humming when he sees you) What?") == 4 && vsy::SpokenCount("*sobbing*") == 0 &&
+                      vsy::OnlyHumming("hm hm hmm, hm hmm...") && vsy::OnlyHumming("mm... mm-hm, mmm...") && !vsy::OnlyHumming("Hmm. Who locked this?") &&
+                      vsy::SpeakerFor("Handler two") == vsy::SP_MOM && vsy::SpeakerFor("") < 0 && vsy::SpeakerFor("Doggo") < 0;
+            std::printf("%-42s %s\n", "blip text rules", ok ? "ok" : "FAIL");
+            if (!ok) ++fails;
+        }
+        double prevPeak = 9;
+        for (int d = 0; d < 3; ++d) {
+            double hiClear = 0;
+            for (int m = 0; m < 2; ++m) {
+                auto v = vsy::RenderThunder(d, m != 0);
+                double hs = hiShare(v);
+                if (m == 0) hiClear = hs;
+                float g = vsy::ThunderVol(d) * (m ? 0.7f : 1.0f) * 28000 / 32768.0f;   // indoors it also plays at 70%
+                for (float& x : v) x *= g;
+                Stats s = Measure(v, SR);
+                double edge = std::max(std::fabs(v.front()), std::fabs(v.back()));
+                bool ok = s.peak < 0.8 && s.rms > 0.01 && edge < 0.01 && std::fabs(v.size() / (double)SR - vsy::ThunderLength(d)) < 0.01;
+                if (m == 0) { ok = ok && s.peak <= prevPeak + 1e-6; prevPeak = s.peak; }   // closer is louder
+                else ok = ok && hs < hiClear * 0.5;                                       // muffled: the top is gone
+                char name[64]; std::snprintf(name, sizeof name, "thunder %s %s", d == 0 ? "close" : d == 1 ? "mid" : "far", m ? "muffled" : "clear");
+                std::printf("%-42s %8.4f %8.4f %8.4f %7.1f%% %s\n", name, s.rms, s.peak, s.jump, hs * 100, ok ? "ok" : "FAIL");
+                if (!ok) ++fails;
+                if (wav) WriteWav(std::string("/tmp/600s_") + name + ".wav", v, SR);
+            }
+        }
+        // delays: 0.5 to 2 s, and the distance follows the delay
+        {
+            bool ok = true;
+            for (unsigned h = 0; h < 5000; h += 7) {
+                float d = vsy::ThunderDelay(h * 2654435761u);
+                ok = ok && d >= 0.5f && d <= 2.0f;
+            }
+            ok = ok && vsy::ThunderDist(0.6f) == 0 && vsy::ThunderDist(1.2f) == 1 && vsy::ThunderDist(1.9f) == 2;
+            std::printf("%-42s %s\n", "thunder delay 0.5 to 2 s, nearer = sooner", ok ? "ok" : "FAIL");
+            if (!ok) ++fails;
+        }
     }
     std::printf(fails ? "\n%d FAILED\n" : "\nALL TRACKS OK\n", fails);
     return fails ? 1 : 0;

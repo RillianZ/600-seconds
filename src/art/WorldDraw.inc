@@ -446,6 +446,8 @@ static void DrawGlows() {
     LookGlows(inH);   // v0.20 look: his headlights at 16:43, across your wall
     // v0.15: the bulbs on the board behind the shed
     for (int k = 0; k < 26; ++k) if (BoardBulbOn(k)) { Vector2 p = BoardLetter(k); bool spell = BoardLit() >= 0; Glow(BOARD_X + p.x + 1.5f, BOARD_Y + p.y + (spell ? 3.0f : 1.0f), spell ? 11.0f : 5.0f, spell ? 11.0f : 5.0f, BulbCol(k), spell ? 1.0f : 0.45f); }
+    // v0.20.1 sound-look: the dish's little red battery light, so it reads in the dark. Only once the yard lamps are out
+    if (story.PowerOut() && RoomPower(Room::Backyard) < 0.5f && std::fmod(globalT, 1.4f) < 0.2f) Glow(4 * TS + 15.5f, -1 * TS - 9.5f, 4, 4, Color{ 255, 60, 60, 255 }, 0.8f);
     if (TorchOn()) Glow(visitor.pos.x + std::cos(beamAng) * 8, visitor.pos.y - 8 + std::sin(beamAng) * 8, 4, 4, Color{ 255, 250, 220, 255 }, 0.9f);
     if (vTaserT > 0 && std::fmod(globalT, 0.12f) < 0.06f) Glow(visitor.pos.x + 8, visitor.pos.y - 10, 5, 5, Color{ 140, 200, 255, 255 }, 0.9f);   // v0.15.2: the taser, aimed
     if (taserFx > 0) {

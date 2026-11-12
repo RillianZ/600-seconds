@@ -25,7 +25,7 @@ static int BoardLit() {
         if (i < 5 && std::fmod(t, 0.9f) < 0.65f) return word[i] - 'A';
         return -1;
     }
-    if (story.PowerOut()) return -1;
+    if (RoomPower(Room::Backyard) < 0.5f) return -1;   // v0.20.1 sound-look: out with the yard lamps, last in the 16:50 sequence
     return -2;
 }
 static Color BulbCol(int k) { static const Color c[4] = { { 255, 214, 110, 255 }, { 250, 84, 76, 255 }, { 110, 180, 255, 255 }, { 120, 226, 136, 255 } }; return c[k % 4]; }
@@ -266,7 +266,7 @@ static bool DrawOutback(const Obj& o, float x, float y) {
         DrawEllipse((int)x + 5, (int)y - 9, 6, 4, Color{ 180, 186, 198, 255 });
         R(0, -15, 10, 2, snow); R(-1, -13, 4, 1, snow);
         R(9, -10, 6, 1, Color{ 60, 62, 72, 255 }); R(14, -11, 3, 3, Color{ 60, 62, 72, 255 }); // the arm and the little head
-        if (story.PowerOut() && std::fmod(globalT, 1.4f) < 0.2f) R(15, -10, 1, 1, Color{ 255, 70, 70, 255 });   // still awake on its own battery
+        if (story.PowerOut() && RoomPower(Room::Backyard) < 0.5f && std::fmod(globalT, 1.4f) < 0.2f) R(15, -10, 1, 1, Color{ 255, 70, 70, 255 });   // still awake on its own battery. v0.20.1 sound-look: once the yard lamps are out
         return true;
     }
     if (id == "lights") {
