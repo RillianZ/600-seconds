@@ -34,6 +34,16 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         R(34, -14, 3, 9, Color{ 92, 70, 52, 255 }); R(34, -14, 3, 1, Color{ 250, 252, 255, 255 });
         return;
     }
+    if (id == "chaingap") {   // v0.20 knife: old baler twine laced through the hole. Cut, only the ends are left
+        const Color tw = { 196, 150, 84, 255 }, twD = { 140, 100, 52, 255 };
+        if (!story.gapCut) {
+            for (int k = 0; k < 9; ++k) { R(4 + k, 5 + k, 1, 1, tw); R(12 - k, 5 + k, 1, 1, tw); }   // a cross, corner to corner
+            R(3, 9, 11, 1, tw); R(3, 10, 11, 1, twD);                                                // and one across the middle
+        } else {
+            R(3, 8, 2, 1, tw); R(3, 9, 1, 2, twD); R(12, 8, 2, 1, tw); R(13, 9, 1, 2, twD);       // two cut ends, hanging
+        }
+        return;
+    }
     static const char* flat[] = { "toys", "window", "mirror", "calendar", "frontdoor", "sheddoor", "rope", "stairs", "gate", "basement", "screens", "fliptendo",
                                   "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl", "album", "win_bath", "win_parents" };
     bool isFlat = false;
@@ -540,6 +550,7 @@ static void DrawDoggo(const Actor& a) {
     R(3, -12, 2, 5, dark); R(3, -12, 2, 1, Shade(dark, 20));                 // ear
     R(2, -5, 1, 4, Color{ 200, 44, 48, 255 }); R(2, -3, 1, 1, GOLD);         // collar and tag
     if (!moving && std::fmod(globalT, 1.0f) < 0.5f) R(9, -5, 1, 2, Color{ 230, 110, 120, 255 });   // tongue out
+    if (story.doggoTangled) { Color rb = { 226, 40, 56, 255 }; R(-6, -4, 12, 1, rb); R(-4, -1, 1, 4, rb); R(3, -1, 1, 4, rb); R(-1, -7, 3, 2, rb); }   // v0.20 knife: the ribbon off the big present
 }
 
 // the visitor's car, nose toward the gate

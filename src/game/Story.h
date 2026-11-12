@@ -271,6 +271,23 @@ public:
     std::string prevEnd;                       // how the last loop ended (lastEnd is cleared at 16:00). The TV reads it
     int predMom = 0, predDad = 0;              // things you told them before they happened, this loop
     bool fourthNoticed = false, unitNoticed = false;
+    // v0.20 knife: the knife matters more. Clean jobs first (no darkness), darker ones open as you darken. Code in Knife.inc
+    bool tapeCut = false;                      // slit the tape on the big present. The paper is still whole
+    bool doggoTangled = false;                 // 16:15, in the living room with you: the ribbon off the big present, round his legs
+    bool gapCut = false;                       // the twine out of the torn chain fence out back. A door your size. Still not his
+    bool phoneCut = false;                     // the cord, not the plug. Nobody puts that back
+    bool brakesCut = false;                    // under his car while he was at the window. Whoever drives it next doesn't get far
+    bool KnowsKnifeJob() const;                // you've done a clean job with it, or seen where one is (persistent, via seenEvents)
+    bool MirrorReady() const;                  // Noah's request: max darkness, the knife, the bathroom mirror. Off screen, never an escape
+    static bool QuietMemory(const std::string& id) { return id == "no_way_out"; }   // not counted, not shown, not nudged until you have it
+    int MemoryTotal() const;                   // what the HUD and the log count to (the quiet one only once you have it)
+    bool KnifeInteract(const std::string& id, int px, int py);   // true if the knife took this one
+    bool KnifeChoose(const std::string& id);   // kn_* choices (and the knife's version of wp_stack)
+    void KnifeEvents(float prev, float now, int px, int py);
+    bool BrakesGo(const std::string& who);     // he (or they) drive his car. True if it took over the scene
+    void MirrorEnd();
+    void BladeCheck();
+    int KnifeNeeded() const { return tainted ? 2 : KnowsKnifeJob() ? 2 : 5; }
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -382,7 +399,7 @@ public:
     bool DoggoExists() const { return shift != Shift::NoDoggo && !doggoGone && !doggoDead && !doggoOut; }   // v0.10: out = safe, and not in the house
     bool MomHere() const { return !momLocked && !momBathLocked; }
     bool DadFree() const { return !dadLocked && !dadDown; }
-    bool FullMemory() const { return memory.size() >= AllMemories().size(); }
+    bool FullMemory() const { return Awareness() >= MemoryTotal(); }   // v0.20 knife: the quiet memory never counts against you
     // v0.10
     bool KnowsEvent(const std::string& id) const;          // timeline: seen it, or hold the memory for it
     bool SawEvent(const std::string& id) const { return seenEvents.count(id) > 0; }

@@ -1415,6 +1415,9 @@ static void DrawChaseBanner() {
         if (!story.dropItem.empty() && !hidden) h = story.dropItem == "box" ? "The box from his belt is on the floor. Grab it (E)." : "His taser is on the floor. Grab it (E).";
         else if (story.hasTaser && !hidden && !story.visitorDowned) h = "His taser. Let him get close, then face him (E).";
         if (story.cold > 0.3f) h = story.Warm() ? "Warm in here. Stay." : "You're freezing. Get inside, or get your jacket.";
+        // v0.20 knife: the torn fence out back
+        if (!hidden && !climbing && TileAt(TX(player.pos.x), TX(player.pos.y + 4)) == Tile::ChainGap)
+            h = story.gapCut ? "Through the gap you cut. He won't fit." : story.hasKnife ? "Squeezing through. The knife would cut the twine (E)." : "Squeezing through. Slowly.";
         if (climbing) h = "Climbing. He can hear it.";
         else if (story.doggoWithKid && story.Knows("doggo_stay") && !hidden) h = "Doggo is right next to you. Tell him to stay (E on Doggo).";
         UIText(h, VW / 2.0f - UIMeasure(h, 6) / 2, 54, 6, Fade(WHITE, 0.65f));
@@ -1463,7 +1466,7 @@ static void DrawHUD() {
     UIText(lp.c_str(), 8, 25, 6, Fade(WHITE, 0.6f));
     std::string ch = "CHORES " + std::to_string(story.ChoresDone()) + "/" + std::to_string(Story::CHORES) + (story.earnedPresent ? "  PRESENT!" : "");
     UIText(ch.c_str(), VW - 84, 46, 6, Fade(WHITE, 0.7f));
-    std::string mem = "MEMORY " + std::to_string(story.Awareness()) + "/" + std::to_string(AllMemories().size()) + "  [J]";
+    std::string mem = "MEMORY " + std::to_string(story.Awareness()) + "/" + std::to_string(story.MemoryTotal()) + "  [J]";   // v0.20 knife: MemoryTotal
     UIText(mem.c_str(), VW - 84, 54, 6, Color{ 190, 150, 255, 200 });
     float iy = 62;
     {
@@ -1535,7 +1538,7 @@ static void DrawJournal() {
     DrawRectangle(0, 0, SW, SH, Fade(Color{ 10, 8, 14, 255 }, 0.94f));
     bool dark = story.Stage() >= 2;
     UIText("MEMORY LOG", 16, 12, 14, dark ? Color{ 200, 60, 60, 255 } : Color{ 190, 150, 255, 255 });
-    std::string pct = std::to_string(story.Awareness() * 100 / AllMemories().size()) + "%   endings " + std::to_string(story.endings.size()) + "/" + std::to_string(AllEndings().size()) +
+    std::string pct = std::to_string(story.Awareness() * 100 / std::max(1, story.MemoryTotal())) + "%   endings " + std::to_string(story.endings.size()) + "/" + std::to_string(AllEndings().size()) +
                       "   awards " + std::to_string(story.achievements.size()) + "/" + std::to_string(AllAchievements().size());
     UIText(pct.c_str(), VW - 16 - UIMeasure(pct.c_str(), 8), 16, 8, WHITE);
     auto& topics = AllTopics();
@@ -1599,7 +1602,7 @@ static void DrawJournal() {
     if (journalTopic == tabEnd) {
         for (auto& e : AllEndings()) rows.push_back({ story.endings.count(e.id) > 0, e.title, "Found.", e.hint, true });
     } else {
-        for (auto& e : AllMemories()) if (e.topic == topics[journalTopic - 1]) rows.push_back({ story.Knows(e.id), e.title, e.text, e.hint, false });
+        for (auto& e : AllMemories()) if (e.topic == topics[journalTopic - 1] && (story.Knows(e.id) || !Story::QuietMemory(e.id))) rows.push_back({ story.Knows(e.id), e.title, e.text, e.hint, false });   // v0.20 knife: the quiet one only once you have it
     }
     const float rowH = 42;
     int visible = (int)((bottom - top) / rowH);
@@ -2593,7 +2596,7 @@ static void UpdateDrawFrame() {
         Tile under = TileAt(TX(player.pos.x), TX(player.pos.y + 4));
         if (IsOutsideT(under)) speed *= 0.88f;   // v0.8: snow to your shins
         if (under == Tile::Bush) speed *= 0.42f;           // v0.15: pushing through the bushes
-        else if (under == Tile::ChainGap) speed *= 0.35f;  // squeezing through the torn fence
+        else if (under == Tile::ChainGap) speed *= story.gapCut ? 0.8f : 0.35f;  // squeezing through the torn fence. v0.20 knife: cut wider, nearly a walk
         if (hidden || climbing) { mv = { 0, 0 }; kidRunning = false; }
         if (climbing) {
             // v0.15: a bang first if it's stuck, then up, over the sill and down the other side
@@ -3248,6 +3251,7 @@ static void UpdateDrawFrame() {
             if (story.t >= 35 * 60 && story.t < 40 * 60 && !story.collection) { gx = 20; gy = 19; stop = 0; }
             if (story.collection && tut) { gx = 16; gy = 18; stop = 0; }
             if (story.inBasement) { gx = 28; gy = 11; stop = 0; }
+            if (story.doggoTangled) { gx = 25; gy = 15; stop = 0; }   // v0.20 knife: caught in the ribbon under the tree
             // v0.16: to the door, to see who it is. He gives him a few seconds. Then he doesn't
             if (scene == SceneMode::Chase && story.chase && (doggoGuard == 1 || doggoGuard == 2) && !story.doggoStay) {
                 gx = TX(visitor.pos.x); gy = TX(visitor.pos.y); stop = 20;

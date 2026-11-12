@@ -232,6 +232,7 @@ struct World {
             {"lights", "Painted board", 34, 0},
             {"vane", "Weathervane", 32, 3, false},
             {"gap", "Gap in the fence", 29, -24, false},   // v0.19: where the back fence is down. Tracks out, and back in your own steps
+            {"chaingap", "Torn fence", 6, -12, false},     // v0.20 knife: laced shut with old twine. Cut it and it's a door your size
         };
     }
 
