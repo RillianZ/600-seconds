@@ -2,6 +2,7 @@
 
 Playable test zips. Unzip one, then double click 600Seconds.exe on Windows or 600Seconds.html on any computer.
 
+- [v0.20.1](600Seconds-v0.20.1-play.zip) from `claude-batch-v0.20.1-polish`: the polish before the release (thunder, speech blips, oh-seven, hunt payoffs, the couch, rumor cards, Dark parents open the door)
 - [v0.20.0](600Seconds-v0.20.0-play.zip) from `claude-batch-v0.20-finish`: the finish sprint (the knife, more story, fuller days, Nobody Home, the rumor map, the new look, new music and muffled sound)
 - [v0.19.0](600Seconds-v0.19.0-play.zip) from `claude-batch-v0.19-before-knock`: before the knock (barricade a door, take his car key, tracks out the back, traps at other doors)
 - [v0.18.0](600Seconds-v0.18.0-play.zip) from `claude-batch-v0.18-parents`: whose side are they on (Dark parents hunt with him, one turned parent fights him, The Handlers, Last Toll)
