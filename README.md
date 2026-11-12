@@ -2,6 +2,7 @@
 
 Playable test zips. Unzip one, then double click 600Seconds.exe on Windows or 600Seconds.html on any computer.
 
+- [v0.16.0](600Seconds-v0.16.0-play.zip) from `claude-batch-v0.15-outside`: Doggo goes to the door, Dad has a day, parents get tired of the same question
 - [v0.15.2](600Seconds-v0.15.2-play.zip) from `claude-batch-v0.15-outside`: a real hunt (slower clock, prints, his hunch, taser, The Empty House ending)
 - [v0.15.1](600Seconds-v0.15.1-play.zip) from `claude-batch-v0.15-outside`: loop 1 can no longer run off onto the vidda
 - [v0.15.0](600Seconds-v0.15.0-play.zip) from the unmerged branch `claude-batch-v0.15-outside` (the outside: backyard, windows, cold, dark, his torch. Includes v0.12 to v0.14)
