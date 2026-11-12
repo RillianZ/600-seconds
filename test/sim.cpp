@@ -959,6 +959,148 @@ int main(int argc, char** argv) {
         std::puts("  early trail filled in, key in the pocket and the woodpile, inside traps placed");
     }
 
+    // v0.20 knife: clean jobs first, darker ones as you darken, and the mirror (Noah's request)
+    CleanLoop();
+    Header("LOOP 20a (knife): clean jobs. Doggo in the ribbon, the tape, the twine, the fence out back, the frozen window");
+    {
+        At(12, 15); Use("knives", {"k_take", "k_take"});
+        assert(s.hasKnife && s.DoggoExists());
+        int dark = s.darkPoints;
+        At(25, 16); WaitUntil(16);
+        assert(s.doggoTangled && s.SawEvent("ribbon"));
+        Use("doggo", {"kn_ribbon"});
+        assert(!s.doggoTangled);
+        Use("tree", {"kn_tape"});
+        assert(s.Knows("packing_slip") && s.tapeCut && !s.openedEarly);
+        float before = s.t;
+        At(29, 25); Use("woodpile", {"wp_stack"});
+        assert(s.firewoodDone && s.t - before == 12 * 60);
+        At(6, -11); Use("chaingap", {"kn_gap"});
+        assert(s.gapCut && s.Knows("kid_door"));
+        At(6, 3); Use("window", {"kn_window:window"});
+        assert(s.windowBanged && py == 1);
+        assert(s.darkThisLoop == 0 && s.darkPoints == dark && s.achievements.count("Blade Down"));
+    }
+    FinishLoop("caught");
+    Header("Knife rules: the block after a clean job, the hunt, the cord, the car key and the brake line");
+    {
+        auto fresh = [](Story& k, int dark) {
+            k.memory = {"loop", "visitor_time", "phone_answer", "mirror_lag", "dead_switch"}; k.loop = 5; k.darkPoints = dark; k.tainted = dark >= DARK_TAINT;
+            k.BeginLoop(); k.beats.clear(); while (k.shift != Shift::None) { k.EndLoop(); k.BeginLoop(); k.beats.clear(); }
+        };
+        auto offered = [](Story& k, const char* id) { for (auto& b : k.beats) for (auto& c : b.choices) if (c.id == id) return true; return false; };
+        // D: once you know a clean job, the block asks twice, not five times, and says what it's for
+        Story a; fresh(a, 0);
+        assert(a.KnifeNeeded() == 5);
+        a.seenEvents.insert("kn_hint");
+        assert(a.KnifeNeeded() == 2);
+        a.Interact("knives", 12, 15); a.beats.clear(); a.Choose("k_take", 12, 15); a.beats.clear(); a.Choose("k_take", 12, 15);
+        assert(a.hasKnife && a.darkThisLoop == 0);
+        // without darkness none of the dark options show
+        a.t = 10 * 60; a.beats.clear(); a.Interact("phone", 4, 15); assert(!offered(a, "kn_cord"));
+        a.t = 44 * 60 + 10; a.beats.clear(); a.Interact("car", 20, 29); assert(!offered(a, "kn_brake") && offered(a, "car_key"));
+        // the hunt: two quick ones, then none at all once you've had it this loop
+        Story h; fresh(h, 0);
+        h.t = (float)h.visitorTime + 5; h.collection = h.chase = true;
+        h.Interact("knives", 12, 15); assert(offered(h, "kn_hunt")); h.beats.clear();
+        h.Choose("kn_hunt", 12, 15); assert(offered(h, "kn_hunt2")); h.beats.clear();
+        h.Choose("kn_hunt2", 12, 15); assert(h.hasKnife && h.knifeTakenLoop); h.beats.clear();
+        h.Hold(Item::None, true); h.Interact("knives", 12, 15); assert(h.hasKnife && h.beats.size() == 1); h.beats.clear();
+        h.Interact("chaingap", 6, -11); assert(h.gapCut && h.Knows("kid_door")); h.beats.clear();
+        assert(h.WindowSticks("window")); h.Interact("window", 6, 3);
+        assert(!h.WindowSticks("window") && h.beats.back().type == BeatType::Scene && h.beats.back().id == "climb:window");
+        // the cord: dark, no call, and no plugging it back in
+        Story p; fresh(p, DARK_ARSENAL); p.Hold(Item::Knife, true);
+        p.t = 10 * 60; p.Interact("phone", 4, 15); assert(offered(p, "kn_cord")); p.beats.clear();
+        p.Choose("kn_cord", 4, 15); assert(p.phoneCut && p.phoneUnplugged && p.darkThisLoop == 1); p.beats.clear();
+        p.Interact("phone", 4, 15); assert(!offered(p, "p_plug")); p.beats.clear();
+        while (p.t < 23 * 60) { p.Tick(0.5f, false, 8, 15); }
+        assert(!p.SawEvent("phone"));
+        // his key and his brakes, both: the key in your pocket, he gets it back, he drives
+        Story c; fresh(c, DARK_INTERROGATE); c.Hold(Item::Knife, true);
+        c.t = 44 * 60; c.Interact("car", 20, 29); assert(offered(c, "kn_brake")); c.beats.clear();
+        c.Choose("car_key", 20, 29); c.beats.clear(); c.Choose("ck_pocket", 20, 29); c.beats.clear();
+        c.Interact("car", 20, 29); assert(offered(c, "kn_brake")); c.beats.clear();
+        c.Choose("kn_brake", 20, 29); assert(c.brakesCut && c.darkThisLoop == 3); c.beats.clear();
+        while (!c.collection) { c.Tick(0.5f, false, 21, 17); while (!c.beats.empty() && c.beats.front().type != BeatType::Scene) c.beats.pop_front(); }
+        c.beats.clear(); c.chase = true; c.OnCaught();
+        bool key = false, crash = false; for (auto& b : c.beats) { if (b.text.find("holds out his hand") != std::string::npos) key = true; if (b.text.find("the car doesn't") != std::string::npos) crash = true; }
+        assert(key && crash && c.beats.back().type == BeatType::EndLoop);
+        // key in the snow: nobody drives, the brakes never matter
+        Story n; fresh(n, DARK_INTERROGATE); n.Hold(Item::Knife, true); n.brakesCut = true; n.carKey = "snow";
+        n.t = (float)n.visitorTime; n.collection = n.chase = true; n.OnCaught();
+        bool brakes = false; for (auto& b : n.beats) if (b.text.find("never finds out about the brakes") != std::string::npos) brakes = true;
+        assert(brakes && !n.Knows("brake_line"));
+        // False Hope in his car
+        Story e; fresh(e, DARK_INTERROGATE); e.brakesCut = true;
+        assert(e.BrakesGo("escape") && e.beats.back().type == BeatType::Ending && e.beats.back().id == "escape" && e.Knows("brake_line"));
+        std::puts("  knife block asks twice after a clean job, hunt knife, cord, key + brakes, key in the snow, False Hope crash");
+    }
+    CleanLoop();
+    Header("LOOP 20b (knife): dark. Cut the phone cord, then his brake line. He drives you off the road");
+    {
+        At(12, 15); Use("knives", {"k_take", "k_take"});
+        At(4, 15); Use("phone", {"kn_cord"});
+        assert(s.phoneCut);
+        WaitUntil(44);
+        s.t = 44 * 60 + 10;
+        At(20, 29); Use("car", {"kn_brake"});
+        assert(s.brakesCut);
+        int L = s.loop;
+        FinishLoop("caught");
+        assert(s.loop != L && s.Knows("brake_line"));
+    }
+    CleanLoop();
+    Header("LOOP 20c (knife): brakes cut, then finish him in front of them. The Handlers drive his car");
+    {
+        At(3, 6); Use("marbles", {"a_marbles"});
+        At(32, 8); Use("rope", {"a_tripwire"});
+        At(12, 15); Use("knives", {"k_take", "k_take"});
+        s.brakesCut = true;   // 20b shows the real way
+        size_t seen = endingsSeen.size();
+        FinishLoop("c_finish");
+        assert(endingsSeen.size() == seen + 1 && endingsSeen.back() == "handlers");
+    }
+    CleanLoop();
+    Header("LOOP 20d (knife): cut the wire to the box on his belt, then finish it (End of the Program)");
+    {
+        At(3, 6); Use("marbles", {"a_marbles"});
+        At(32, 8); Use("rope", {"a_tripwire"});
+        At(12, 15); Use("knives", {"k_take", "k_take"});
+        s.momLocked = s.dadLocked = true;
+        size_t seen = endingsSeen.size();
+        pickQueue = {"kn_wire"};
+        FinishLoop("c_finish");
+        assert(endingsSeen.size() == seen + 1 && endingsSeen.back() == "program");
+    }
+    CleanLoop();
+    Header("LOOP 20e (knife): the mirror. Off screen, no popup, and the hour starts again");
+    {
+        Story m; m.memory = {"loop", "mirror_lag"}; m.loop = 5; m.darkPoints = DARK_MAX; m.tainted = true;
+        m.BeginLoop(); m.beats.clear(); while (m.shift != Shift::None) { m.EndLoop(); m.BeginLoop(); m.beats.clear(); }
+        m.Interact("mirror", 14, 4); assert(m.beats.back().type != BeatType::Choice);    // no knife, no choice
+        m.beats.clear(); m.Hold(Item::Knife, true); m.darkPoints = DARK_MAX - 1; m.Interact("mirror", 14, 4);
+        for (auto& b : m.beats) for (auto& c : b.choices) assert(c.id != "kn_mirror");   // only at the very bottom
+        m.beats.clear(); m.darkPoints = DARK_MAX; m.Interact("mirror", 14, 4);
+        assert(m.beats.size() == 1 && m.beats[0].choices.front().id == "none" && m.beats[0].choices[1].id == "kn_mirror");
+        m.beats.clear(); m.Choose("kn_mirror", 14, 4);
+        assert(m.beats.size() == 1 && m.beats[0].choices.front().id == "none");      // asks again. "No." comes first
+        m.beats.clear(); m.Choose("kn_mirror2", 14, 4);
+        for (auto& b : m.beats) assert(b.type != BeatType::Achievement && b.type != BeatType::Clue && b.type != BeatType::Say);
+        assert(m.beats.front().type == BeatType::Fade && m.beats.back().type == BeatType::EndLoop && m.Knows("no_way_out"));
+        // it never counts against a full log, and nothing ever points at it
+        Story f; for (auto& e : AllMemories()) if (!Story::QuietMemory(e.id)) f.memory.insert(e.id);
+        assert(f.FullMemory() && f.MemoryTotal() == (int)AllMemories().size() - 1);
+        Story o; o.memory = {"loop"}; o.loop = 5; o.tainted = true; o.lastEnd = "mirror"; o.BeginLoop();
+        bool quiet = false; for (auto& b : o.beats) if (b.type == BeatType::Narrate && b.text.find("I answered") != std::string::npos) quiet = true;
+        assert(quiet);
+        // and on the main story
+        At(12, 15); Use("knives", {"k_take", "k_take"});
+        int L = s.loop;
+        At(14, 4); Use("mirror", {"kn_mirror", "kn_mirror2"});
+        assert(s.loop != L && s.Knows("no_way_out"));
+    }
+
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {
         Story k; k.memory = {"loop"}; k.loop = 2;
