@@ -48,7 +48,7 @@
 //   journal TAB | newmem ID   the log open on a tab | a memory found this loop
 //   luse ID | lchoose ID   use / choose with the close-up hook
 //   ending ID | att mom|dad cold|scared|broken | say WHO TEXT   (WHO with _ for spaces, e.g. The_visitor)
-//   sayt WHO TEXT | bubble WHO TEXT | calm 0|1 | blips 0|1   v0.20.1 sound-look: a typed line (blips), a bubble, calm flashes, voice blips
+//   sayt WHO TEXT | bubble WHO TEXT | calm 0|1 | blips 0|1 | pause ROW   v0.20.1 sound-look: a typed line (blips), a bubble, calm flashes, voice blips, the pause menu on a row
 //   quit
 #include <fstream>
 #include <sstream>
@@ -172,6 +172,7 @@ static void ShotsStep() {
         else if (c == "bubble") { std::string who, rest; ss >> who; std::getline(ss, rest); for (auto& ch : who) if (ch == '_') ch = ' '; AddBubble(who, rest.empty() ? rest : rest.substr(1)); }
         else if (c == "calm") { int v = 1; ss >> v; settings.calmFlashes = v != 0; }
         else if (c == "blips") { int v = 1; ss >> v; settings.blips = v != 0; }
+        else if (c == "pause") { int row = 0; ss >> row; pauseOpen = true; pauseSel = row; }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

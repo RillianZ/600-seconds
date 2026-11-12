@@ -53,6 +53,8 @@ src/game/Links.h     the rumor map in the memory log: which memories belong toge
 src/audio/Soundtrack.h/.cpp every song, written as code (plain C++)
 src/audio/SfxV20.inc  v0.20 sound effects made in code (power cut, locks, phone, tape, trunk, kicks) and sounds placed in the house
 src/audio/MusicFiles.inc v0.20: assets/music/<name>.ogg plays instead of a code track, if the file is there
+src/audio/VoiceSynth.h v0.20.1: speech blips and thunder made in code (plain C++, checked by test/audio_check.cpp)
+src/audio/Voices.inc  v0.20.1: plays them: blips while a line types out and on bubbles, thunder after each flash
 src/main.cpp         raylib: drawing, input, sound, UI
 test/sim.cpp         plays scripted loops headless and checks every memory is reachable
 test/shots.inc       screenshot scripts for a virtual screen (build with -DSHOTS, never shipped)
