@@ -2,8 +2,11 @@
 // Sund Origin Studio. All game rules live in src/game (engine-free).
 // This file only draws, plays sounds and reads input.
 #include "raylib.h"
+#include "rlgl.h"
 #include "game/Story.h"
 #include "audio/Soundtrack.h"
+#include "art/Bake.h"
+#include "art/Look.h"   // v0.20 look: forward declarations for the v0.20 art
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -12,6 +15,7 @@
 #include <string>
 #include <vector>
 #include <queue>
+#include <set>   // v0.20 systems
 
 #if defined(PLATFORM_WEB)
 #include <emscripten/emscripten.h>
@@ -106,7 +110,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.9.3";
+static const char* kVersion = "v0.20.1";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -118,6 +122,10 @@ static bool hidden = false;
 static float hideT = 0;
 static Vector2 hidePos{};
 static float downedT = 0;
+static bool innerFall = false;          // v0.19: one of the inside traps put him on the floor (not the "downed" you can tie)
+static bool vDoorBar = false;           // v0.19: the door he's working on has furniture behind it
+static bool trailOn = false, trailFollow = false;   // v0.19: your fake trail out the back, and him on it
+static float vBreathT = 0;              // v0.19: through the furniture, he stands in the doorway and gets his breath back
 static bool wasCollection = false;
 static float qteBar = 0;
 
@@ -126,11 +134,63 @@ struct SpeechBubble { std::string who, text; float t, life; };
 static std::vector<SpeechBubble> bubbles;
 
 // v0.4: the visitor searches the house instead of homing in on you
-enum class VMode { Grace, Search, Chase, Lost, CheckSpot, GoToHide };
+enum class VMode { Grace, Search, Chase, Lost, CheckSpot, GoToHide, Investigate };
 static VMode vmode = VMode::Grace;
 static float vPause = 0, vLostT = 0, vBarkT = 0, vSpotCooldown = 0;
 static std::vector<Vector2> vPath;     // waypoints in the current room
 static size_t vPathI = 0;
+// v0.12: the hunt. He hears, he follows wet prints, he falls for a marble (twice). You run out of breath
+static Vector2 vNoise{};               // where the sound came from
+static float vNoiseWait = 0, vNoiseT = 0, vHearCD = 0;
+static bool vSure = false;             // the next room plan checks every spot
+static float vShowT = 0;               // you only see him while you could really see him
+static float stamina = 1, breath = 1, breathHeardT = 0, wetT = 0, wetCD = 0, vStepAcc = 0;
+static bool winded = false, holdingBreath = false, gasped = false;
+struct Marble { Vector2 from, to; float t, dur; bool landed; };
+static std::vector<Marble> marbles;
+static Marble watchToss{};                // v0.20.1 story-knife: your watch, thrown like a marble (once a loop)
+static bool watchTossOn = false;
+struct Ring { Vector2 p; float t; int kind; };   // kind 0: his steps, heard not seen. 1: a noise you made
+static std::vector<Ring> rings;
+static void AddRing(Vector2 p, int kind) { rings.push_back({ p, 0, kind }); if (rings.size() > 40) rings.erase(rings.begin()); }
+static void ResetHunt() {
+    stamina = breath = 1; breathHeardT = wetT = wetCD = vStepAcc = 0; winded = holdingBreath = gasped = false;
+    marbles.clear(); rings.clear(); vSure = false; vShowT = 0.4f; vHearCD = 0;
+}
+// v0.18: whose side are they on. Parents who look for you (Dark: with him. The Handlers: instead of him),
+// and the one parent who knows, waiting for him to get close to you
+struct PHunt { int visited = 0; std::vector<int> spots; std::vector<Vector2> path; size_t pathI = 0;
+               float pause = 0, seeCD = 0, callT = 5, startT = 0; int spotObj = -1; bool chasing = false; Vector2 last{};
+               int tellX = -1; };   // v0.19: walking up to a barricaded door. At the door they tell him, if you're in there
+static PHunt pMom, pDad;
+static Vector2 momFell{ -1, -1 }, dadFell{ -1, -1 };   // where they went down in the fight. They stay there
+static std::string defWho;                              // the parent fighting him right now
+static int defStage = 0;                                 // 0 waiting, 1 running at him, 2 the fight, 3 done
+static float defT = 0, normalCallT = 9;
+static void ResetParents() {
+    pMom = PHunt(); pDad = PHunt(); pMom.callT = 4; pDad.callT = 8; defWho.clear(); defStage = 0; defT = 0; normalCallT = 9;
+    // like his grace pause: a few seconds before they start. Long enough to get out of the room
+    pMom.startT = 3.0f; pDad.startT = 3.5f;
+    pMom.visited = GetRandomValue(0, 2); pDad.visited = GetRandomValue(0, 2);   // not always the same room first
+}
+// v0.15: climbing through a window. Takes a few seconds, it's loud, and he can pull you back
+static bool climbing = false, climbOut = false, climbBanged = false, climbDoggo = false;
+static float climbT = 0, climbDur = 0;
+static std::string climbWin;
+static Vector2 climbFrom{}, climbTo{};
+static float beamAng = 1.5708f;        // which way his torch points (radians, 0 = east)
+// v0.15.2 (Noah): a tiny sixth sense. Every so often he gets a hunch and walks to the area you're in. Not the spot
+static float vHunchT = 0;
+static int vHunches = 0;
+static bool vHunchSearch = false;
+// v0.15.2 (Noah): kite him through a window or a fence a couple of times and he stops running. He has a taser
+static int vJukes = 0;
+static float vTaserT = 0, vTaserCD = 0, vNoReachT = 0, vPathCD = 0, taserFx = 0;
+static bool vCantReach = false;
+static Vector2 taserA{}, taserB{};
+// v0.16 (Noah): at the knock Doggo goes to see who it is. 0 no, 1 on his way, 2 barking at him, 3 done
+static int doggoGuard = 0;
+static float doggoGuardT = 0, doggoStuckT = 0;      // the room plan after a hunch is a normal one, not "check every spot"
 static std::vector<int> vSpots;        // hiding spots (obj index) still to check in this room
 static int vRoom = -1, vSweep = 0, vSpotObj = -1;
 static bool vRoomDone[16] = {};
@@ -144,9 +204,17 @@ static int jukeboxSel = 1;
 
 // Sounds
 static Sound sBeep, sKnock, sBang, sRing, sThud, sBark, sGlass, sCrack, sChime, sFlap, sPoint, sDoor, sBells;
+// v0.10: footsteps by surface (wood, tile, snow, stone). Set 0 is the kid, set 1 is him
+static Sound sStep[2][4];
+static bool doggoRanOff = false;        // he made it out through the gate
+// v0.10: ambience and Mom's humming live in the music callback, so they loop without a seam.
+// The frame sets targets, the audio thread glides to them
+static volatile float gMusicVol = 0.7f, gSfxVol = 1.0f;
+static volatile float aWindT = 0, aBrightT = 1, aHumT = 0, aStoveT = 0, aMomT = 0;
+static volatile bool aHumSolo = false;   // the tape, and the dinner: nothing but her
 static bool audioOk = false;
 // v0.9: settings, saved apart from the game
-struct Settings { int music = 7, sfx = 10, text = 1; bool calmFlashes = false; };
+struct Settings { int music = 7, sfx = 10, text = 1; bool calmFlashes = false; bool roofs = true; bool blips = true; };   // v0.20.1 sound-look: blips
 static Settings settings;
 static bool pauseOpen = false;
 static int pauseSel = 0, pauseTapRow = -1, pauseTapDir = 0;
@@ -208,6 +276,12 @@ static Sound MakeSound(int frames, float (*f)(float t, int i)) {
     return s;
 }
 static float Noise(int i) { unsigned x = i * 2654435761u; x ^= x >> 13; x *= 1274126177u; return ((x & 0xffff) / 32768.0f) - 1.0f; }
+#include "audio/SfxV20.inc"   // v0.20 sound: power cut, locks, phone, tape, trunk, kicks
+// v0.20.1 sound-look: thunder and speech blips live in audio/Voices.inc (included after art/LookUI.inc)
+#include "audio/VoiceSynth.h"
+static void InitSoundsV201();
+static void VoiceBubble(const std::string& who, const std::string& text);
+static void VoicesTick(float dt);
 
 static void InitSounds() {
     InitAudioDevice();
@@ -276,16 +350,27 @@ static void InitSounds() {
         for (int k = 0; k < 4; ++k) v += bell(t - k * 1.6f, 262.0f) + bell(t - 0.8f - k * 1.6f, 220.0f);
         return v * 0.05f * std::min(1.0f, (7.0f - t) / 1.0f);
     });
+    for (int who = 0; who < 2; ++who) {
+        sStep[who][0] = MakeSound(SFX_SR * 0.09f, [](float t, int i) { return (std::sin(t * 2 * PI * 95) * 0.7f + Noise(i) * 0.22f) * std::exp(-t * 38); });                       // planks
+        sStep[who][1] = MakeSound(SFX_SR * 0.07f, [](float t, int i) { return std::sin(t * 2 * PI * 880) * 0.2f * std::exp(-t * 95) + Noise(i) * 0.3f * std::exp(-t * 75) + std::sin(t * 2 * PI * 150) * 0.3f * std::exp(-t * 50); });   // kitchen tiles
+        sStep[who][2] = MakeSound(SFX_SR * 0.16f, [](float t, int i) { return Noise(i / 2) * (0.55f + 0.45f * std::sin(t * 150)) * std::exp(-t * 20) * std::min(1.0f, t / 0.012f) * 0.7f; });   // snow
+        sStep[who][3] = MakeSound(SFX_SR * 0.08f, [](float t, int i) { return Noise(i) * 0.55f * std::exp(-t * 48) + std::sin(t * 2 * PI * 210) * 0.2f * std::exp(-t * 60); });           // gravel, concrete
+    }
     sBark = MakeSound(SFX_SR * 0.25f, [](float t, int i) {
         float f = 300 + 400 * std::exp(-t * 20);
         return (std::sin(t * 2 * PI * f) * 0.6f + Noise(i) * 0.25f) * std::exp(-t * 14) * (t < 0.2f ? 1 : 0);
     });
+    InitSoundsV20();   // v0.20 sound
+    InitSoundsV201();  // v0.20.1 sound-look: blips and thunder
 }
 
 static bool hushMusic = false;   // v0.9: the story asks for silence
 static void Play(const std::string& id) {
     if (id == "hush_on") { hushMusic = true; return; }
-    if (id == "hush_off") { hushMusic = false; return; }
+    if (id == "hush_off") { hushMusic = false; aHumSolo = false; aVhsT = 0; return; }
+    if (id == "hum_on") { aHumSolo = true; return; }
+    if (id == "hum_off") { aHumSolo = false; return; }
+    if (PlayV20(id)) return;   // v0.20 sound: the new ids, and the knock that waits for the power cut
     if (!audioOk) return;
     auto P = [&](Sound& s) { SetSoundVolume(s, settings.sfx / 10.0f * (id == "bark" ? 0.5f : 1.0f)); PlaySound(s); };
     if (id == "beep") P(sBeep);
@@ -313,8 +398,11 @@ static bool IsBark(const std::string& t) {
 //   0 silence, 1 cute (EarthBound-ish), 2 eerie music box, 3 hopeless drone, 4 the collection
 static AudioStream musicStream{};
 static bool musicOk = false;
-static volatile int musicCur = 0, musicPrev = 0;
-static float musicFade = 1.0f;     // 0..1 crossfade progress
+// v0.20 sound: every track has its own gain that glides up or down, so a change in the middle of a fade can't jump
+static volatile int musicCur = 0;
+static volatile float musicFadeSec = 2.5f;      // how long the current change takes
+static float trackGain[TRACK_COUNT] = {};       // audio thread
+static bool trackIsFile[TRACK_COUNT] = {};      // T-100: a music file plays this one (set before the stream starts)
 static double musicT = 0;
 static const int MUSIC_RATE = 44100;
 static std::vector<float> echoBuf;
@@ -323,23 +411,73 @@ static float musicLP = 0;
 
 // v0.4: the audio device asks for samples when it needs them (no more topping
 // up once per frame, which could run dry in the browser and crackle)
+// audio thread only
+static float aWind = 0, aBright = 1, aHum = 0, aStove = 0, aMom = 0, aSolo = 0, aLP1 = 0, aLP2 = 0, aCrack = 0;
+// v0.20 sound: Dad's hum, the muffle on each voice and on the music, the tape hiss
+static volatile float aDadT = 0, aMomMuffT = 0, aDadMuffT = 0, aMusicMuffT = 0;
+static float aDad = 0, aMomMuff = 0, aDadMuff = 0, aMusicMuff = 0, aVhs = 0, momLP = 0, dadLP = 0, vhsLP = 0, echoWet = 0.2f;
+static unsigned aSeed = 22222;
+static double aT = 0;
+static const float kWindGain = 1.6f;   // measured offline: full storm outside is about 0.057 RMS, the music tracks 0.035 to 0.06
 static void MusicCallback(void* buffer, unsigned int frames) {
     float* out = (float*)buffer;
     const float lpA = 0.6f;   // gentle low-pass (~6.5 kHz), takes the edge off
     for (unsigned int i = 0; i < frames; ++i) {
         musicT += 1.0 / MUSIC_RATE;
-        if (musicFade < 1) musicFade = std::min(1.0f, musicFade + 1.0f / (MUSIC_RATE * 2.5f));
-        int curT = musicCur, prevT = musicPrev;
-        float v = TrackSample(curT, musicT) * musicFade;
-        if (musicFade < 1) v += TrackSample(prevT, musicT) * (1 - musicFade);
+        // v0.20 sound: each track glides toward its own target. Files (T-100) are mixed by raylib, not here
+        int curT = musicCur;
+        float rate = 1.0f / (MUSIC_RATE * std::max(0.05f, (float)musicFadeSec));
+        float v = 0;
+        for (int k = 1; k < TRACK_COUNT; ++k) {
+            float g = trackGain[k], tgt = k == curT ? 1.0f : 0.0f;
+            if (g != tgt) trackGain[k] = g = tgt > g ? std::min(tgt, g + rate) : std::max(tgt, g - rate);
+            if (g > 0 && !trackIsFile[k]) v += TrackSample(k, musicT) * g;
+        }
+        v *= gMusicVol;
+        // v0.10: glide to the frame's targets (about a third of a second)
+        const float glide = 1.0f / (MUSIC_RATE * 0.35f);
+        aWind += (aWindT - aWind) * glide; aBright += (aBrightT - aBright) * glide; aHum += (aHumT - aHum) * glide;
+        aStove += (aStoveT - aStove) * glide; aMom += (aMomT - aMom) * glide; aSolo += ((aHumSolo ? 1.0f : 0.0f) - aSolo) * glide;
+        aDad += (aDadT - aDad) * glide; aMomMuff += (aMomMuffT - aMomMuff) * glide; aDadMuff += (aDadMuffT - aDadMuff) * glide;
+        aMusicMuff += (aMusicMuffT - aMusicMuff) * glide; aVhs += (aVhsT - aVhs) * glide;
+        // her song on the tape. It is alone there, and the tape wobbles a little
+        if (aSolo > 0.002f) v += HumSample(musicT + aVhs * 0.003 * std::sin(2 * PI * 0.6 * musicT)) * aSolo * 0.075f * gSfxVol;
         // echo: more of it the darker it gets
-        float wet = TrackEcho(curT);
+        echoWet += (TrackEcho(curT) - echoWet) * glide * 0.2f;
+        float wet = echoWet;
         float e = echoBuf[echoPos];
         echoBuf[echoPos] = v + e * wet * 0.85f;
         echoPos = (echoPos + 1) % (int)echoBuf.size();
         v += e * wet;
-        musicLP += (v - musicLP) * lpA;
-        out[i] = std::tanh(musicLP * 1.1f) * 0.85f;
+        musicLP += (v - musicLP) * (lpA - 0.44f * aMusicMuff);   // v0.20 sound: duller outdoors (T-035)
+        // v0.20 sound (T-035, T-148): people humming in the house. Their own low-pass: clear in the same room, dull through a door or a wall
+        float voices = 0;
+        if (aMom > 0.002f) { momLP += (HumSample(musicT) * aMom * 0.044f - momLP) * (0.5f - 0.43f * aMomMuff); voices += momLP; }
+        if (aDad > 0.002f) { dadLP += (DadHumSample(musicT) * aDad * 0.04f - dadLP) * (0.5f - 0.43f * aDadMuff); voices += dadLP; }
+        // ambience: wind (two soft low-passes on noise), the basement hum, the stove
+        aT += 1.0 / MUSIC_RATE;
+        aSeed = aSeed * 1664525u + 1013904223u;
+        float n = ((aSeed >> 9) & 0xffff) / 32768.0f - 1.0f;
+        float amb = 0;
+        if (aWind > 0.002f) {
+            float cut = 0.010f + 0.045f * aBright * (0.6f + 0.4f * (float)std::sin(aT * 0.37));
+            aLP1 += (n - aLP1) * cut; aLP2 += (aLP1 - aLP2) * cut;
+            float gust = 0.55f + 0.45f * (float)std::sin(aT * 0.53 + 1.7 * std::sin(aT * 0.11));
+            amb += aLP2 * aWind * gust * kWindGain;
+        }
+        if (aHum > 0.002f)
+            amb += aHum * (float)(0.016 * std::sin(aT * 2 * PI * 50) + 0.014 * std::sin(aT * 2 * PI * 100) + 0.008 * std::sin(aT * 2 * PI * 150.4) + 0.004 * std::sin(aT * 2 * PI * 200.9));
+        if (aStove > 0.002f) {
+            if ((aSeed & 0xfffff) < (unsigned)(aStove * 85)) aCrack = 0.25f + ((aSeed >> 20) & 0xff) / 255.0f * 0.5f;
+            aCrack *= 0.9925f;
+            amb += aCrack * n * 0.10f * aStove;
+        }
+        if (aVhs > 0.002f) {
+            // v0.20 sound: tape hiss. High-passed noise that breathes a little with the tape
+            vhsLP += (n - vhsLP) * 0.35f;
+            amb += (n - vhsLP) * 0.03f * aVhs * (0.8f + 0.2f * (float)std::sin(aT * 2 * PI * 0.45));
+        }
+        out[i] = std::tanh(musicLP * 1.1f + (amb + voices) * gSfxVol) * 0.85f;
     }
 }
 
@@ -351,16 +489,16 @@ static void InitMusic() {
     if (!musicOk) return;
     echoBuf.assign((size_t)(MUSIC_RATE * 0.36f), 0.0f);
     SetAudioStreamCallback(musicStream, MusicCallback);
-    SetAudioStreamVolume(musicStream, settings.music / 10.0f);
+    SetAudioStreamVolume(musicStream, 1.0f);   // v0.10: music and ambience get their own gains inside the callback
     PlayAudioStream(musicStream);
 }
 
-static void SetMusic(int track) {
+static void SetMusic(int track, float fadeSec = 2.5f) {
     if (track == musicCur) return;
-    musicPrev = musicCur;
-    musicFade = 0;
+    musicFadeSec = fadeSec;
     musicCur = track;
 }
+#include "audio/MusicFiles.inc"   // v0.20 sound (T-100): music files replace code tracks when they exist
 
 static void UpdateMusic() { /* the callback does the work now */ }
 
@@ -368,8 +506,13 @@ static void UpdateMusic() { /* the callback does the work now */ }
 static Vector2 TileCenter(int x, int y) { return { x * TS + TS / 2.0f, y * TS + TS / 2.0f }; }
 static int TX(float px) { return (int)std::floor(px / TS); }
 
+static bool tutorialEdge = false;   // v0.15.1: loop 1, you bumped into the edge of the yard
 static bool PlayerWalkable(int x, int y) {
     if (story.DoorClosed(x, y)) return false;
+    // v0.15.1 (Noah): nothing bad can happen in the first round, so you can't walk off onto the vidda
+    if (story.Tutorial() && !story.collection && story.world.RoomAt(x, y) == Room::Vidda) { tutorialEdge = true; return false; }
+    // v0.10: his car is solid, so walking up to it doesn't send you running onto the vidda. The left side of the gate stays open
+    if (story.CarHere() && (x == 20 || x == 21) && (y == 31 || y == 32)) return false;
     return story.world.Walkable(x, y, false);
 }
 
@@ -384,8 +527,8 @@ static bool CanStand(float cx, float cy) {
 static Vector2 NextStep(Vector2 from, int tx, int ty, bool basement) {
     int fx = TX(from.x), fy = TX(from.y);
     if (fx == tx && fy == ty) return TileCenter(tx, ty);
-    static int dist[World::H][World::W];
-    for (auto& row : dist) for (int& d : row) d = -1;
+    static Rows<int, World::ROWS, World::W, World::TOP> dist;
+    for (auto& row : dist.d) for (int& d : row) d = -1;
     std::queue<std::pair<int, int>> q;
     if (!story.world.InBounds(tx, ty)) return from;
     dist[ty][tx] = 0; q.push({ tx, ty });
@@ -398,6 +541,8 @@ static Vector2 NextStep(Vector2 from, int tx, int ty, bool basement) {
             if (!story.world.InBounds(nx, ny) || dist[ny][nx] >= 0) continue;
             bool ok = story.world.Walkable(nx, ny, basement) || (nx == fx && ny == fy);
             if (ok && gMover == 2 && story.DoorClosed(nx, ny) && !(nx == fx && ny == fy)) ok = false;   // Doggo can't open doors
+            if (ok && gMover == 1 && story.world.tiles[ny][nx] == Tile::ChainGap) ok = false;          // v0.15: a kid fits through the torn fence. He doesn't
+            if (ok && gMover != 1 && story.Barricaded(nx, ny) && !(nx == fx && ny == fy)) ok = false;   // v0.19: keys don't move a chest of drawers. He does
             if (!ok) continue;
             dist[ny][nx] = dist[y][x] + 1;
             q.push({ nx, ny });
@@ -411,6 +556,29 @@ static Vector2 NextStep(Vector2 from, int tx, int ty, bool basement) {
         if (d >= 0 && (best < 0 || d < best)) { best = d; bx = nx; by = ny; }
     }
     return TileCenter(bx, by);
+}
+
+// v0.15.2: how many steps he needs to get to a tile (-1: he can't). He opens and kicks doors, he doesn't fit the torn fence
+static int PathLen(Vector2 from, int tx, int ty) {
+    int fx = TX(from.x), fy = TX(from.y);
+    if (!story.world.InBounds(tx, ty) || !story.world.InBounds(fx, fy)) return -1;
+    static Rows<int, World::ROWS, World::W, World::TOP> dist;
+    for (auto& row : dist.d) for (int& d : row) d = -1;
+    std::queue<std::pair<int, int>> q;
+    dist[ty][tx] = 0; q.push({ tx, ty });
+    const int dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+    while (!q.empty()) {
+        auto [x, y] = q.front(); q.pop();
+        if (x == fx && y == fy) return dist[y][x];
+        for (int k = 0; k < 4; ++k) {
+            int nx = x + dx[k], ny = y + dy[k];
+            if (!story.world.InBounds(nx, ny) || dist[ny][nx] >= 0) continue;
+            if (!(story.world.Walkable(nx, ny, false) || (nx == fx && ny == fy)) || story.world.tiles[ny][nx] == Tile::ChainGap) continue;
+            dist[ny][nx] = dist[y][x] + 1;
+            q.push({ nx, ny });
+        }
+    }
+    return -1;
 }
 
 static void MoveActor(Actor& a, int tx, int ty, float speed, float dt, bool basement, float stopDist = 0) {
@@ -478,16 +646,18 @@ static Actor* ActorFor(const std::string& who) {
     if (who == "The visitor") return &visitor;
     return nullptr;
 }
-static void AddBubble(const std::string& who, const std::string& text, float life = -1) {
+static void AddBubble(const std::string& who, const std::string& text0, float life = -1) {
+    const std::string text = story.UnitLine(who, text0);   // v0.20.1 story-knife: oh-seven. His barks say 07 too
     for (size_t i = 0; i < bubbles.size(); ++i) if (bubbles[i].who == who) { bubbles.erase(bubbles.begin() + i); break; }
     if (life < 0) life = 2.4f + text.size() * 0.05f;
     bubbles.push_back({ who, text, 0, life });
+    VoiceBubble(who, text);   // v0.20.1 sound-look: a few soft blips, muffled through walls
 }
 
 // ============================================================ the visitor searches (v0.4)
 static const Room kSearchRooms[] = { Room::LivingRoom, Room::Kitchen, Room::Hallway, Room::KidsRoom,
-                                     Room::Bathroom, Room::ParentsRoom, Room::Shed, Room::Outside };
-static const int kRoomCount = 8;
+                                     Room::Bathroom, Room::ParentsRoom, Room::Shed, Room::Outside, Room::Basement, Room::Backyard };
+static const int kRoomCount = 10;  // v0.13: the basement, only while its door is unlocked. v0.15: the backyard, last
 
 static bool BlocksSight(int x, int y) {
     if (!story.world.InBounds(x, y)) return true;
@@ -503,11 +673,34 @@ static bool LineOfSight(Vector2 a, Vector2 b) {
     }
     return true;
 }
+// v0.20 sound (T-035): how a voice reaches the kid. Same room: clear. Through an open doorway: a little dull.
+// Through a wall or a closed door: quieter and dull. The yard front and back counts as one room
+static float VoiceThrough(Vector2 from, Room kidRoom, float& muffle) {
+    Room vr = story.world.RoomAt(TX(from.x), TX(from.y));
+    if (vr == kidRoom || (IsYard(vr) && IsYard(kidRoom))) { muffle = 0; return 1.0f; }
+    if (LineOfSight(from, player.pos)) { muffle = 0.35f; return 0.75f; }
+    muffle = 1; return 0.45f;
+}
+// v0.15: outside, after the power dies, he has a big torch
+static bool OutdoorsAt(Vector2 p) { Room r = story.world.RoomAt(TX(p.x), TX(p.y)); return IsYard(r) || r == Room::Vidda; }
+static bool TorchOn() { return visitor.visible && (story.PowerOut() || story.collection) && OutdoorsAt(visitor.pos) && visitor.pos.y < 34 * TS; }
+static bool seenFar = false;   // the last sighting was his torch, from far away
 static bool VisitorSeesKid() {
+    seenFar = false;
     if (hidden || visitorBlind) return false;
     float dx = player.pos.x - visitor.pos.x, dy = player.pos.y - visitor.pos.y;
     float d = std::hypot(dx, dy);
-    if (d > TS * 7) return false;
+    if (d > TS * 7) {
+        // v0.15: his torch reaches across the yard, through bushes and the chain fence. Red sweater, reflective stripes
+        if (!TorchOn() || !OutdoorsAt(player.pos)) return false;
+        float range = TS * (story.hasCoat ? 20.0f : 15.0f);
+        if (d > range) return false;
+        float diff = std::fabs(std::remainder(std::atan2(dy, dx) - beamAng, 6.2831853f));
+        if (diff > 0.42f) return false;
+        if (!LineOfSight(visitor.pos, player.pos)) return false;
+        seenFar = true;
+        return true;
+    }
     if (d > 26) {
         // he looks where he's walking: a wide cone, not eyes in the back of his head
         const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
@@ -516,8 +709,12 @@ static bool VisitorSeesKid() {
     }
     return LineOfSight(visitor.pos, player.pos);
 }
-static bool IsHideObj(const std::string& id) {
-    return id == "wardrobe" || id == "bed" || id == "pbed" || id == "toolbox" || id == "couch";
+static bool IsHideObj(const std::string& id) { return Story::IsHideSpot(id); }
+// v0.12: he is only drawn while you have a line to him, or he is right on top of you
+static bool VisitorShown() {
+    if (!visitor.visible) return false;
+    if (scene != SceneMode::Chase || !story.chase) return true;
+    return vShowT > 0;
 }
 // A walkable tile next to an object, the closest one to `from`
 static Vector2 SpotNextTo(const Obj& o, Vector2 from) {
@@ -539,10 +736,15 @@ static void PlanRoom(int ri) {
         const int pts[4][2] = { { 6, 23 }, { 25, 26 }, { 33, 12 }, { 20, 27 } };
         int start = GetRandomValue(0, 3);
         for (int k = 0; k < 4; ++k) vPath.push_back(TileCenter(pts[(start + k) % 4][0], pts[(start + k) % 4][1]));
+    } else if (r == Room::Backyard) {
+        // v0.15: he sweeps the backyard with his torch from a few spots
+        const int pts[6][2] = { { 12, 0 }, { 26, -6 }, { 18, -9 }, { 31, -14 }, { 20, -16 }, { 12, -22 } };
+        int start = GetRandomValue(0, 1) * 3;
+        for (int k = 0; k < 6; ++k) vPath.push_back(TileCenter(pts[(start + k) % 6][0], pts[(start + k) % 6][1]));
     } else {
         std::vector<Vector2> tiles;
         float cx = 0, cy = 0;
-        for (int y = 0; y < World::H; ++y) for (int x = 0; x < World::W; ++x)
+        for (int y = World::TOP; y < World::H; ++y) for (int x = 0; x < World::W; ++x)
             if (story.world.RoomAt(x, y) == r && story.world.tiles[y][x] != Tile::Door && story.world.Walkable(x, y, false)) {
                 tiles.push_back(TileCenter(x, y)); cx += x; cy += y;
             }
@@ -554,12 +756,19 @@ static void PlanRoom(int ri) {
         if (tiles.size() > 12) vPath.push_back(tiles[GetRandomValue(0, (int)tiles.size() - 1)]);
     }
     // the hiding spots in here: he doesn't always check every one, and not always first
-    float chance = vSweep == 0 ? 0.5f : vSweep == 1 ? 0.8f : 1.0f;
+    // v0.12: a spot he has found you in before is always checked, and first
+    float chance = vSure ? 1.0f : vSweep == 0 ? 0.7f : 1.0f;
+    bool known = false;
     for (int i = 0; i < (int)story.world.objs.size(); ++i) {
         const Obj& o = story.world.objs[i];
-        if (IsHideObj(o.id) && story.world.RoomAt(o.x, o.y) == r && GetRandomValue(0, 999) < chance * 1000) vSpots.push_back(i);
+        if (!IsHideObj(o.id) || story.world.RoomAt(o.x, o.y) != r) continue;
+        if (story.CaughtIn(o.id) > 0) { known = true; vSpots.push_back(i); }
+        else if (GetRandomValue(0, 999) < chance * 1000) vSpots.push_back(i);
     }
     if (vSpots.size() > 1 && GetRandomValue(0, 1)) std::swap(vSpots[0], vSpots[1]);
+    std::stable_sort(vSpots.begin(), vSpots.end(), [](int a, int b) { return story.CaughtIn(story.world.objs[a].id) > story.CaughtIn(story.world.objs[b].id); });
+    if (known && !vSure) { vPath.clear(); vPathI = 0; }   // no looking around first. He walks straight to it
+    vSure = false;
 }
 static void PickNextRoom() {
     int best = -1; float bd = 1e9f;
@@ -567,14 +776,18 @@ static void PickNextRoom() {
         for (int i = 0; i < kRoomCount; ++i) {
             if (vRoomDone[i]) continue;
             Room r = kSearchRooms[i];
+            if (r == Room::Basement && !story.BasementInHunt()) continue;
             // rough distance to the room, house first, yard and shed last
             float sx = 0, sy = 0; int n = 0;
-            for (int y = 0; y < World::H; y += 2) for (int x = 0; x < World::W; x += 2)
+            for (int y = World::TOP; y < World::H; y += 2) for (int x = 0; x < World::W; x += 2)
                 if (story.world.RoomAt(x, y) == r) { sx += x; sy += y; ++n; }
             if (!n) continue;
             float d = std::hypot(sx / n * TS - visitor.pos.x, sy / n * TS - visitor.pos.y);
             if (r == Room::Outside || r == Room::Shed) d += 260;
+            if (r == Room::Backyard) d += 420;
             d += GetRandomValue(0, 60);
+            if (vSweep == 0) for (auto& o : story.world.objs)   // v0.12: the rooms he has found you in come first
+                if (IsHideObj(o.id) && story.world.RoomAt(o.x, o.y) == r) d -= 3000.0f * story.CaughtIn(o.id);
             if (d < bd) { bd = d; best = i; }
         }
         if (best < 0) { ++vSweep; for (bool& b : vRoomDone) b = false; }
@@ -586,6 +799,24 @@ static void PickNextRoom() {
 static void StartSearch(bool dadRan) {
     for (bool& b : vRoomDone) b = false;
     vSweep = 0; vPause = 0; vLostT = 0; vBarkT = 5; vSpotCooldown = 0; vSpotObj = -1;
+    vHunchT = 18; vHunches = 0; vHunchSearch = false;
+    vJukes = 0; vTaserT = vTaserCD = vNoReachT = vPathCD = 0; vCantReach = false;
+    innerFall = false; vDoorBar = false; trailFollow = false; vBreathT = 0;
+    // v0.19: your fake trail is still out there. Lay it down where he'll see it: from the back wall to the gap and out
+    trailOn = story.falseTracks && !story.handlers;
+    if (trailOn) {
+        Vector2 p = TileCenter(16, 1), end = TileCenter(29, -26);
+        int side = 0;
+        for (int i = 0; i < 400 && std::hypot(p.x - end.x, p.y - end.y) > 4; ++i) {
+            Vector2 n = NextStep(p, 29, -26, false);
+            if (std::hypot(n.x - p.x, n.y - p.y) < 0.5f) break;
+            for (int k = 1; k <= 3; ++k) { side = 1 - side; prints.push_back({ { p.x + (n.x - p.x) * k / 3.0f, p.y + (n.y - p.y) * k / 3.0f + 6 }, 60.0f, 0, side }); }
+            p = n;
+        }
+    }
+    // v0.16: unless he stays, is out, or is shut in somewhere, Doggo goes to the door
+    doggoGuard = (story.DoggoExists() && !story.doggoStay && !story.Tutorial() && !story.handlers) ? 1 : 0; doggoGuardT = 6.0f; doggoStuckT = 0;
+    ResetHunt();
     vPath.clear(); vSpots.clear(); vRoom = -1;
     if (dadRan) {
         vmode = VMode::Grace;               // he walks back in from the yard. Panic time
@@ -595,6 +826,11 @@ static void StartSearch(bool dadRan) {
         vmode = VMode::Grace;
         vGraceGoal = visitor.pos;
         vGraceWait = 2.5f;
+        // v0.13: the hinges. At Mom's door he takes his time. Out at the shed he has a long walk back
+        if (story.huntStart == "bath") { vGraceWait = 5.0f; visitor.dir = 1; }
+        else if (story.huntStart == "shed") { vGraceWait = 1.5f; visitor.dir = 1; }
+        else if (story.huntStart == "door") { vGraceWait = 4.0f; visitor.dir = 1; }   // v0.14: hinge D. You opened it. He stands there counting rooms
+        else if (story.huntStart == "back") { vGraceWait = 3.0f; visitor.dir = 0; }   // v0.20 systems: he came in through your window, and shakes off the snow
     }
 }
 static void VisitorBark(const char* const* lines, int n) {
@@ -604,6 +840,9 @@ static const char* kSearchLines[] = { "Zero-six. Come on out.", "We do this ever
                                       "Your mom's waiting. Sort of.", "Ready or not.", "Cold out tonight. Let's not drag it out." };
 static const char* kSpotLines[] = { "There you are.", "Peekaboo.", "Hey. 06." };
 static const char* kLostLines[] = { "...Clever.", "Fine. The slow way.", "Where'd you go?" };
+static const char* kHunchLines[] = { "I used to hide over... here. Didn't I?", "Funny. I always hid somewhere around... here.",
+                                     "Don't know why I know this. Over here.", "Warmer. Warmer." };
+static const char* kLateHunch[] = { "Close now. I can almost hear you think.", "Right... about... here.", "I know this house better than you, 06." };
 
 // ============================================================ beats
 
@@ -618,12 +857,22 @@ static void StartNextBeat() {
         story.beats.pop_front();
         if (b.type == BeatType::Sound) { Play(b.id); continue; }
         if (b.type == BeatType::Achievement) { ToastFor("ACHIEVEMENT", b.text, GOLD); continue; }
-        if (b.type == BeatType::Clue) { ToastFor("NEW MEMORY  [J]", b.text, Color{ 190, 150, 255, 255 }); SaveGame(); continue; }
+        if (b.type == BeatType::Clue) {
+            ToastFor("NEW MEMORY  [J]", b.text, Color{ 190, 150, 255, 255 }); SaveGame();
+            // v0.10: the log opens where the new memory is
+            for (auto& m : AllMemories()) if (m.id == b.id) {
+                int pos = 0;
+                for (auto& o : AllMemories()) { if (o.id == m.id) break; if (o.topic == m.topic) pos++; }
+                for (size_t k = 0; k < AllTopics().size(); ++k) if (AllTopics()[k] == m.topic) { journalTopic = (int)k + 1; journalScroll = std::max(0, pos - 3); }
+            }
+            continue;
+        }
         if (b.type == BeatType::Flash) { flashT = 0.9f; continue; }
         if (b.type == BeatType::Bubble) { AddBubble(b.speaker, b.text); if (b.speaker == "Doggo" && IsBark(b.text)) Play("bark"); continue; }
         if (b.type == BeatType::Scene) {
-            sceneT = 0;
-            hidden = false;
+            if (b.id == "slip") { scene = SceneMode::Chase; hidden = false; continue; }   // v0.20.1 story-knife: Small hands. Out of the sweater, back to the hunt
+            bool keepHunt = (b.id == "doggo_dies" || b.id == "downed") && story.chase;   // v0.16: he put Doggo down mid-hunt. You stay where you are
+            if (!keepHunt) { sceneT = 0; hidden = false; }
             if (b.id == "doggo_dies") {
                 doggoShownDead = true; doggoDeadT = 0;
                 if (story.doggoDeadX >= 0) Snap(doggo, story.doggoDeadX, story.doggoDeadY);
@@ -644,10 +893,28 @@ static void StartNextBeat() {
                 miniOpen = true; miniY = MINI_H * 0.5f; miniV = 0; miniT = 0; miniScore = 0; miniDead = false; miniStarted = false; miniDeadT = 0; miniPipes.clear();
                 return;   // the beat queue waits until the game is over
             }
+            if (b.id.rfind("climb:", 0) == 0) {
+                // v0.15: through a window. Up to the near side first, facing the glass
+                if (const WindowInfo* w = WindowById(b.id.substr(6))) {
+                    int py = TX(player.pos.y);
+                    bool inside = w->wy <= 2 ? py > w->wy : py < w->wy;
+                    climbing = true; climbT = 0; climbWin = w->id; climbOut = inside;
+                    climbFrom = inside ? TileCenter(w->inX, w->inY) : TileCenter(w->outX, w->outY);
+                    climbTo = inside ? TileCenter(w->outX, w->outY) : TileCenter(w->inX, w->inY);
+                    climbBanged = inside && story.WindowSticks(w->id);
+                    climbDur = 2.5f + (climbBanged ? 1.2f : 0);
+                    climbDoggo = story.DoggoExists() && !story.doggoStay && std::hypot(doggo.pos.x - player.pos.x, doggo.pos.y - player.pos.y) < TS * 6;
+                    player.pos = climbFrom; player.dir = ((w->wy <= 2) == inside) ? 1 : 0;
+                    hidden = false;
+                }
+                continue;
+            }
+            if (b.id == "downed") { scene = SceneMode::Chase; downedT = 8.0f; continue; }   // v0.18: his own taser
             if (b.id == "dad_runs") scene = SceneMode::DadRuns;
             else if (b.id == "chase") {
                 scene = SceneMode::Chase;
-                if (story.visitorDowned) downedT = 7.0f;
+                if (story.visitorDowned) downedT = story.visitorDead ? 0.0f : 7.0f;
+                ResetParents();
                 StartSearch(story.dadDown && std::hypot(visitor.pos.x - TileCenter(20, 19).x, visitor.pos.y - TileCenter(20, 19).y) > TS * 3);
             }
             continue;
@@ -680,7 +947,7 @@ static void SkipSeen() {
         bool text = f.type == BeatType::Say || f.type == BeatType::Black || f.type == BeatType::Narrate;
         if (f.type == BeatType::Say && story.Stage() >= 1) story.beats.pop_front();
         else if (text && story.SeenLine(f.text)) story.beats.pop_front();
-        else if (f.type == BeatType::Sound) { if (f.id.rfind("hush", 0) == 0) Play(f.id); story.beats.pop_front(); }
+        else if (f.type == BeatType::Sound) { if (f.id.rfind("hush", 0) == 0 || f.id.rfind("hum_", 0) == 0 || f.id.rfind("vhs_", 0) == 0) Play(f.id); story.beats.pop_front(); }   // v0.20 sound: vhs_
         else if (f.type == BeatType::Fade && f.minutes == 0 && f.tx < 0 && f.text.empty()) story.beats.pop_front();
         else break;
     }
@@ -721,7 +988,7 @@ static void UpdateBeat(float dt) {
             story.beats.clear();
             SaveGame();
             hasSave = true;
-            hushMusic = false;
+            hushMusic = false; aHumSolo = false;
             scene = SceneMode::None;
             screen = Screen::Title;
         }
@@ -744,6 +1011,7 @@ static void UpdateBeat(float dt) {
         if (beatTime > 0.15f && (IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER))) {
             std::string id = cur.choices[choiceSel].id;
             beatActive = false;
+            LookOnInteract(id);   // v0.20 look: the tape
             story.Choose(id, px, py);
             StartNextBeat();
         }
@@ -756,7 +1024,11 @@ static void UpdateBeat(float dt) {
             fadeFrom = story.ClockTextSec(); fadeFromT = story.t;
             story.AdvanceMinutes(cur.minutes, px, py);
             fadeTo = story.ClockTextSec(); fadeToT = story.t;
-            if (cur.tx >= 0) { Snap(player, cur.tx, cur.ty); player.dir = 0; if (story.DoggoExists() && !story.doggoStay) Snap(doggo, cur.tx + 1, cur.ty); }
+            if (cur.tx >= 0) { Snap(player, cur.tx, cur.ty); player.dir = 0; if (story.DoggoExists() && !story.doggoStay && cur.ty < 34) Snap(doggo, cur.tx + 1, cur.ty); }   // v0.10: he never comes down the basement stairs
+            // v0.13: the hinges. A blink of black while he walks to Mom's door, or out to the shed
+            if (cur.id == "hinge_bath") { Snap(visitor, 13, 10); visitor.dir = 1; }
+            if (cur.id == "hinge_shed") { Snap(visitor, 34, 11); visitor.dir = 1; }
+            if (cur.id == "nobody_home") { Snap(visitor, 6, 4); visitor.dir = 0; }   // v0.20 systems: in through your window
             if (story.threats != lastThreats) {
                 // v0.7: the blink of black hides him walking back to the living room
                 lastThreats = story.threats;
@@ -772,14 +1044,15 @@ static void UpdateBeat(float dt) {
             beatActive = false;
             story.EndLoop();
             SaveGame();
-            hushMusic = false;
+            hushMusic = false; aHumSolo = false;
             // v0.6: Outer Wilds style recap of what you learned this loop
             recapList = story.lastLoopNew;
             if (!recapList.empty()) { recapOpen = true; recapT = 0; recapShown = 0; }
-            prints.clear();
+            prints.clear(); ResetHunt();
             Snap(player, 5, 5); player.dir = 0;
             Snap(mom, 8, 16); Snap(dad, 24, 16); Snap(doggo, 6, 6); Snap(visitor, 20, 29);
-            momDoor = HeldDoor(); dadDoor = HeldDoor(); lastThreats = 0; vDoorT = 0; struggleT = 0;
+            momDoor = HeldDoor(); dadDoor = HeldDoor(); lastThreats = 0; vDoorT = 0; struggleT = 0; climbing = false;
+            momFell = dadFell = { -1, -1 }; ResetParents();
             scene = SceneMode::None; hidden = false; wasCollection = false;
             StartNextBeat();
         }
@@ -803,10 +1076,20 @@ static Target FindTarget() {
     auto dist = [&](const Actor& a) { return std::hypot(a.pos.x - front.x, a.pos.y - front.y); };
     if (visitor.visible && (story.chase || !story.collection)) consider("visitor", "The visitor", dist(visitor), 18, 4);
     if (story.chase && story.DoggoExists() && doggo.visible) consider("doggo", "Doggo", dist(doggo), 14, 0);
+    if (story.chase && !story.dropItem.empty()) {   // v0.18: what the fight left on the floor
+        Vector2 c = TileCenter(story.dropX, story.dropY);
+        consider("drop", story.dropItem == "box" ? "The box" : "His taser", std::hypot(c.x - front.x, c.y - front.y), 20, 6);
+    }
     if (!story.collection) {
         if (mom.visible) consider("mom", "Mom", dist(mom), 14, 2);
         if (dad.visible) consider("dad", "Dad", dist(dad), 14, 2);
         if (story.DoggoExists() && doggo.visible) consider("doggo", "Doggo", dist(doggo), 14, 0);
+    }
+    if (!story.collection && story.CarHere()) {
+        // v0.10: his car, just past the gate. Only while he is away from it
+        Vector2 cc = { 20 * TS + 8.0f, 31 * TS + 13.0f };
+        if (!visitor.visible || std::hypot(visitor.pos.x - cc.x, visitor.pos.y - cc.y) > 44)
+            consider("car", "His car", std::hypot(cc.x - front.x, cc.y - front.y), 24, 0);
     }
     auto objAt = [&](int x, int y, float bias) {
         const Obj* o = story.world.ObjAt(x, y);
@@ -814,6 +1097,12 @@ static Target FindTarget() {
         Vector2 c = TileCenter(o->x, o->y);
         consider(o->id, o->name, std::hypot(c.x - front.x, c.y - front.y), 20, bias);
     };
+    // v0.15: from outside you climb in by facing the wall under the window
+    for (auto& w : AllWindows()) {
+        if (py != w.outY || std::abs(px - w.outX) > 1) continue;
+        Vector2 c = TileCenter(w.wx, w.wy);
+        consider(w.id, "Window", std::hypot(c.x - front.x, c.y - front.y), 14, 4);
+    }
     objAt(TX(front.x), TX(front.y), 3);   // the tile you face counts a little extra
     objAt(px, py, 0);
     for (int k = 0; k < 4; ++k) {
@@ -833,820 +1122,31 @@ static unsigned Hash(int x, int y) { unsigned h = x * 374761393u + y * 668265263
 // v0.5: richer tiles. Same open floor plan, more texture: plank floors, tiled kitchen and bathroom,
 // 3/4 view walls with wallpaper, a red log cabin outside, soft shadows where floors meet walls.
 static Tile TileAt(int x, int y) {
-    if (x < 0 || y < 0 || x >= World::W || y >= World::H) return Tile::Void;
+    if (x < 0 || y < World::TOP || x >= World::W || y >= World::H) return Tile::Void;
     return story.world.tiles[y][x];
 }
 static bool IsWallT(int x, int y) { return TileAt(x, y) == Tile::Wall; }
-static bool IsOutsideT(Tile t) { return t == Tile::Grass || t == Tile::Gravel || t == Tile::Vidda || t == Tile::Fence; }
+static bool IsOutsideT(Tile t) { return t == Tile::Grass || t == Tile::Gravel || t == Tile::Vidda || t == Tile::Fence || t == Tile::Bush || t == Tile::Chain || t == Tile::ChainGap || t == Tile::Ice; }
 static Color Shade(Color c, int d) {
     auto cl = [](int v) { return (unsigned char)std::max(0, std::min(255, v)); };
     return { cl(c.r + d), cl(c.g + d), cl(c.b + d), c.a };
 }
-static Color WallpaperFor(Room r) {
-    switch (r) {
-    case Room::KidsRoom: return { 132, 150, 178, 255 };
-    case Room::Bathroom: return { 206, 216, 220, 255 };
-    case Room::ParentsRoom: return { 142, 156, 128, 255 };
-    case Room::Hallway: return { 190, 170, 132, 255 };
-    case Room::Kitchen: return { 214, 204, 170, 255 };
-    case Room::LivingRoom: return { 182, 138, 92, 255 };
-    case Room::Shed: return { 128, 98, 70, 255 };
-    case Room::Basement: return { 86, 90, 98, 255 };
-    default: return { 150, 140, 120, 255 };
-    }
-}
-static void Planks(int px, int py, int x, int y, Color base, int seamLen) {
-    for (int k = 0; k < 4; ++k) {
-        int gy = y * 4 + k;
-        int off = (int)(Hash(gy, 9) % (unsigned)seamLen);
-        for (int i = 0; i < TS; ) {
-            int gx = x * TS + i + off;
-            int idx = gx / seamLen, rem = seamLen - gx % seamLen;
-            int w = std::min(rem, TS - i);
-            int v = (int)(Hash(idx, gy) % 13) - 6;
-            DrawRectangle(px + i, py + k * 4, w, 4, Shade(base, v));
-            if (gx % seamLen == 0) DrawRectangle(px + i, py + k * 4, 1, 4, Shade(base, -28));
-            i += w;
-        }
-        DrawRectangle(px, py + k * 4 + 3, TS, 1, Shade(base, -18));
-        if (Hash(x * 7 + k, y * 3) % 9 == 0) DrawRectangle(px + (int)(Hash(x, gy) % 12) + 2, py + k * 4 + 1, 3, 1, Shade(base, -12)); // grain
-    }
-}
-static void FloorShadows(int px, int py, int x, int y) {
-    if (IsWallT(x, y - 1)) DrawRectangleGradientV(px, py, TS, 7, Fade(BLACK, 0.38f), Fade(BLACK, 0));
-    if (IsWallT(x - 1, y)) DrawRectangleGradientH(px, py, 4, TS, Fade(BLACK, 0.22f), Fade(BLACK, 0));
-    if (IsWallT(x + 1, y)) DrawRectangleGradientH(px + TS - 4, py, 4, TS, Fade(BLACK, 0), Fade(BLACK, 0.22f));
-}
-
-static void DrawTile(int x, int y) {
-    Tile t = story.world.tiles[y][x];
-    Room r = story.world.rooms[y][x];
-    int px = x * TS, py = y * TS;
-    unsigned h = Hash(x, y);
-    bool storm = story.Storm();
-    switch (t) {
-    case Tile::Vidda: {
-        // v0.8: deep snow, with rocks sticking through
-        Color base = { 214, 222, 236, 255 };
-        if (storm) base = Mix(base, WHITE, 0.4f);
-        DrawRectangle(px, py, TS, TS, base);
-        for (int k = 0; k < 3; ++k) {
-            unsigned q = Hash(x * 5 + k, y * 11);
-            DrawRectangle(px + q % 13, py + (q >> 5) % 14, 4, 1, Shade(base, -(int)(q % 3) * 6 - 4));
-        }
-        if (h % 9 == 0) {
-            int rx = px + (int)(h % 8), ry = py + (int)((h >> 6) % 8);
-            DrawRectangle(rx, ry + 2, 7, 3, Color{ 112, 112, 118, 255 });
-            DrawRectangle(rx + 1, ry, 5, 2, base);
-            DrawRectangle(rx, ry + 5, 7, 1, Fade(Color{ 60, 70, 110, 255 }, 0.25f));
-        }
-    } break;
-    case Tile::Grass: {
-        // v0.8: the yard is under snow. The tile keeps its old name
-        Color base = (Hash(x / 2, y / 2) % 2) ? Color{ 234, 239, 247, 255 } : Color{ 228, 234, 244, 255 };
-        if (storm) base = Mix(base, WHITE, 0.4f);
-        DrawRectangle(px, py, TS, TS, base);
-        for (int k = 0; k < 3; ++k) {
-            unsigned q = Hash(x * 3 + k, y * 13 + k);
-            DrawRectangle(px + q % 12, py + (q >> 4) % 14, 3 + q % 3, 1, Shade(base, -8));
-        }
-        if (h % 23 == 0 && !storm && std::fmod(globalT + h % 7, 3.0f) < 0.5f) DrawRectangle(px + h % 13 + 1, py + (h >> 3) % 13 + 1, 1, 1, WHITE);
-        if (TileAt(x, y - 1) == Tile::Wall) DrawRectangleGradientV(px, py, TS, 7, Fade(Color{ 60, 70, 120, 255 }, 0.3f), Fade(Color{ 60, 70, 120, 255 }, 0));
-    } break;
-    case Tile::Gravel: {
-        // v0.8: the road, ploughed this morning. Two wheel ruts, filling in once the storm comes
-        Color base = { 204, 210, 224, 255 };
-        if (storm) base = Mix(base, WHITE, 0.45f);
-        DrawRectangle(px, py, TS, TS, base);
-        Color rut = storm ? Color{ 196, 204, 222, 255 } : Color{ 164, 172, 192, 255 };
-        if (x == 19 || x == 21) { DrawRectangle(px + 5, py, 4, TS, rut); DrawRectangle(px + 5, py, 1, TS, Shade(rut, -12)); }
-        if (TileAt(x, y - 1) == Tile::Wall) DrawRectangleGradientV(px, py, TS, 7, Fade(Color{ 60, 70, 120, 255 }, 0.3f), Fade(Color{ 60, 70, 120, 255 }, 0));
-    } break;
-    case Tile::Floor:
-    case Tile::ShedFloor: {
-        if (r == Room::Kitchen) {
-            for (int j = 0; j < 2; ++j) for (int i = 0; i < 2; ++i) {
-                bool dark = ((x * 2 + i) + (y * 2 + j)) % 2;
-                DrawRectangle(px + i * 8, py + j * 8, 8, 8, dark ? Color{ 168, 170, 162, 255 } : Color{ 214, 212, 198, 255 });
-            }
-            DrawRectangle(px, py + 7, TS, 1, Fade(BLACK, 0.08f)); DrawRectangle(px + 7, py, 1, TS, Fade(BLACK, 0.08f));
-        } else if (r == Room::Bathroom) {
-            for (int j = 0; j < 2; ++j) for (int i = 0; i < 2; ++i)
-                DrawRectangle(px + i * 8, py + j * 8, 8, 8, (Hash(x * 2 + i, y * 2 + j) % 5 == 0) ? Color{ 168, 194, 204, 255 } : Color{ 186, 208, 216, 255 });
-            DrawRectangle(px, py + 7, TS, 1, Color{ 150, 172, 182, 255 }); DrawRectangle(px + 7, py, 1, TS, Color{ 150, 172, 182, 255 });
-            DrawRectangle(px, py + 15, TS, 1, Color{ 150, 172, 182, 255 }); DrawRectangle(px + 15, py, 1, TS, Color{ 150, 172, 182, 255 });
-        } else if (r == Room::KidsRoom) {
-            Color c = { 146, 124, 156, 255 };
-            DrawRectangle(px, py, TS, TS, c);
-            for (int k = 0; k < 7; ++k) { unsigned q = Hash(x * 31 + k, y * 7); DrawRectangle(px + q % 16, py + (q >> 4) % 16, 1, 1, Shade(c, (q & 1) ? 10 : -10)); }
-        } else if (r == Room::Basement) {
-            Color c = { 70, 74, 82, 255 };
-            DrawRectangle(px, py, TS, TS, c);
-            if (h % 5 == 0) DrawCircle(px + (int)(h % 10) + 3, py + (int)((h >> 4) % 10) + 3, 3, Shade(c, -8));
-            DrawRectangle(px, py + 15, TS, 1, Shade(c, -10)); DrawRectangle(px + 15, py, 1, TS, Shade(c, -10));
-        } else if (t == Tile::ShedFloor) {
-            Planks(px, py, x, y, Color{ 116, 100, 84, 255 }, 32);
-        } else {
-            Color c = r == Room::LivingRoom ? Color{ 170, 122, 82, 255 } : r == Room::ParentsRoom ? Color{ 152, 108, 74, 255 } : Color{ 142, 102, 68, 255 };
-            Planks(px, py, x, y, c, 48);
-        }
-        FloorShadows(px, py, x, y);
-    } break;
-    case Tile::Wall: {
-        Tile below = TileAt(x, y + 1);
-        Color cap = { 56, 48, 46, 255 };
-        // v0.8: snow on the outer walls
-        if (IsOutsideT(TileAt(x, y - 1)) || IsOutsideT(TileAt(x, y + 1)) || IsOutsideT(TileAt(x - 1, y)) || IsOutsideT(TileAt(x + 1, y)))
-            cap = (h % 3) ? Color{ 216, 224, 238, 255 } : Color{ 204, 214, 232, 255 };
-        DrawRectangle(px, py, TS, TS, cap);
-        if (!IsWallT(x, y - 1)) DrawRectangle(px, py, TS, 1, Shade(cap, 22));
-        if (!IsWallT(x - 1, y) && TileAt(x - 1, y) != Tile::Door) DrawRectangle(px, py, 1, TS, Shade(cap, 14));
-        if (below == Tile::Floor || below == Tile::ShedFloor || below == Tile::BasementDoor) {
-            Room rb = story.world.rooms[std::min(World::H - 1, y + 1)][x];
-            Color wp = WallpaperFor(rb);
-            DrawRectangle(px, py + 6, TS, 10, wp);
-            if (rb == Room::KidsRoom && (x % 2 == 0)) DrawRectangle(px + 4, py + 6, 3, 8, Shade(wp, 12));          // stripes
-            if (rb == Room::Bathroom || rb == Room::Kitchen) { DrawRectangle(px, py + 10, TS, 1, Shade(wp, -16)); DrawRectangle(px + (y % 2 ? 7 : 0), py + 6, 1, 4, Shade(wp, -16)); }
-            if (rb == Room::Hallway) DrawRectangle(px, py + 10, TS, 1, Shade(wp, -24));                             // wainscot rail
-            if (rb == Room::Shed) for (int k = 0; k < 3; ++k) DrawRectangle(px, py + 7 + k * 3, TS, 1, Shade(wp, -20));
-            DrawRectangle(px, py + 6, TS, 1, Shade(cap, -10));
-            DrawRectangle(px, py + 14, TS, 2, rb == Room::Basement ? Shade(wp, -20) : Color{ 92, 66, 46, 255 });      // skirting
-        } else if (IsOutsideT(below)) {
-            // falu red log cabin, like every proper house on the vidda
-            Color red = { 140, 52, 42, 255 };
-            if (story.Storm()) red = Mix(red, Color{ 120, 110, 120, 255 }, 0.15f);
-            DrawRectangle(px, py + 5, TS, 11, red);
-            for (int k = 0; k < 4; ++k) DrawRectangle(px, py + 7 + k * 3, TS, 1, Shade(red, -30));
-            if (x % 6 == 0) DrawRectangle(px + 7, py + 5, 2, 11, Color{ 226, 220, 206, 255 });                    // white corner trim
-            DrawRectangle(px, py + 5, TS, 1, Color{ 226, 220, 206, 255 });
-            DrawRectangle(px + (int)(h % 12), py + 5, 1, 2 + (int)(h % 3), Color{ 226, 236, 246, 255 });          // icicle
-            if (y == 20 && (x == 8 || x == 15 || x == 25)) {
-                // v0.8: a window with an advent candle bridge. Bulbs start dying once you've gone dark
-                bool on = !story.PowerOut();
-                DrawRectangle(px + 1, py + 6, 14, 9, Color{ 226, 220, 206, 255 });
-                DrawRectangle(px + 2, py + 7, 12, 7, on ? Color{ 255, 206, 120, 255 } : Color{ 24, 30, 48, 255 });
-                for (int k = 0; k < 7; ++k) {
-                    int dy = std::abs(k - 3);
-                    bool dead = !on || (story.tainted && (k + x) % 3 == 0);
-                    DrawRectangle(px + 2 + k * 2 - 0, py + 8 + dy, 1, 5 - dy, Color{ 240, 236, 226, 255 });
-                    DrawRectangle(px + 2 + k * 2, py + 7 + dy, 1, 1, dead ? Color{ 90, 84, 80, 255 } : Color{ 255, 250, 200, 255 });
-                }
-            }
-            if (y == 20 && x == 21) {
-                // the wreath next to the front door
-                DrawCircle(px + 8, py + 10, 4.5f, Color{ 40, 92, 62, 255 });
-                DrawCircle(px + 8, py + 10, 2.0f, red);
-                DrawRectangle(px + 7, py + 13, 3, 2, Color{ 200, 40, 40, 255 });
-            }
-        }
-    } break;
-    case Tile::Door: {
-        bool horiz = IsWallT(x - 1, y) || IsWallT(x + 1, y);
-        Room rb = story.world.rooms[std::min(World::H - 1, y + 1)][x];
-        Tile below = TileAt(x, y + 1);
-        if (IsOutsideT(below) || IsOutsideT(TileAt(x, y - 1))) Planks(px, py, x, y, Color{ 120, 90, 62, 255 }, 32);
-        else Planks(px, py, x, y, Color{ 142, 102, 68, 255 }, 48);
-        (void)rb;
-        Color frame = { 96, 66, 42, 255 };
-        if (horiz) { DrawRectangle(px, py, 2, TS, frame); DrawRectangle(px + TS - 2, py, 2, TS, frame); DrawRectangle(px, py + TS - 2, TS, 2, Shade(frame, -12)); }
-        else { DrawRectangle(px, py, TS, 2, frame); DrawRectangle(px, py + TS - 2, TS, 2, frame); }
-        if (story.DoorClosed(x, y)) {
-            DrawRectangle(px + 1, py + 1, TS - 2, TS - 2, Color{ 92, 60, 36, 255 });
-            DrawRectangle(px + 2, py + 2, TS - 4, TS - 4, Color{ 112, 74, 46, 255 });
-            DrawRectangle(px + 3, py + 3, TS - 6, TS - 6, Color{ 132, 90, 56, 255 });
-            DrawRectangle(px + 4, py + 4, TS - 8, 3, Color{ 146, 102, 64, 255 });
-            DrawRectangle(px + TS - 6, py + 7, 2, 2, Color{ 220, 196, 110, 255 });
-            if (story.DoorLocked(x, y)) {   // a little brass lock plate
-                DrawRectangle(px + TS - 7, py + 9, 4, 4, Color{ 190, 160, 70, 255 });
-                DrawRectangle(px + TS - 6, py + 10, 1, 2, Color{ 40, 30, 20, 255 });
-            }
-        } else if (story.DoorBroken(x, y)) {
-            DrawRectangle(px + 1, py + 2, 3, 2, Color{ 132, 90, 56, 255 }); DrawRectangle(px + 10, py + 11, 4, 2, Color{ 112, 74, 46, 255 });
-            DrawRectangle(px + 5, py + 13, 2, 1, Color{ 150, 110, 70, 255 }); DrawRectangle(px + 12, py + 3, 2, 3, Color{ 92, 60, 36, 255 });
-        }
-    } break;
-    case Tile::Fence: {
-        Tile in = (y == 0 || x == 0 || y == World::H - 1 || x == World::W - 1) ? Tile::Vidda : Tile::Grass;
-        DrawRectangle(px, py, TS, TS, in == Tile::Vidda ? Color{ 214, 222, 236, 255 } : Color{ 230, 236, 245, 255 });
-        bool vertical = TileAt(x, y - 1) == Tile::Fence && TileAt(x, y + 1) == Tile::Fence && TileAt(x - 1, y) != Tile::Fence;
-        Color wood = { 120, 86, 54, 255 };
-        if (vertical) {
-            DrawRectangle(px + 5, py, 2, TS, wood); DrawRectangle(px + 9, py, 2, TS, Shade(wood, -14));
-            DrawRectangle(px + 4, py + 4, 8, 4, Shade(wood, -20));
-            DrawRectangle(px + 4, py + 3, 8, 1, WHITE);
-        } else {
-            DrawRectangle(px, py + 5, TS, 2, wood); DrawRectangle(px, py + 10, TS, 2, wood);
-            DrawRectangle(px, py + 12, TS, 1, Fade(BLACK, 0.2f));
-            DrawRectangle(px + 6, py + 2, 3, 12, Shade(wood, -16)); DrawRectangle(px + 6, py + 2, 3, 1, Shade(wood, 16));
-            DrawRectangle(px + 5, py + 14, 5, 1, Fade(BLACK, 0.25f));
-            DrawRectangle(px, py + 4, TS, 1, WHITE); DrawRectangle(px, py + 9, TS, 1, Color{ 236, 240, 248, 255 });   // snow on the rails
-            DrawRectangle(px + 6, py + 1, 3, 1, WHITE);
-        }
-    } break;
-    case Tile::Void:
-        DrawRectangle(px, py, TS, TS, Color{ 4, 4, 8, 255 });
-        break;
-    case Tile::BasementDoor:
-        if (story.BasementOpen()) {
-            DrawRectangle(px, py, TS, TS, Color{ 10, 14, 30, 255 });
-            float pulse = 0.5f + 0.5f * std::sin(globalT * 4);
-            DrawRectangle(px + 2, py + 2, TS - 4, TS - 4, Fade(Color{ 70, 140, 255, 255 }, 0.25f + 0.25f * pulse));
-            for (int k = 0; k < 3; ++k) DrawRectangle(px + 3, py + 4 + k * 4, TS - 6, 1, Fade(Color{ 150, 190, 255, 255 }, 0.4f));
-        } else {
-            Planks(px, py, x, y, Color{ 142, 102, 68, 255 }, 48);
-            DrawRectangle(px + 1, py + 1, TS - 2, TS - 2, Color{ 76, 78, 86, 255 });
-            DrawRectangle(px + 2, py + 2, TS - 4, TS - 4, Color{ 98, 102, 112, 255 });
-            DrawRectangle(px + 2, py + 2, TS - 4, 1, Color{ 130, 134, 146, 255 });
-            DrawRectangle(px + TS - 6, py + 7, 3, 3, Color{ 210, 196, 120, 255 });
-        }
-        break;
-    }
-}
-
-static void DrawObj(const Obj& o, Vector2 jit) {
-    float x = o.x * TS + jit.x, y = o.y * TS + jit.y;
-    const std::string& id = o.id;
-    auto R = [&](float ox, float oy, float w, float h, Color c) { DrawRectangle((int)(x + ox), (int)(y + oy), (int)w, (int)h, c); };
-    // v0.5: soft contact shadow under furniture
-    static const char* flat[] = { "toys", "window", "mirror", "calendar", "frontdoor", "sheddoor", "rope", "stairs", "gate", "basement", "screens", "fliptendo",
-                                  "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl" };
-    bool isFlat = false;
-    for (auto f : flat) if (id == f) isFlat = true;
-    if (!isFlat) {
-        float sw = (id == "couch" || id == "pbed") ? 36.0f : (id == "bench" || id == "woodpile") ? 24.0f : 15.0f;
-        float sx = (id == "couch") ? 8.0f : (id == "pbed") ? 8.0f : 8.0f;
-        DrawEllipse((int)(x + sx), (int)(y + 15), sw / 2, 2.5f, Fade(BLACK, 0.22f));
-    }
-    if (id == "bed") {
-        R(0, -5, 16, 21, Color{ 104, 72, 46, 255 });                       // frame
-        R(1, -4, 14, 19, Color{ 236, 234, 226, 255 });                     // sheet
-        R(2, -3, 12, 5, Color{ 250, 250, 246, 255 }); R(2, 1, 12, 1, Color{ 210, 208, 200, 255 }); // pillow
-        R(1, 3, 14, 12, Color{ 74, 104, 168, 255 });                       // duvet
-        R(1, 3, 14, 2, Color{ 104, 134, 196, 255 });                       // fold
-        for (int k = 0; k < 3; ++k) R(3 + k * 4, 7 + (k % 2) * 3, 2, 2, Color{ 230, 200, 90, 255 }); // stars
-        R(1, 14, 14, 1, Color{ 54, 80, 136, 255 });
-    }
-    else if (id == "toys") { if (!story.roomClean) { R(1, 3, 4, 4, RED); R(8, 8, 5, 3, YELLOW); R(4, 10, 3, 3, SKYBLUE); R(11, 2, 3, 5, GREEN); } }
-    else if (id == "window") { R(1, -6, 14, 8, story.Storm() ? Color{ 214, 222, 234, 255 } : Color{ 92, 112, 164, 255 }); R(7, -6, 2, 8, BROWN); }
-    else if (id == "toilet") { R(3, -2, 10, 5, Color{ 236, 238, 240, 255 }); R(3, -2, 10, 1, WHITE); R(4, 3, 8, 11, Color{ 242, 244, 246, 255 }); R(5, 5, 6, 6, Color{ 170, 196, 210, 255 }); R(4, 13, 8, 1, Color{ 190, 196, 200, 255 }); }
-    else if (id == "mirror") { R(3, -6, 10, 10, Color{ 200, 220, 230, 255 }); R(4, -5, 3, 3, WHITE); }
-    else if (id == "desk") {
-        R(0, 2, 16, 10, Color{ 122, 80, 48, 255 }); R(0, 2, 16, 1, Color{ 150, 104, 66, 255 });
-        R(1, 12, 2, 4, Color{ 90, 58, 34, 255 }); R(13, 12, 2, 4, Color{ 90, 58, 34, 255 });
-        R(3, 4, 6, 4, RAYWHITE); R(4, 5, 4, 1, Color{ 150, 150, 160, 255 }); R(4, 7, 3, 1, Color{ 150, 150, 160, 255 });
-        R(10, 1, 4, 2, Color{ 230, 200, 120, 255 }); R(11, 3, 2, 3, Color{ 70, 70, 74, 255 });    // lamp
-    }
-    else if (id == "pbed") {
-        R(-8, -5, 32, 23, Color{ 104, 72, 46, 255 });
-        R(-7, -4, 30, 21, Color{ 236, 234, 226, 255 });
-        R(-6, -3, 12, 5, Color{ 250, 250, 246, 255 }); R(10, -3, 12, 5, Color{ 250, 250, 246, 255 });
-        R(-7, 3, 30, 14, Color{ 156, 64, 60, 255 }); R(-7, 3, 30, 2, Color{ 184, 92, 86, 255 });
-        R(8, 5, 1, 12, Color{ 130, 50, 48, 255 });
-    }
-    else if (id == "drawer") {
-        R(1, 1, 14, 14, Color{ 100, 64, 36, 255 }); R(4, 4, 8, 2, GOLD); R(4, 9, 8, 2, GOLD);
-        if (story.drawerOpen) { R(2, 7, 12, 6, Color{ 40, 26, 16, 255 }); if (story.held != Item::Tape) R(4, 9, 7, 3, Color{ 20, 20, 24, 255 }); if (story.keyInDrawer) R(12, 8, 2, 2, GOLD); }
-    }
-    else if (id == "coats") { R(6, -6, 3, 20, BROWN); R(1, -4, 6, 10, DARKBLUE); R(9, -3, 6, 9, MAROON); }
-    else if (id == "phone") { R(2, 3, 12, 9, Color{ 220, 200, 120, 255 }); R(3, 1, 10, 4, Color{ 60, 60, 60, 255 }); }
-    else if (id == "fridge") {
-        R(0, -10, 16, 26, Color{ 226, 228, 232, 255 }); R(0, -10, 16, 1, WHITE); R(14, -10, 2, 26, Color{ 196, 198, 204, 255 });
-        R(0, -1, 16, 1, Color{ 180, 182, 188, 255 });                       // freezer line
-        R(12, -7, 1, 4, Color{ 150, 152, 160, 255 }); R(12, 2, 1, 7, Color{ 150, 152, 160, 255 });
-        R(2, -7, 6, 5, Color{ 250, 236, 140, 255 }); R(3, -6, 4, 1, Color{ 120, 120, 120, 255 }); // chore list
-        R(4, 4, 2, 2, RED); R(7, 6, 2, 2, Color{ 80, 140, 220, 255 });     // magnets
-    }
-    else if (id == "stove") {
-        R(0, 0, 16, 16, Color{ 222, 222, 216, 255 }); R(0, 0, 16, 7, Color{ 70, 70, 76, 255 });
-        DrawCircle((int)x + 4, (int)y + 3, 2.5f, Color{ 40, 40, 44, 255 }); DrawCircle((int)x + 11, (int)y + 3, 2.5f, Color{ 40, 40, 44, 255 });
-        DrawCircleLines((int)x + 4, (int)y + 3, 2, Color{ 200, 80, 50, 255 });
-        R(2, 8, 12, 6, Color{ 60, 60, 66, 255 }); R(3, 9, 10, 4, Color{ 120, 110, 90, 255 }); R(3, 7, 10, 1, Color{ 160, 160, 160, 255 });
-    }
-    else if (id == "trashcan") { R(3, 2, 10, 13, Color{ 80, 110, 80, 255 }); if (!story.hasBag && !story.trashDone) R(4, 0, 8, 4, BLACK); }
-    else if (id == "bowl") { R(3, 9, 10, 5, Color{ 200, 60, 60, 255 }); if (!story.fed) R(5, 10, 6, 2, Color{ 120, 80, 40, 255 }); }
-    else if (id == "tv") {
-        R(-1, 8, 18, 8, Color{ 110, 74, 46, 255 }); R(-1, 8, 18, 1, Color{ 140, 100, 64, 255 });   // cabinet
-        R(0, -2, 16, 11, Color{ 30, 30, 34, 255 }); R(0, -2, 16, 1, Color{ 70, 70, 76, 255 });
-        Color sc = story.PowerOut() ? Color{ 10, 10, 10, 255 } : (story.Stage() >= 2 && std::fmod(globalT, 4.0f) < 0.6f ? (((int)(globalT * 12)) % 2 ? Color{ 150, 150, 150, 255 } : Color{ 60, 60, 60, 255 }) : Color{ 90, 160, 220, 255 });
-        R(2, 0, 12, 7, sc);
-        if (!story.PowerOut()) { R(3, 1, 4, 1, Fade(WHITE, 0.35f)); R(2, 2 + ((int)(globalT * 9)) % 5, 12, 1, Fade(BLACK, 0.12f)); }
-    }
-    else if (id == "couch") {
-        Color c = { 70, 112, 116, 255 };
-        R(-12, -5, 40, 7, Shade(c, -16)); R(-12, -5, 40, 1, Shade(c, 8));                // back
-        R(-12, 1, 40, 13, c);
-        R(-12, -2, 5, 16, Shade(c, -10)); R(23, -2, 5, 16, Shade(c, -10));              // arms
-        R(-7, 2, 1, 10, Shade(c, -20)); R(3, 2, 1, 10, Shade(c, -20)); R(13, 2, 1, 10, Shade(c, -20)); // cushions
-        R(-6, 0, 8, 4, Color{ 214, 196, 150, 255 });                                      // pillow
-        R(-12, 13, 40, 1, Shade(c, -30));
-    }
-    else if (id == "radio") {
-        R(2, 4, 12, 8, Color{ 140, 80, 50, 255 }); R(4, 6, 4, 4, Color{ 40, 40, 40, 255 });
-        // a little nisse on top. From stage 2 he has turned to face the wall
-        R(10, 1, 3, 3, Color{ 190, 40, 40, 255 }); R(11, -1, 1, 2, Color{ 190, 40, 40, 255 });
-        if (story.Stage() < 2) { R(10, 2, 3, 1, Color{ 240, 210, 180, 255 }); R(10, 3, 3, 1, WHITE); }
-    }
-    else if (id == "tree") {
-        // v0.8: the tree. Lights die as the stages go on, red once you're dark, off in the power cut
-        R(6, 12, 4, 4, Color{ 92, 60, 36, 255 });
-        Color g = { 40, 96, 66, 255 };
-        for (int k = 0; k < 4; ++k) { R(5 - k * 2 + 0, -14 + k * 7, 6 + k * 4, 8, k % 2 ? g : Shade(g, 10)); }
-        R(7, -18, 2, 5, Shade(g, 16));
-        DrawPoly({ x + 8, y - 19 }, 5, 3, globalT * 8, story.PowerOut() ? Color{ 120, 110, 70, 255 } : GOLD);
-        static const int bx[9] = { 7, 4, 10, 2, 12, 6, 0, 8, 14 }, by[9] = { -12, -8, -6, -2, -1, 1, 6, 5, 7 };
-        for (int k = 0; k < 9; ++k) {
-            bool on = !story.PowerOut() && !(story.Stage() >= 2 && k % 3 == 0) && std::fmod(globalT * 0.7f + k * 0.37f, 2.0f) < 1.4f;
-            Color c = story.tainted ? Color{ 220, 40, 40, 255 } : (k % 3 == 0 ? Color{ 255, 220, 120, 255 } : k % 3 == 1 ? Color{ 240, 90, 80, 255 } : Color{ 120, 180, 250, 255 });
-            R(bx[k], by[k], 2, 2, on ? c : Color{ 30, 60, 44, 255 });
-        }
-        R(-3, 10, 6, 6, Color{ 180, 50, 50, 255 }); R(0, 10, 1, 6, Color{ 240, 220, 150, 255 });
-        if (!story.zuldaOpened) { R(10, 11, 7, 5, Color{ 60, 90, 170, 255 }); R(13, 11, 1, 5, Color{ 240, 240, 240, 255 }); }
-        R(4, 13, 5, 3, Color{ 220, 200, 100, 255 });
-    }
-    else if (id == "woodstove") {
-        R(6, -14, 4, 15, Color{ 36, 36, 40, 255 }); R(6, -14, 1, 15, Color{ 70, 70, 76, 255 });       // pipe
-        R(1, 0, 14, 15, Color{ 40, 40, 44, 255 }); R(1, 0, 14, 1, Color{ 80, 80, 86, 255 });
-        float fl = std::sin(globalT * 7) * std::sin(globalT * 3.1f);
-        R(4, 5, 8, 7, Color{ 30, 20, 16, 255 });
-        R(5, 7, 6, 5, Color{ 255, (unsigned char)(120 + 40 * fl), 40, 255 });
-        R(6, 9, 4, 3, Color{ 255, 220, 120, 255 });
-        R(0, 15, 16, 1, Color{ 60, 60, 64, 255 });
-    }
-    else if (id == "bins") { R(0, 2, 7, 12, Color{ 40, 70, 40, 255 }); R(9, 2, 7, 12, Color{ 40, 40, 90, 255 }); R(0, 1, 7, 3, WHITE); R(9, 1, 7, 3, WHITE); }
-    else if (id == "doghouse") {
-        R(0, 3, 16, 12, Color{ 150, 60, 50, 255 }); for (int k = 0; k < 3; ++k) R(0, 6 + k * 3, 16, 1, Color{ 120, 44, 38, 255 });
-        R(5, 7, 6, 8, Color{ 24, 18, 16, 255 }); R(5, 7, 6, 1, Color{ 60, 40, 34, 255 });
-        R(-1, -1, 18, 5, Color{ 70, 64, 62, 255 }); R(-1, -2, 18, 3, Color{ 236, 240, 248, 255 });
-        R(4, 1, 8, 2, Color{ 230, 220, 200, 255 });                                            // name board
-    }
-    else if (id == "gate") { R(0, 4, 3, 10, Color{ 90, 64, 40, 255 }); }
-    else if (id == "flag") { R(7, -20, 2, 34, LIGHTGRAY); float w = std::sin(globalT * 9) * 2; Color navy = { 0, 32, 91, 255 }; R(9, -20, 10 + w, 7, RED); R(12, -20, 3, 7, RAYWHITE); R(9, -18, 10 + w, 3, RAYWHITE); R(13, -20, 1, 7, navy); R(9, -17, 10 + w, 1, navy); }
-    else if (id == "generator") {
-        R(1, 2, 14, 12, Color{ 206, 164, 44, 255 }); R(1, 2, 14, 1, Color{ 236, 200, 90, 255 });
-        R(3, 4, 10, 4, Color{ 40, 40, 40, 255 }); for (int k = 0; k < 4; ++k) R(4 + k * 2, 5, 1, 2, Color{ 90, 90, 90, 255 });
-        R(2, 14, 3, 1, BLACK); R(11, 14, 3, 1, BLACK);
-    }
-    else if (id == "pantry") {
-        R(0, -12, 16, 28, Color{ 222, 214, 186, 255 }); R(0, -12, 16, 2, Color{ 240, 234, 210, 255 }); R(14, -10, 2, 26, Color{ 196, 188, 160, 255 });
-        R(7, -10, 1, 24, Color{ 170, 160, 130, 255 });
-        R(2, -8, 4, 10, Color{ 232, 226, 200, 255 }); R(9, -8, 4, 10, Color{ 232, 226, 200, 255 });
-        R(5, 0, 1, 3, Color{ 120, 110, 90, 255 }); R(9, 0, 1, 3, Color{ 120, 110, 90, 255 });
-    }
-    else if (id == "sink") {
-        R(0, 0, 16, 16, Color{ 214, 204, 176, 255 }); R(0, 0, 16, 1, Color{ 236, 230, 210, 255 });
-        R(2, 2, 12, 7, Color{ 170, 180, 186, 255 }); R(3, 3, 10, 5, Color{ 130, 146, 156, 255 });
-        R(7, -2, 2, 4, Color{ 190, 196, 200, 255 }); R(6, -3, 4, 1, Color{ 190, 196, 200, 255 });
-        if (!story.dishesDone) { R(4, 4, 4, 3, Color{ 240, 240, 236, 255 }); R(9, 5, 3, 2, Color{ 210, 170, 120, 255 }); }
-        R(2, 10, 12, 5, Color{ 196, 184, 150, 255 }); R(7, 10, 1, 5, Color{ 170, 158, 124, 255 });
-    }
-    else if (id == "fliptendo") {
-        // a beanbag with the handheld on it
-        DrawEllipse((int)x + 8, (int)y + 10, 8, 5, Color{ 160, 60, 70, 255 });
-        DrawEllipse((int)x + 7, (int)y + 9, 6, 3, Color{ 186, 80, 90, 255 });
-        R(4, 6, 8, 5, Color{ 40, 40, 46, 255 }); R(5, 7, 6, 3, story.zuldaOpened ? Color{ 90, 190, 110, 255 } : Color{ 120, 170, 230, 255 });
-        if (std::fmod(globalT, 1.4f) < 0.7f) R(6, 8, 1, 1, WHITE);
-    }
-    else if (id == "wardrobe") {
-        R(0, -12, 16, 28, Color{ 128, 86, 54, 255 }); R(0, -12, 16, 2, Color{ 156, 110, 72, 255 }); R(14, -10, 2, 26, Color{ 100, 66, 40, 255 });
-        R(7, -10, 1, 24, Color{ 70, 45, 30, 255 });
-        R(2, -8, 4, 10, Color{ 140, 96, 62, 255 }); R(9, -8, 4, 10, Color{ 140, 96, 62, 255 });
-        R(5, 0, 1, 3, GOLD); R(9, 0, 1, 3, GOLD);
-    }
-    else if (id == "marbles") { R(4, 4, 8, 10, Fade(Color{ 200, 230, 255, 255 }, 0.8f)); R(5, 9, 2, 2, RED); R(8, 10, 2, 2, BLUE); R(6, 11, 2, 2, GREEN); R(4, 3, 8, 2, Color{ 150, 150, 160, 255 }); }
-    else if (id == "calendar") {
-        // the advent calendar, every door open except that the last one is red
-        R(3, -6, 10, 11, Color{ 200, 56, 52, 255 }); R(3, -6, 10, 1, GOLD);
-        for (int k = 0; k < 12; ++k) R(4 + (k % 4) * 2, -4 + (k / 4) * 2, 1, 1, RAYWHITE);
-        R(10, 0, 2, 2, Color{ 20, 20, 24, 255 });
-    }
-    else if (id == "knives") { R(4, 4, 8, 10, Color{ 110, 70, 40, 255 }); if (!story.hasKnife) R(5, 0, 2, 5, LIGHTGRAY); R(8, 1, 2, 4, LIGHTGRAY); R(10, 2, 1, 3, LIGHTGRAY); }
-    else if (id == "bookshelf") {
-        R(0, -10, 16, 26, Color{ 96, 62, 36, 255 }); R(0, -10, 16, 1, Color{ 130, 88, 54, 255 });
-        static const Color bk[6] = { { 150, 50, 50, 255 }, { 50, 80, 140, 255 }, { 60, 120, 80, 255 }, { 200, 170, 90, 255 }, { 120, 90, 140, 255 }, { 210, 200, 180, 255 } };
-        for (int k = 0; k < 3; ++k) {
-            float bx = 2;
-            for (int b = 0; b < 5 && bx < 14; ++b) {
-                unsigned q = Hash(k * 7 + b, 3);
-                int w = 1 + (int)(q % 3), hgt = 4 + (int)((q >> 3) % 3);
-                R(bx, -2 + k * 8 - hgt, (float)w, (float)hgt, bk[q % 6]); bx += w + ((q >> 6) % 2 ? 1 : 0);
-            }
-            R(1, -2 + k * 8, 14, 1, Color{ 70, 44, 26, 255 });
-        }
-    }
-    else if (id == "album") { R(3, 5, 10, 7, Color{ 120, 40, 50, 255 }); R(4, 6, 8, 1, GOLD); }
-    else if (id == "frontdoor") {
-        if (story.frontLocked && !story.collection) R(6, 2, 4, 4, Color{ 220, 200, 80, 255 });
-        if (story.trapsSet.count("marbles")) for (int k = 0; k < 7; ++k) R((float)((k * 5) % 14), 18 + (float)((k * 3) % 6), 2, 2, k % 2 ? RED : SKYBLUE);
-        if (story.trapsSet.count("tripwire")) R(-2, 22, 20, 1, Color{ 230, 230, 210, 255 });
-        if (story.trapsSet.count("paint")) { R(3, -14, 10, 9, Color{ 220, 60, 60, 255 }); R(7, -18, 1, 4, GRAY); }
-    }
-    else if (id == "sheddoor") { if (story.dadLocked) R(-2, 6, 20, 3, Color{ 160, 120, 70, 255 }); }
-    else if (id == "rope") { DrawCircleLines((int)x + 8, (int)y + 8, 5, Color{ 200, 180, 120, 255 }); DrawCircleLines((int)x + 8, (int)y + 8, 3, Color{ 200, 180, 120, 255 }); }
-    else if (id == "toolbox") { R(1, 5, 14, 9, Color{ 190, 40, 40, 255 }); R(5, 3, 6, 2, GRAY); R(11, -2, 5, 7, Color{ 230, 230, 230, 255 }); }
-    else if (id == "woodpile") { for (int k = 0; k < 3; ++k) R(-4 + k * 7, 8, 7, 7, Color{ 130, 90, 55, 255 }); R(4, 0, 8, 9, Color{ 110, 75, 45, 255 }); R(9, -4, 2, 8, Color{ 140, 140, 150, 255 }); R(-4, 7, 21, 2, WHITE); R(4, -1, 8, 2, WHITE); }
-    else if (id == "stairs") { for (int k = 0; k < 4; ++k) R(0, k * 4, 16, 3, Color{ 90, 92, 100, 255 }); }
-    else if (id == "screens") {
-        for (int k = 0; k < 6; ++k) {
-            float fx = (float)((k % 3) * 11 - 8), fy = (float)((k / 3) * 9 - 12);
-            R(fx, fy, 10, 8, Color{ 20, 20, 24, 255 });
-            Color glow = Mix(Color{ 60, 140, 255, 255 }, Color{ 150, 200, 255, 255 }, 0.5f + 0.5f * std::sin(globalT * 3 + k));
-            R(fx + 1, fy + 1, 8, 6, glow);
-        }
-    }
-    else if (id == "files") { R(1, -6, 14, 22, Color{ 120, 125, 130, 255 }); for (int k = 0; k < 3; ++k) R(5, -3 + k * 7, 6, 2, Color{ 60, 60, 66, 255 }); }
-    else if (id == "console") { R(-2, 2, 20, 12, Color{ 50, 55, 60, 255 }); R(10, 5, 4, 4, RED); for (int k = 0; k < 3; ++k) R(1 + k * 3, 5, 2, 2, GREEN); }
-    else if (id == "chair") { R(2, -6, 12, 20, Color{ 80, 40, 40, 255 }); R(0, 2, 16, 2, Color{ 60, 50, 40, 255 }); R(0, 8, 16, 2, Color{ 60, 50, 40, 255 }); R(3, -4, 10, 2, Color{ 60, 50, 40, 255 }); }
-    else if (id == "vcr") {
-        R(1, 8, 14, 7, Color{ 70, 70, 76, 255 }); R(2, 14, 2, 2, Color{ 30, 30, 30, 255 }); R(12, 14, 2, 2, Color{ 30, 30, 30, 255 });   // cart
-        R(2, 9, 12, 3, Color{ 30, 30, 34, 255 }); R(4, 10, 6, 1, Color{ 10, 10, 10, 255 }); R(11, 10, 1, 1, RED);                          // VCR
-        R(0, -6, 16, 14, Color{ 50, 46, 44, 255 }); R(2, -4, 10, 10, Color{ 24, 30, 36, 255 });                                              // TV
-        if (std::fmod(globalT, 2.0f) < 1.0f) R(3, -3, 8, 1, Fade(WHITE, 0.08f));
-    }
-    else if (id == "medfridge") { R(1, -6, 14, 22, Color{ 230, 235, 240, 255 }); R(3, -3, 10, 8, Fade(SKYBLUE, 0.6f)); for (int k = 0; k < 4; ++k) R(4 + k * 2, 0, 1, 3, ORANGE); }
-    else if (id == "bench") { R(-4, 2, 20, 12, Color{ 120, 90, 60, 255 }); R(0, 3, 5, 3, GRAY); R(8, 4, 6, 4, Color{ 50, 50, 50, 255 }); }
-}
-
-// Simple pixel people with a 4 frame walk
-struct Look { Color shirt, pants, hair, skin; float scale; bool longHair; bool beard; Color eyes = BLACK; };
-static void DrawPerson(const Actor& a, Look l) {
-    if (!a.visible) return;
-    float s = l.scale;
-    bool moving = a.anim > 0;
-    int frame = moving ? ((int)a.anim) % 4 : 0;
-    float breathe = moving ? 0 : (std::fmod(globalT + a.pos.x * 0.01f, 1.6f) < 0.8f ? 0 : 1);
-    float bob = (frame == 1 || frame == 3) ? -1 : 0;
-    float x = a.pos.x, y = a.pos.y + 4 + bob;
-    int pass = 0;   // v0.5: pass 0 draws a dark outline, pass 1 the person
-    Color outline = { 26, 20, 22, 230 };
-    auto R = [&](float ox, float oy, float w, float h, Color c) {
-        int rx = (int)std::round(x + ox * s), ry = (int)std::round(y + oy * s), rw = (int)std::ceil(w * s), rh = (int)std::ceil(h * s);
-        if (pass == 0) DrawRectangle(rx - 1, ry - 1, rw + 2, rh + 2, outline);
-        else DrawRectangle(rx, ry, rw, rh, c);
-    };
-    DrawEllipse((int)x, (int)(a.pos.y + 4 + 3 * s), 6 * s, 2 * s, Fade(BLACK, 0.3f));
-    for (pass = 0; pass < 2; ++pass) {
-    Color pantsD = Mix(l.pants, BLACK, 0.25f), shirtD = Mix(l.shirt, BLACK, 0.2f);
-    bool side = a.dir == 2 || a.dir == 3;
-    float flip = a.dir == 2 ? -1 : 1;
-    // legs
-    if (side) {
-        float swing = frame == 0 ? 2 : frame == 2 ? -2 : 0;
-        R(-2 + swing * flip, -2, 3, 5, pantsD);
-        R(-1 - swing * flip, -2, 3, 5, l.pants);
-        R(-2 + swing * flip + (flip > 0 ? 1 : -1), 2, 3, 1, Color{ 40, 30, 25, 255 });
-    } else {
-        float lift0 = frame == 0 ? 1.5f : 0, lift2 = frame == 2 ? 1.5f : 0;
-        R(-4, -2 - lift0, 3, 5, l.pants);
-        R(1, -2 - lift2, 3, 5, l.pants);
-        R(-4, 2 - lift0, 3, 1, Color{ 40, 30, 25, 255 });
-        R(1, 2 - lift2, 3, 1, Color{ 40, 30, 25, 255 });
-    }
-    // body
-    R(-5, -10 - breathe * 0.5f, 10, 9, l.shirt);
-    R(-5, -2, 10, 1, shirtD);
-    // arms
-    float armSwing = moving ? (frame == 0 ? 2 : frame == 2 ? -2 : 0) : 0;
-    if (side) {
-        R(-1 - armSwing * flip, -9, 3, 6, shirtD);
-        R(-1 - armSwing * flip, -3, 3, 2, l.skin);
-    } else {
-        R(-7, -9 + armSwing * 0.5f, 2, 6, shirtD);
-        R(5, -9 - armSwing * 0.5f, 2, 6, shirtD);
-        R(-7, -3 + armSwing * 0.5f, 2, 2, l.skin);
-        R(5, -3 - armSwing * 0.5f, 2, 2, l.skin);
-    }
-    // head
-    R(-4, -18 - breathe * 0.5f, 8, 8, l.skin);
-    float hy = -breathe * 0.5f;
-    if (a.dir == 1) R(-4, -19 + hy, 8, 8, l.hair);
-    else {
-        R(-4, -19 + hy, 8, 3, l.hair);
-        if (side) R(flip > 0 ? -4 : 2, -19 + hy, 2, 6, l.hair);
-        if (l.longHair) { R(-5, -18 + hy, 2, 9, l.hair); R(3, -18 + hy, 2, 9, l.hair); }
-        bool blink = std::fmod(globalT + a.pos.y * 0.03f, 3.7f) < 0.12f;
-        if (!blink) {
-            if (a.dir == 0) { R(-2, -14 + hy, 1, 2, l.eyes); R(1, -14 + hy, 1, 2, l.eyes); }
-            if (a.dir == 2) R(-3, -14 + hy, 1, 2, l.eyes);
-            if (a.dir == 3) R(2, -14 + hy, 1, 2, l.eyes);
-        }
-        if (l.beard) R(-4, -12 + hy, 8, 3, l.hair);
-    }
-    if (pass == 1) {
-        // a little light on the hair and shoulders
-        R(-3, -19 + hy, 4, 1, Shade(l.hair, 30));
-        R(-5, -10 - breathe * 0.5f, 10, 1, Shade(l.shirt, 22));
-    }
-    }
-}
-
-// v0.7: someone on the floor. Lying on their side, not moving much.
-static void DrawPersonDown(const Actor& a, Look l, bool sob) {
-    float s = l.scale, x = a.pos.x, y = a.pos.y + 4;
-    float shake = sob ? (std::fmod(globalT, 0.5f) < 0.25f ? 0.5f : 0) : 0;
-    DrawEllipse((int)x, (int)y + 2, 11 * s, 2.5f * s, Fade(BLACK, 0.3f));
-    for (int pass = 0; pass < 2; ++pass) {
-        auto R = [&](float ox, float oy, float w, float h, Color c) {
-            int rx = (int)std::round(x + ox * s), ry = (int)std::round(y + oy * s + shake), rw = (int)std::ceil(w * s), rh = (int)std::ceil(h * s);
-            if (pass == 0) DrawRectangle(rx - 1, ry - 1, rw + 2, rh + 2, Color{ 26, 20, 22, 230 });
-            else DrawRectangle(rx, ry, rw, rh, c);
-        };
-        R(-2, -5, 7, 5, l.pants);                  // legs
-        R(5, -4, 2, 4, Color{ 40, 30, 25, 255 });  // shoes
-        R(-10, -6, 9, 6, l.shirt);                 // body
-        R(-8, -1, 5, 2, l.skin);                   // a hand on the floor
-        R(-17, -7, 7, 7, l.skin);                  // head
-        R(-17, -8, 7, 3, l.hair);
-        if (l.longHair) R(-19, -7, 3, 7, l.hair);
-        if (l.beard) R(-12, -3, 2, 3, l.hair);
-        if (pass == 1) R(-15, -4, 2, 1, Color{ 40, 30, 30, 255 });   // closed eye
-    }
-}
-
-static void DrawDoggoDead(const Actor& a) {
-    // v0.7: fade to black, and this is what's left. He doesn't move. A thin line of red keeps running.
-    float x = a.pos.x, y = a.pos.y + 4;
-    float t = doggoDeadT;
-    Color fur = { 150, 106, 62, 255 }, dark = { 106, 70, 40, 255 }, blood = { 160, 18, 24, 255 };
-    float pool = std::min(8.0f, 2.0f + t * 0.4f);
-    DrawEllipse((int)x + 2, (int)y + 2, pool + 2, pool * 0.45f, Fade(blood, 0.85f));
-    float streak = std::min(18.0f, t * 1.2f);
-    DrawRectangle((int)x + 3, (int)y + 2, 1, (int)streak, blood);
-    if (std::fmod(t, 1.6f) < 0.8f && streak < 18) DrawRectangle((int)x + 3, (int)(y + 2 + streak), 1, 1, Color{ 160, 20, 24, 255 });
-    DrawRectangle((int)x - 8, (int)y - 5, 15, 7, Color{ 26, 20, 22, 220 });
-    DrawRectangle((int)x - 7, (int)y - 4, 13, 5, fur);                      // on his side
-    DrawRectangle((int)x - 7, (int)y - 4, 13, 1, Shade(fur, 20));
-    DrawRectangle((int)x - 5, (int)y + 1, 4, 2, dark); DrawRectangle((int)x + 1, (int)y + 1, 4, 2, dark);   // legs, still
-    DrawRectangle((int)x - 13, (int)y - 3, 6, 5, fur);                      // head flat on the floor
-    DrawRectangle((int)x - 12, (int)y - 4, 2, 2, dark);                     // ear
-    DrawRectangle((int)x - 11, (int)y - 1, 2, 1, Color{ 30, 20, 20, 255 }); // closed eye
-    DrawRectangle((int)x + 6, (int)y - 2, 4, 2, dark);                      // tail, not wagging
-}
-
-static void DrawDoggo(const Actor& a) {
-    if (!a.visible) return;
-    bool moving = a.anim > 0;
-    int frame = moving ? ((int)(a.anim * 1.4f)) % 4 : 0;
-    float bob = moving && (frame == 1 || frame == 3) ? -1 : 0;
-    float x = a.pos.x, y = a.pos.y + 3 + bob;
-    Color fur = { 170, 120, 70, 255 }, dark = { 120, 80, 45, 255 };
-    DrawEllipse((int)x, (int)a.pos.y + 6, 7, 2, Fade(BLACK, 0.3f));
-    bool left = a.dir == 2;
-    {   // v0.5: outline
-        Color o = { 26, 20, 22, 220 };
-        DrawRectangle((int)x - 7, (int)y - 7, 14, 8, o);
-        DrawRectangle(left ? (int)x - 10 : (int)x + 2, (int)y - 12, 8, 9, o);
-    }
-    DrawRectangle((int)x - 6, (int)y - 6, 12, 6, fur);
-    DrawRectangle((int)x - 6, (int)y - 6, 12, 1, Shade(fur, 25));
-    // legs trot in pairs
-    int l1 = frame == 0 ? 1 : 0, l2 = frame == 2 ? 1 : 0;
-    DrawRectangle((int)x - 5, (int)y - l1, 2, 3, dark); DrawRectangle((int)x - 2, (int)y - l2, 2, 3, dark);
-    DrawRectangle((int)x + 1, (int)y - l1, 2, 3, dark); DrawRectangle((int)x + 4, (int)y - l2, 2, 3, dark);
-    int hx = left ? (int)x - 9 : (int)x + 3;
-    DrawRectangle(hx, (int)y - 10, 6, 6, fur);
-    DrawRectangle(left ? hx : hx + 4, (int)y - 7, 2, 2, BLACK);
-    DrawRectangle(left ? hx + 4 : hx, (int)y - 11, 2, 3, dark);
-    float wag = std::sin(globalT * (moving ? 20 : 12)) * 2;
-    DrawRectangle(left ? (int)x + 6 : (int)x - 8, (int)(y - 7 + wag), 2, 4, dark);
-}
-
-static void DrawCar() {
-    float x = 20 * TS - 6, y = 31 * TS + 2;
-    DrawRectangle((int)x, (int)y, 28, 22, Color{ 20, 20, 24, 255 });
-    DrawRectangle((int)x + 4, (int)y + 4, 20, 7, Color{ 60, 70, 90, 255 });
-    DrawRectangle((int)x + 2, (int)y + 11, 24, 3, Color{ 232, 238, 246, 255 });   // snow on the roof
-    DrawRectangle((int)x + 4, (int)y + 10, 9, 1, Color{ 232, 238, 246, 255 });
-    DrawCircleGradient((int)x + 6, (int)y, 16, Fade(Color{ 255, 250, 200, 255 }, 0.2f), Fade(Color{ 255, 250, 200, 255 }, 0));
-    DrawCircleGradient((int)x + 22, (int)y, 16, Fade(Color{ 255, 250, 200, 255 }, 0.2f), Fade(Color{ 255, 250, 200, 255 }, 0));
-}
-
-// ============================================================ v0.5 lighting, rain, dust
-// v0.8: footprints in the snow. The storm fills them in fast
-static float printCD[3] = { 0, 0, 0 };
-static float vPrintCD = 0;
-static int printSide = 0;
-static void AddPrint(const Actor& a, int who, float dt, float every) {
-    printCD[who] -= dt;
-    if (printCD[who] > 0 || a.anim <= 0) return;
-    if (!IsOutsideT(TileAt(TX(a.pos.x), TX(a.pos.y + 6)))) return;
-    printCD[who] = every;
-    printSide = 1 - printSide;
-    prints.push_back({ { a.pos.x, a.pos.y + 6 }, 0, who, printSide });
-    if (prints.size() > 500) prints.erase(prints.begin());
-}
-static void UpdatePrints(float dt) {
-    float life = story.Storm() ? 16.0f : 150.0f;
-    for (auto& p : prints) p.t += dt;
-    prints.erase(std::remove_if(prints.begin(), prints.end(), [&](const Print& p) { return p.t > life; }), prints.end());
-}
-static void DrawPrints() {
-    float life = story.Storm() ? 16.0f : 150.0f;
-    Color c = { 142, 156, 190, 255 };
-    for (auto& p : prints) {
-        float a = 0.8f * (1 - p.t / life);
-        int ox = p.side ? 2 : -2;
-        if (p.who == 1) DrawRectangle((int)p.p.x + ox - 1, (int)p.p.y, 4, 2, Fade(c, a));
-        else if (p.who == 2) DrawRectangle((int)p.p.x + ox / 2, (int)p.p.y, 1, 1, Fade(c, a));
-        else DrawRectangle((int)p.p.x + ox, (int)p.p.y, 2, 1, Fade(c, a));
-    }
-}
-struct Puff { Vector2 p; float t; };
-static std::vector<Puff> puffs;
-static float puffTimer = 0;
-
-static Color LerpC(Color a, Color b, float t) { return Mix(a, b, std::max(0.0f, std::min(1.0f, t))); }
-
-static void BuildLightmap(Camera2D cam) {
-    float m = story.t / 60.0f;
-    float dusk = std::min(1.0f, m / 45.0f);
-    // v0.8: the sun went down at about 15:25. Blue dusk at 16:00, night by about 16:25. The warmth is all indoors
-    Color amb = LerpC(Color{ 196, 204, 228, 255 }, Color{ 128, 138, 182, 255 }, m / 25.0f);
-    if (story.Storm()) amb = Shade(amb, -14);
-    bool powerOut = story.PowerOut();
-    if (powerOut) amb = Color{ 96, 102, 146, 255 };
-    if (story.inBasement) amb = Color{ 92, 100, 140, 255 };
-    BeginTextureMode(lightRT);
-    ClearBackground(amb);
-    if (!powerOut && !story.inBasement) {
-        // the house and the shed stay warm while the power lasts
-        float flick = 1;
-        if (story.Storm() && !settings.calmFlashes) { float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f); if (f > 0.85f) flick = 0.72f; }
-        Color warm = LerpC(Color{ 255, 246, 228, 255 }, Color{ 226, 206, 182, 255 }, dusk);
-        warm.r = (unsigned char)(warm.r * flick); warm.g = (unsigned char)(warm.g * flick); warm.b = (unsigned char)(warm.b * flick);
-        float ox = VW / 2.0f - cam.target.x, oy = VH / 2.0f - cam.target.y;
-        DrawRectangle((int)(3 * TS + ox), (int)(2 * TS + 6 + oy), 26 * TS, 18 * TS - 6, warm);
-        DrawRectangle((int)(32 * TS + ox), (int)(4 * TS + 6 + oy), 5 * TS, 6 * TS - 6, warm);
-    }
-    BeginBlendMode(BLEND_ADDITIVE);
-    auto light = [&](float wx, float wy, float r, Color c, float k) {
-        if (k <= 0.01f) return;
-        float sx = wx - cam.target.x + VW / 2.0f, sy = wy - cam.target.y + VH / 2.0f;
-        if (sx < -r || sy < -r || sx > VW + r || sy > VH + r) return;
-        Color in = { (unsigned char)(c.r * k), (unsigned char)(c.g * k), (unsigned char)(c.b * k), 255 };
-        DrawCircleGradient((int)sx, (int)sy, r, in, Color{ 0, 0, 0, 255 });
-    };
-    auto tile = [](float t) { return t * TS + TS / 2.0f; };
-    if (!powerOut) {
-        float lamp = std::max(0.0f, dusk - 0.1f) * 1.1f;
-        if (story.Storm() && !settings.calmFlashes) { float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f); if (f > 0.85f) lamp *= 0.3f; }
-        Color warm = { 150, 104, 52, 255 };
-        const float L[][2] = { { 6, 5 }, { 13, 5 }, { 22, 5 }, { 8, 10 }, { 24, 10 }, { 7, 16 }, { 19, 15 }, { 25, 17 }, { 34, 7 } };
-        for (auto& p : L) light(tile(p[0]), tile(p[1]), 78, warm, lamp);
-        light(tile(21), tile(13) + 6, 42, Color{ 40, 70, 120, 255 }, 0.5f + 0.2f * std::sin(globalT * 11));   // TV
-        // window light on the snow, and the tree
-        const float W[][2] = { { 8, 22 }, { 15, 22 }, { 25, 22 } };
-        for (auto& p : W) {
-            light(tile(p[0]), tile(p[1]) - 10, 40, Color{ 74, 44, 6, 255 }, 0.9f);
-            light(tile(p[0]), tile(20) + 2, 12, Color{ 120, 90, 40, 255 }, 1.0f);
-        }
-        light(tile(26), tile(15) - 8, 34, Color{ 90, 70, 40, 255 }, 0.8f);
-    }
-    float fire = 0.75f + 0.25f * std::sin(globalT * 7) * std::sin(globalT * 3.1f);
-    light(tile(27), tile(18), 46, Color{ 150, 70, 20, 255 }, fire * (0.4f + dusk * 0.6f + (powerOut ? 0.5f : 0)));
-    light(tile(10), tile(37) - 4, 90, Color{ 40, 80, 150, 255 }, 0.9f);                                      // basement screens
-    if (story.CarHere()) {
-        light(20 * TS - 6 + 6, 31 * TS + 2, 60, Color{ 150, 140, 100, 255 }, 0.4f);
-        light(20 * TS - 6 + 22, 31 * TS + 2, 60, Color{ 150, 140, 100, 255 }, 0.4f);
-    }
-    if (powerOut) light(player.pos.x, player.pos.y - 6, 72, Color{ 70, 70, 90, 255 }, IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y))) ? 0.35f : 1.0f);              // eyes adjusting
-    if (story.hasLight) {
-        // v0.6: Dad's flashlight, a beam in the direction you face
-        const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
-        float k = powerOut ? 1.0f : 0.35f;
-        for (int i = 1; i <= 3; ++i) light(player.pos.x + fx[player.dir] * 26 * i, player.pos.y - 4 + fy[player.dir] * 26 * i, 26 + 8 * i, Color{ 170, 165, 130, 255 }, k);
-    }
-    EndBlendMode();
-    EndTextureMode();
-}
-
-static void DrawRainAndDust(Camera2D cam, float dt) {
-    float left = cam.target.x - VW / 2.0f, top = cam.target.y - VH / 2.0f;
-    // dust puffs when running
-    puffTimer -= dt;
-    if (kidRunning && puffTimer <= 0) { puffs.push_back({ { player.pos.x + (float)GetRandomValue(-3, 3), player.pos.y + 6 }, 0 }); puffTimer = 0.09f; }
-    for (auto& p : puffs) p.t += dt;
-    puffs.erase(std::remove_if(puffs.begin(), puffs.end(), [](const Puff& p) { return p.t > 0.45f; }), puffs.end());
-    for (auto& p : puffs) {
-        Tile t = TileAt(TX(p.p.x), TX(p.p.y));
-        Color c = IsOutsideT(t) ? Color{ 246, 248, 252, 255 } : Color{ 220, 210, 190, 255 };
-        DrawCircle((int)p.p.x, (int)(p.p.y - p.t * 6), 1.5f + p.t * 6, Fade(c, 0.45f * (1 - p.t / 0.45f)));
-    }
-    // v0.8: it snows the whole hour. The storm turns it sideways
-    bool storm = story.Storm();
-    int flakes = storm ? 460 : 120;
-    float wind = storm ? 170.0f : 9.0f, fall = storm ? 170.0f : 26.0f;
-    for (int i = 0; i < flakes; ++i) {
-        float wobble = storm ? 0 : std::sin(globalT * 0.9f + i) * 5.0f;
-        float wx = left + std::fmod((float)(Hash(i, 1) % 997) + globalT * wind * (0.8f + (Hash(i, 4) % 5) * 0.1f), (float)VW + 20) - 10 + wobble;
-        float wy = top + std::fmod((float)(Hash(i, 2) % 991) + globalT * (fall + (Hash(i, 3) % 40)), (float)VH + 20) - 10;
-        Tile t = TileAt(TX(wx), TX(wy));
-        if (!IsOutsideT(t)) continue;
-        if (storm) DrawRectangle((int)wx, (int)wy, 3, 1, Fade(WHITE, 0.75f));
-        else DrawRectangle((int)wx, (int)wy, 1 + i % 2, 1 + i % 2, Fade(WHITE, 0.9f));
-    }
-}
-
-static void DrawWorld(Camera2D cam) {
-    ClearBackground(BLACK);
-    BeginMode2D(cam);
-    int x0 = std::max(0, TX(cam.target.x - VW / 2.0f) - 1), x1 = std::min(World::W - 1, TX(cam.target.x + VW / 2.0f) + 1);
-    int y0 = std::max(0, TX(cam.target.y - VH / 2.0f) - 1), y1 = std::min(World::H - 1, TX(cam.target.y + VH / 2.0f) + 2);
-    for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) DrawTile(x, y);
-
-    DrawPrints();
-    bool flux = story.Act() >= 2;
-    // Draw objects and actors sorted by y
-    struct D { float y; int kind; const Obj* o; const Actor* a; };
-    std::vector<D> ds;
-    for (auto& o : story.world.objs) ds.push_back({ o.y * TS + 8.0f, 0, &o, nullptr });
-    if (!hidden) ds.push_back({ player.pos.y, 1, nullptr, &player });
-    if (mom.visible) ds.push_back({ mom.pos.y, 2, nullptr, &mom });
-    if (dad.visible) ds.push_back({ dad.pos.y, 3, nullptr, &dad });
-    if (story.DoggoExists() || story.doggoDead) ds.push_back({ doggo.pos.y, 4, nullptr, &doggo });
-    if (visitor.visible) ds.push_back({ visitor.pos.y, 5, nullptr, &visitor });
-    std::sort(ds.begin(), ds.end(), [](const D& a, const D& b) { return a.y < b.y; });
-    for (auto& d : ds) {
-        switch (d.kind) {
-        case 0: {
-            Vector2 j{ 0, 0 };
-            // one object at a time, a short shiver every ~9 seconds (more often once you're dark)
-            if (flux) {
-                float period = story.Act() >= 3 ? 5.0f : 9.0f;
-                int slot = (int)(globalT / period);
-                unsigned pick = Hash(slot, 77) % (unsigned)story.world.objs.size();
-                if (&story.world.objs[pick] == d.o && std::fmod(globalT, period) < 0.25f) j = { (float)((int)(globalT * 30) % 3 - 1), 0 };
-            }
-            DrawObj(*d.o, j);
-        } break;
-        case 1: {
-            Look kid{ Color{ 200, 50, 50, 255 }, Color{ 50, 60, 110, 255 }, Color{ 90, 60, 30, 255 }, Color{ 240, 200, 170, 255 }, 1.0f, false, false };
-            if (story.tainted) { kid.skin = Color{ 222, 208, 204, 255 }; kid.shirt = Color{ 120, 30, 34, 255 }; kid.eyes = Color{ 150, 0, 0, 255 }; }
-            if (story.Stage() >= 4) { kid.skin = Color{ 205, 195, 200, 255 }; kid.shirt = Color{ 50, 20, 24, 255 }; }
-            if (story.hasCoat) kid.shirt = story.tainted ? Color{ 30, 34, 54, 255 } : Color{ 48, 78, 128, 255 };
-            DrawPerson(*d.a, kid);
-            {
-                // v0.6: whatever is in the kid's hands
-                int hx = (int)d.a->pos.x + 6, hy = (int)d.a->pos.y - 4;
-                switch (story.held) {
-                case Item::Knife: DrawRectangle(hx, hy, 1, 5, Color{ 210, 210, 220, 255 }); DrawRectangle(hx, hy + 5, 1, 2, Color{ 90, 60, 40, 255 }); break;
-                case Item::Key: DrawRectangle(hx, hy + 1, 3, 2, GOLD); DrawRectangle(hx + 2, hy + 3, 1, 2, GOLD); break;
-                case Item::Stick: DrawLine(hx, hy + 6, hx + 4, hy - 4, Color{ 130, 90, 50, 255 }); break;
-                case Item::Bag: DrawRectangle(hx - 1, hy + 1, 5, 6, Color{ 30, 30, 34, 255 }); DrawRectangle(hx, hy, 3, 1, Color{ 60, 60, 66, 255 }); break;
-                case Item::DogFood: DrawRectangle(hx - 1, hy + 2, 4, 4, Color{ 200, 60, 60, 255 }); DrawRectangle(hx, hy + 1, 2, 1, Color{ 150, 100, 50, 255 }); break;
-                case Item::Flashlight: DrawRectangle(hx, hy + 1, 4, 2, Color{ 60, 60, 66, 255 }); DrawRectangle(hx + 4, hy, 1, 4, Color{ 250, 240, 180, 255 }); break;
-                case Item::Tape: DrawRectangle(hx - 1, hy + 1, 5, 3, Color{ 20, 20, 24, 255 }); DrawRectangle(hx, hy + 2, 3, 1, Color{ 220, 220, 210, 255 }); break;
-                default: break;
-                }
-            }
-        }
-            // Watch glint
-            DrawRectangle((int)d.a->pos.x + 4, (int)d.a->pos.y - 2, 2, 2, Color{ 180, 220, 160, 255 });
-            break;
-        case 2: {
-            Look ml{ Color{ 70, 130, 90, 255 }, Color{ 70, 130, 90, 255 }, Color{ 180, 130, 60, 255 }, Color{ 235, 195, 165, 255 }, 1.15f, true, false };
-            if (story.momOnFloor) DrawPersonDown(*d.a, ml, true); else DrawPerson(*d.a, ml);
-        } break;
-        case 3: {
-            Look dl{ Color{ 60, 90, 160, 255 }, Color{ 60, 50, 40, 255 }, Color{ 110, 70, 40, 255 }, Color{ 230, 190, 160, 255 }, 1.2f, false, true };
-            if (story.dadOnFloor && scene != SceneMode::DadRuns) DrawPersonDown(*d.a, dl, false); else DrawPerson(*d.a, dl);
-        } break;
-        case 4: if (story.doggoDead && doggoShownDead) DrawDoggoDead(*d.a); else DrawDoggo(*d.a); break;
-        case 5: DrawPerson(*d.a, { Color{ 25, 25, 28, 255 }, Color{ 25, 25, 28, 255 }, Color{ 20, 20, 20, 255 }, Color{ 210, 180, 160, 255 }, 1.55f, false, false }); break;
-        }
-    }
-    if (story.CarHere()) DrawCar();
-
-    DrawRainAndDust(cam, std::min(GetFrameTime(), 0.05f));
-    // (bubbles and the E prompt are drawn in UI space with the soft font, see DrawBubbles)
-    EndMode2D();
-
-    // v0.5 light: the light map (built before this pass) multiplied over the world
-    BeginBlendMode(BLEND_MULTIPLIED);
-    DrawTextureRec(lightRT.texture, { 0, 0, (float)VW, -(float)VH }, { 0, 0 }, WHITE);
-    EndBlendMode();
-    // soft vignette
-    for (int k = 0; k < 10; ++k) DrawRectangleLines(k, k, VW - 2 * k, VH - 2 * k, Fade(BLACK, 0.035f * (10 - k)));
-    if (scene == SceneMode::Chase) {
-        float p = 0.5f + 0.5f * std::sin(globalT * 6);
-        for (int k = 0; k < 18; ++k) {
-            float a = (18 - k) / 18.0f * (0.18f + 0.12f * p);
-            DrawRectangleLines(k, k, VW - 2 * k, VH - 2 * k, Fade(Color{ 160, 0, 0, 255 }, a));
-        }
-    }
-    if (story.cold > 0) {
-        // v0.8: the frost closes in
-        for (int k = 0; k < 26; ++k) DrawRectangleLines(k, k, VW - 2 * k, VH - 2 * k, Fade(Color{ 220, 236, 255, 255 }, (26 - k) / 26.0f * 0.5f * story.cold));
-    }
-    if (flux) {
-        // reality struggling to keep up
-        if (std::fmod(globalT, 23.0f) < 0.1f) DrawRectangle(0, (int)(std::fmod(globalT * 997, (float)VH)), VW, 3, Fade(WHITE, 0.2f));
-    }
-}
+// v0.20.1 hunt-systems: the couch faces the TV and they sit on it for Kaptein Fjord (art/Couch.inc, after WorldDraw.inc)
+static void CouchDraw(float x, float y);
+static bool CouchSits(const Actor& a);
+#include "art/Sprites.inc"
+#include "art/WorldDraw.inc"
+#include "art/Couch.inc"      // v0.20.1 hunt-systems
+#include "art/Look.inc"      // v0.20 look: darkness in the house, stage 1 flux, the power room by room, lightning, headlights
 
 // ============================================================ UI drawing (screen space)
 static void Panel(float x, float y, float w, float h, Color bg, Color border) {
+    // v0.11: a soft shadow under every panel, and a little light along its top edge
+    float u = std::max(1.0f, US);
+    if (bg.a > 120) DrawRectangle((int)(x * US + u), (int)(y * US + 2 * u), (int)(w * US), (int)(h * US), Fade(BLACK, 0.35f));
     DrawRectangle((int)(x * US), (int)(y * US), (int)(w * US), (int)(h * US), bg);
-    DrawRectangleLinesEx({ x * US, y * US, w * US, h * US }, std::max(1.0f, US), border);
+    if (bg.a > 120 && h > 8) DrawRectangleGradientV((int)(x * US), (int)(y * US), (int)(w * US), (int)(std::min(h, 14.0f) * US), Fade(WHITE, 0.07f), Fade(WHITE, 0));
+    DrawRectangleLinesEx({ x * US, y * US, w * US, h * US }, u, border);
 }
 
 static void Seg(float x, float y, float s, int digit, Color on) {
@@ -1676,11 +1176,11 @@ static void DrawWatch(const std::string& clock, float x, float y, float s) {
     DrawRing(mark, 1.8f * US, 2.3f * US, 0, 360, 32, ice);
     DrawCircleV(mark, 0.8f * US, Color{ 214, 70, 56, 255 });
     UIText("ORIGIN", bx + 11.5f, by + 2, 5, ice);
-    const char* sub = "MODEL 06";
+    const char* sub = story.tainted ? "UNIT 06" : "MODEL 06";   // v0.20 look
     UIText(sub, bx + w - 5 - UIMeasure(sub, 3.2f), by + 3.4f, 3.2f, Color{ 136, 150, 164, 255 });
     // LCD: colder than a normal watch, ice blue instead of green
     float lx = x - 4, ly = y - 3, lw = w - 10, lh = s * 2 + 7;
-    DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(lh * US), Color{ 150, 178, 186, 255 });
+    DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(lh * US), LookLcd());   // v0.20 look: it goes dark with you
     DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(std::max(1.0f, 1.2f * US)), Fade(BLACK, 0.18f));
     Color on = { 22, 32, 44, 255 };
     float cx = x;
@@ -1701,7 +1201,10 @@ static void DrawWatch(const std::string& clock, float x, float y, float s) {
         float sy = y + 2 * s - 2 * ss;   // bottom aligned, like the real watch
         for (size_t i = 6; i < 8 && i < clock.size(); ++i) { Seg(cx, sy, ss, clock[i] - '0', on); cx += ss * 1.5f; }
     }
+    LookWatchFace(bx, by, w, bh, lx, ly, lw, lh);   // v0.20 look: the dot beats, the glass cracks
 }
+#include "art/LookUI.inc"   // v0.20 look: faces, the quiet HUD, the fridge list, log handwriting, close-ups, ending pictures
+#include "audio/Voices.inc"   // v0.20.1 sound-look: thunder after the lightning, speech blips
 
 static Color NarratorColor() {
     int st = story.Stage();
@@ -1736,13 +1239,25 @@ static void DrawNarrator(const std::string& text, float shown) {
 
 static void DrawDialogue() {
     float x = 12, y = VH - 74, w = VW - 24, h = 64;
+    Color nc = cur.speaker == "The visitor" ? Color{ 120, 20, 20, 255 } : cur.speaker == "You" ? Color{ 160, 50, 50, 255 } : cur.speaker == "Mom" ? Color{ 46, 100, 76, 255 } :
+               cur.speaker == "Doggo" ? Color{ 140, 96, 52, 255 } : Color{ 50, 70, 120, 255 };
+    // v0.11: whoever is talking gets a face, standing on the top edge of the box
+    float tagX = x + 8;
+    const std::string& sp = cur.speaker;
+    if (sp == "You" || sp == "Mom" || sp == "Dad" || sp == "The visitor" || sp == "Doggo") {
+        const float ps = 38;
+        Color sky = sp == "The visitor" ? Color{ 20, 10, 16, 255 } : Mix(nc, Color{ 16, 16, 28, 255 }, 0.55f);
+        Panel(x + 8, y - ps + 2, ps, ps, sky, Color{ 230, 230, 240, 255 });
+        DrawPortrait(sp, (x + 8 + ps / 2) * US, (y - ps + 2 + ps / 2) * US, 2.0f * US);
+        tagX = x + 8 + ps + 4;
+    }
+    DrawRectangle((int)(x * US), (int)(y * US), (int)(w * US), (int)(h * US), Color{ 16, 16, 28, 255 });
     Panel(x, y, w, h, Color{ 16, 16, 28, 235 }, Color{ 230, 230, 240, 255 });
     std::string vis = cur.text.substr(0, std::min<size_t>(cur.text.size(), (size_t)typed));
     if (!cur.speaker.empty()) {
         float nw = UIMeasure(cur.speaker.c_str(), 10) + 12;
-        Color nc = cur.speaker == "The visitor" ? Color{ 120, 20, 20, 255 } : cur.speaker == "You" ? Color{ 160, 50, 50, 255 } : Color{ 50, 70, 120, 255 };
-        Panel(x + 8, y - 12, nw, 15, nc, WHITE);
-        UIText(cur.speaker.c_str(), x + 14, y - 9, 10, WHITE);
+        Panel(tagX, y - 12, nw, 15, nc, WHITE);
+        UIText(cur.speaker.c_str(), tagX + 6, y - 9, 10, WHITE);
     }
     auto lines = Wrap(cur.text, w - 20, 10, false);
     size_t used = 0; float ly = y + 10;
@@ -1886,8 +1401,28 @@ static void DrawBubbles(float dt) {
         for (size_t k = 0; k < lines.size(); ++k) UIText(lines[k].c_str(), bx + 5, by + 3 + k * lh, size, Fade(fg, alpha));
     }
     // the visitor's mood, over his head
-    if (scene == SceneMode::Chase && visitor.visible && !beatActive && downedT <= 0) {
-        const char* mark = vmode == VMode::Chase ? "!" : vmode == VMode::Lost ? "?" : nullptr;
+    // v0.20.1 story-knife: your watch, in the air or on the floor. The little screen still glows
+    if (watchTossOn && story.chase) {
+        float k = watchToss.landed ? 1.0f : std::min(1.0f, watchToss.t / std::max(0.01f, watchToss.dur));
+        Vector2 wp = { watchToss.from.x + (watchToss.to.x - watchToss.from.x) * k, watchToss.from.y + (watchToss.to.y - watchToss.from.y) * k - std::sin(k * 3.14159f) * 10 };
+        Vector2 c = WorldToUI(wp);
+        DrawRectangle((int)((c.x - 3) * US), (int)((c.y - 1) * US), (int)(6 * US), (int)(4 * US), Color{ 40, 42, 50, 255 });
+        DrawRectangle((int)((c.x - 2) * US), (int)(c.y * US), (int)(4 * US), (int)(2 * US), Fade(Color{ 160, 220, 255, 255 }, 0.6f + 0.4f * std::sin(globalT * 6)));
+    }
+    // v0.12: sounds. His steps when you can't see him, and the noise you make yourself
+    for (size_t i = 0; i < rings.size();) {
+        Ring& r = rings[i];
+        r.t += dt;
+        if (r.t > 0.8f) { rings.erase(rings.begin() + i); continue; }
+        ++i;
+        Vector2 c = WorldToUI({ r.p.x, r.p.y + 5 });
+        float k = r.t / 0.8f;
+        Color col = r.kind == 0 ? Color{ 235, 120, 120, 255 } : Color{ 245, 220, 130, 255 };
+        DrawEllipseLines((int)(c.x * US), (int)(c.y * US), (3 + k * 13) * US, (1.6f + k * 7) * US, Fade(col, 0.7f * (1 - k)));
+        DrawEllipseLines((int)(c.x * US), (int)(c.y * US), (2 + k * 9) * US, (1.0f + k * 5) * US, Fade(col, 0.4f * (1 - k)));
+    }
+    if (scene == SceneMode::Chase && VisitorShown() && !beatActive && downedT <= 0) {
+        const char* mark = vmode == VMode::Chase ? "!" : vmode == VMode::Lost || vmode == VMode::Investigate ? "?" : nullptr;
         if (mark) {
             Vector2 h = WorldToUI(visitor.pos);
             UIText(mark, h.x - UIMeasure(mark, 12) / 2, h.y - HeadHeight(&visitor) - 12, 12, vmode == VMode::Chase ? Color{ 240, 60, 60, 255 } : Color{ 240, 200, 90, 255 });
@@ -1899,6 +1434,7 @@ static void DrawBubbles(float dt) {
         if (!tg.id.empty()) {
             Vector2 h = WorldToUI(player.pos);
             const float size = 6.5f;
+            if (story.ShouldHide(tg.id)) tg.name = "Hide: " + tg.name;
             float w = UIMeasure(tg.name.c_str(), size);
             float bw = w + 18, bx = std::max(4.0f, std::min(VW - 4 - bw, h.x - bw / 2)), by = h.y - 36;
             DrawRectangleRounded({ bx * US, by * US, bw * US, 11 * US }, 0.5f, 8, Fade(BLACK, 0.72f));
@@ -1911,26 +1447,64 @@ static void DrawBubbles(float dt) {
 
 static void DrawChaseBanner() {
     if (scene == SceneMode::None) return;
-    const char* t = scene == SceneMode::DadRuns ? "DAD IS FIGHTING HIM. RUN." : hidden ? "HIDING... (E to come out)" :
+    const char* t = scene == SceneMode::DadRuns || (defStage == 2 && defWho == "Dad") ? "DAD IS FIGHTING HIM. RUN." :
+                    defStage == 2 ? "MOM IS FIGHTING HIM. RUN." : story.handlers && !hidden ? "THEY'RE LOOKING FOR YOU" : hidden ? (touchMode ? "HIDING  (E: out, RUN: hold breath)" : "HIDING  (E: out, Shift: hold breath)") :
                     story.threats >= 3 ? "HE'S DONE WAITING" : story.threats > 0 ? "HE'S HURTING THEM" : "THE LAST 600 SECONDS";
     float p = 0.5f + 0.5f * std::sin(globalT * 5);
     UIText(t, VW / 2.0f - UIMeasure(t, 10) / 2, 40, 10, Fade(Color{ 240, 70, 70, 255 }, 0.6f + 0.4f * p));
     if (scene == SceneMode::Chase) {
         const char* h = "";
-        if (story.visitorDowned) h = "He's down. For now.";
+        if (story.visitorTied) h = "He's tied up. The bells are still coming.";
+        else if (story.HoldDown()) h = "He's not getting up. He's listening.";
+        else if (story.visitorDowned) h = "He's down. For now.";
         else if (hidden) {
             bool near = vmode == VMode::GoToHide || (vmode == VMode::CheckSpot && vSpotObj >= 0 &&
                         story.world.RoomAt(story.world.objs[vSpotObj].x, story.world.objs[vSpotObj].y) == story.world.RoomAt(TX(hidePos.x), TX(hidePos.y)));
-            h = near ? "Don't. Breathe." : "Stay still. Listen.";
+            h = gasped ? "You gasped." : holdingBreath ? "Holding it." : near || breathHeardT > 0 ? "He's close. HOLD YOUR BREATH." : "Stay still. Listen.";
         }
-        else if (vmode == VMode::Grace) h = "He's coming back in. Get out of sight.";
+        else if (vmode == VMode::Investigate) h = trailFollow ? "He found your trail out back. He's following it. Go the other way." : "He heard something. He's going to look.";
+        else if (vDoorT > 0 && vDoorBar) h = "He's at the furniture. It won't hold for long.";
+        else if (winded) h = "Out of breath. You can't run yet.";
+        else if (vmode == VMode::Grace) h = story.huntStart == "door" ? "He's counting the rooms. Go. Now." : story.huntStart == "back" ? "He's in your room. Get out of there." : "He's coming back in. Get out of sight.";   // v0.20 systems: back
         else if (vmode == VMode::Chase) h = "HE SEES YOU. Run (Shift). Break line of sight.";
         else if (vmode == VMode::Lost) h = "He lost you. Keep moving.";
         else if (story.threats > 0) h = "Come out and face him (E). Or don't.";
-        else h = "He's searching room by room. Hide (E), sneak past, or face him (E).";
-        if (story.cold > 0.3f) h = story.hasCoat ? "It's getting into your jacket. Get inside." : "You're freezing. Get inside.";
+        else h = story.pebbles > 0 ? (touchMode ? "He's searching. Walk, don't run. THROW a marble to move him." : "He's searching. Walk, don't run. Q throws a marble.")
+                                   : "He's searching. Walk, don't run. He hears running. Hide (E) or face him (E).";
+        // v0.18: whose side they're on
+        if (!hidden && (!story.visitorDowned || story.handlers)) {
+            if (story.handlers) h = "Mom and Dad. They know every spot in this house. Stay out of sight.";
+            else if (story.DadGuardsDoor() && vmode == VMode::Search) h = "Three of them now. Dad is holding the front door.";
+            else if (story.MomSearches() && vmode == VMode::Search) h = "Mom is looking too. If she sees you, he knows.";
+        }
+        if (story.handlers && hidden && !gasped && !holdingBreath) h = "Stay still. They check every spot.";
+        if (!story.dropItem.empty() && !hidden) h = story.dropItem == "box" ? "The box from his belt is on the floor. Grab it (E)." : "His taser is on the floor. Grab it (E).";
+        else if (story.hasTaser && !hidden && !story.visitorDowned) h = "His taser. Let him get close, then face him (E).";
+        if (story.cold > 0.3f) h = story.Warm() ? "Warm in here. Stay." : "You're freezing. Get inside, or get your jacket.";
+        // v0.20 knife: the torn fence out back
+        if (!hidden && !climbing && TileAt(TX(player.pos.x), TX(player.pos.y + 4)) == Tile::ChainGap)
+            h = story.gapCut ? "Through the gap you cut. He won't fit." : story.hasKnife ? "Squeezing through. The knife would cut the twine (E)." : "Squeezing through. Slowly.";
+        if (climbing) h = "Climbing. He can hear it.";
         else if (story.doggoWithKid && story.Knows("doggo_stay") && !hidden) h = "Doggo is right next to you. Tell him to stay (E on Doggo).";
         UIText(h, VW / 2.0f - UIMeasure(h, 6) / 2, 54, 6, Fade(WHITE, 0.65f));
+        // v0.12: air and legs
+        auto bar = [&](float y, float v, const char* label, Color c) {
+            float w = 60, x = VW / 2.0f - w / 2;
+            DrawRectangleRounded({ (x - 1) * US, (y - 1) * US, (w + 2) * US, 5 * US }, 0.6f, 6, Fade(BLACK, 0.6f));
+            DrawRectangleRounded({ x * US, y * US, std::max(0.0f, v) * w * US, 3 * US }, 0.6f, 6, Fade(c, 0.9f));
+            UIText(label, x - UIMeasure(label, 5) - 4, y - 1, 5, Fade(WHITE, 0.6f));
+        };
+        if (story.cold > 0.02f) bar(78, 1 - story.cold, "WARM", story.cold > 0.6f ? Color{ 240, 80, 80, 255 } : Color{ 200, 230, 255, 255 });   // v0.15
+        if (hidden) bar(64, breath, "AIR", breath < 0.3f ? Color{ 240, 80, 80, 255 } : Color{ 150, 200, 255, 255 });
+        else if (stamina < 0.995f) bar(64, stamina, "LEGS", winded ? Color{ 240, 80, 80, 255 } : Color{ 240, 210, 110, 255 });
+        if (story.pebbles == 0 && !hidden && !watchTossOn && story.CanThrowWatch()) {   // v0.20.1 story-knife
+            std::string m = std::string(touchMode ? "THROW" : "Q") + ": your watch (it beeps)";
+            UIText(m.c_str(), VW / 2.0f - UIMeasure(m.c_str(), 5) / 2, 71, 5, Fade(Color{ 160, 220, 255, 255 }, 0.8f));
+        }
+        if (story.pebbles > 0 && !hidden) {
+            std::string m = std::string(touchMode ? "THROW" : "Q") + ": marble x" + std::to_string(story.pebbles);
+            UIText(m.c_str(), VW / 2.0f - UIMeasure(m.c_str(), 5) / 2, 71, 5, Fade(Color{ 245, 220, 130, 255 }, 0.8f));
+        }
     }
 }
 
@@ -1958,62 +1532,219 @@ static void DrawHUD() {
     Room r = story.world.RoomAt(TX(player.pos.x), TX(player.pos.y));
     Panel(6, 6, UIMeasure(RoomName(r), 10) + 12, 15, Fade(BLACK, 0.6f), Fade(WHITE, 0.3f));
     UIText(RoomName(r), 12, 9, 10, WHITE);
-    std::string lp = "LOOP " + std::to_string(story.loop);
-    UIText(lp.c_str(), 8, 25, 6, Fade(WHITE, 0.6f));
-    std::string ch = "CHORES " + std::to_string(story.ChoresDone()) + "/" + std::to_string(Story::CHORES) + (story.earnedPresent ? "  PRESENT!" : "");
-    UIText(ch.c_str(), VW - 84, 46, 6, Fade(WHITE, 0.7f));
-    std::string mem = "MEMORY " + std::to_string(story.Awareness()) + "/" + std::to_string(AllMemories().size()) + "  [J]";
-    UIText(mem.c_str(), VW - 84, 54, 6, Color{ 190, 150, 255, 200 });
-    float iy = 62;
-    {
-        // v0.6: one thing in your hands
-        std::string hand = std::string("IN HANDS: ") + (story.held == Item::None ? "nothing" : ItemName(story.held));
-        if (story.doggoStay && story.DoggoExists()) hand += "   DOGGO: STAYING";
-        Color hc = story.hasKnife ? Color{ 235, 80, 80, 255 } : story.hasKey ? GOLD : story.held == Item::None ? Fade(WHITE, 0.45f) : Color{ 200, 230, 255, 255 };
-        UIText(hand.c_str(), VW - 84, iy, 6, hc); iy += 8;
-    }
-    if (story.tainted) { std::string dk = "DARK " + std::to_string(story.darkPoints); UIText(dk.c_str(), 8, 33, 6, Color{ 200, 40, 40, 220 }); }
+    // v0.20 look: the loop on the watch strap, memory and hands quieter under it, chores on the fridge.
+    // The darkness is in the house now (and on the watch). The number only shows in debug mode
+    LookHUD(16 + 8 * 2 + 11 + 1);
+    if (debugMode) { std::string dk = "DARK " + std::to_string(story.darkPoints); UIText(dk.c_str(), 8, 25, 6, Color{ 200, 40, 40, 220 }); }
     if (debugMode) {
         std::string rs = std::string("DEBUG  reality: ") + ShiftName(story.shift) + "  streak " + std::to_string(story.cleanStreak) + "  [O]";
+        if (scene == SceneMode::Chase) {
+            static const char* vm[] = { "grace", "search", "chase", "lost", "check spot", "go to your spot", "investigate" };
+            rs += std::string("  hunt: ") + vm[(int)vmode] + "  sweep " + std::to_string(vSweep) + "  wet " + std::to_string((int)wetT) + "  dog " + std::to_string(doggoGuard) + "  jukes " + std::to_string(vJukes);
+        }
         if (visitorBlind) rs += "  VISITOR BLIND";
         UIText(rs.c_str(), 8, VH - 22, 6, Color{ 120, 220, 140, 200 });
     }
     DrawChaseBanner();
+    if (climbing && scene != SceneMode::Chase) {
+        // v0.15: how far through the window you are
+        float w = 60, x = VW / 2.0f - w / 2, y = 64, v = std::min(1.0f, climbT / std::max(0.1f, climbDur));
+        DrawRectangleRounded({ (x - 1) * US, (y - 1) * US, (w + 2) * US, 5 * US }, 0.6f, 6, Fade(BLACK, 0.6f));
+        DrawRectangleRounded({ x * US, y * US, v * w * US, 3 * US }, 0.6f, 6, Fade(Color{ 200, 230, 255, 255 }, 0.9f));
+        const char* l = climbBanged && climbT < 1.2f ? "STUCK" : "CLIMBING";
+        UIText(l, x - UIMeasure(l, 5) - 4, y - 1, 5, Fade(WHITE, 0.6f));
+    }
     if (IsKeyDown(KEY_T)) UIText(">> waiting", VW / 2.0f - 25, VH - 14, 8, YELLOW);
     else if (!touchMode) UIText("T: wait   J: memory   E: use", 8, VH - 12, 6, Fade(WHITE, 0.45f));
+}
+
+// v0.10: the log has three more pages. Tab 0 is the hour as a timeline, then the topics, the endings, the awards
+static int JournalTabs() { return (int)AllTopics().size() + 4; }   // v0.20 systems: + the rumor map, after Awards
+
+// ============================================================ v0.20 systems: T-092 the rumor map
+// Memories as cards, lines between the ones that belong together (src/game/Links.h).
+// Found: the title. Unknown but linked to one you have: "?". The rest stays hidden. UP/DOWN pans
+#include "game/Links.h"
+#include "art/RumorCard.inc"   // v0.20.1 hunt-systems: open a card and read it
+static bool RumorShown(const std::string& id) {
+    if (story.Knows(id)) return true;
+    for (auto& l : AllRumorLinks()) if ((id == l.a && story.Knows(l.b)) || (id == l.b && story.Knows(l.a))) return true;
+    return false;
+}
+static int RumorsFound() { int n = 0; for (auto& r : AllRumorNodes()) n += story.Knows(r.id) ? 1 : 0; return n; }
+static void DrawRumors(float top, float bottom) {
+    const float colW = 92, rowH = 30, cardW = 78, cardH = 18, left = 20;
+    const Color teal = { 120, 200, 220, 255 }, dim = { 80, 80, 92, 255 };
+    int rows = 0, firstRow = 99, lastRow = -1;
+    for (auto& r : AllRumorNodes()) { rows = std::max(rows, r.row + 1); if (RumorShown(r.id)) { firstRow = std::min(firstRow, r.row); lastRow = std::max(lastRow, r.row); } }
+    if (lastRow < 0) {
+        const char* l = "Nothing to connect yet. Remember something first.";
+        UIText(l, VW / 2.0f - UIMeasure(l, 8) / 2, 120, 8, dim);
+        return;
+    }
+    int visible = (int)((bottom - top) / rowH);
+    int maxScroll = std::max(0, lastRow + 1 - visible);
+    journalScroll = std::max(0, std::min(journalScroll, maxScroll));
+    rumorVisibleRows = visible; rumorHits.clear(); float selY = -1;   // v0.20.1 hunt-systems: cards you can open
+    auto pos = [&](const RumorNode& r) { return Vector2{ left + r.col * colW, top + 2 + (r.row - journalScroll) * rowH }; };
+    auto find = [&](const char* id) -> const RumorNode* { for (auto& r : AllRumorNodes()) if (std::strcmp(r.id, id) == 0) return &r; return nullptr; };
+    auto title = [&](const std::string& id) -> std::string { for (auto& m : AllMemories()) if (m.id == id) return m.title; return id; };
+    BeginScissorMode(0, (int)(top * US), SW, (int)((bottom - top) * US));
+    // the lines first, so the cards sit on top
+    for (auto& l : AllRumorLinks()) {
+        const RumorNode* a = find(l.a); const RumorNode* b = find(l.b);
+        if (!a || !b || !RumorShown(a->id) || !RumorShown(b->id)) continue;
+        bool both = story.Knows(a->id) && story.Knows(b->id);
+        bool lit = !rumorSel.empty() && (rumorSel == a->id || rumorSel == b->id);   // v0.20.1 hunt-systems: the open card's lines stand out
+        Vector2 pa = pos(*a), pb = pos(*b);
+        pa.x += cardW / 2; pa.y += cardH / 2; pb.x += cardW / 2; pb.y += cardH / 2;
+        {   // from edge to edge, so the part between the cards is all you see, and it's long enough to read
+            float dx = pb.x - pa.x, dy = pb.y - pa.y;
+            float k = std::min(dx != 0 ? (cardW / 2) / std::fabs(dx) : 1e9f, dy != 0 ? (cardH / 2) / std::fabs(dy) : 1e9f);
+            pa.x += dx * k; pa.y += dy * k; pb.x -= dx * k; pb.y -= dy * k;
+        }
+        DrawLineEx({ pa.x * US, pa.y * US }, { pb.x * US, pb.y * US }, (lit ? 2.0f : both ? 1.4f : 0.9f) * US, lit ? Color{ 255, 210, 90, 255 } : both ? Fade(teal, 0.75f) : Fade(dim, 0.8f));
+    }
+    for (auto& r : AllRumorNodes()) {
+        if (!RumorShown(r.id)) continue;
+        Vector2 p = pos(r);
+        if (p.y > bottom || p.y + cardH < top) continue;
+        bool known = story.Knows(r.id);
+        bool fresh = known && std::find(story.loopNew.begin(), story.loopNew.end(), std::string(r.id)) != story.loopNew.end();
+        Panel(p.x, p.y, cardW, cardH, known ? Color{ 30, 26, 40, 255 } : Color{ 16, 16, 20, 255 },
+              known ? (fresh ? Color{ 255, 210, 90, 255 } : Color{ 120, 100, 170, 255 }) : Color{ 50, 50, 60, 255 });
+        if (known) {
+            if (p.y >= top - 2 && p.y + cardH <= bottom + 2) rumorHits.push_back({ r.id, p.x, p.y, cardW, cardH });   // v0.20.1 hunt-systems
+            if (rumorSel == r.id) { selY = p.y + cardH / 2; DrawRectangleLinesEx({ (p.x - 2) * US, (p.y - 2) * US, (cardW + 4) * US, (cardH + 4) * US }, std::max(1.0f, US), WHITE); }
+            auto lines = Wrap(title(r.id), cardW - 6, 6, false);
+            float ly = p.y + (lines.size() > 1 ? 2.0f : 5.6f);
+            for (size_t i = 0; i < lines.size() && i < 2; ++i) { UIText(lines[i].c_str(), p.x + 3, ly, 6, WHITE); ly += 7.0f; }
+        } else UIText("?", p.x + cardW / 2 - UIMeasure("?", 9) / 2, p.y + 3.5f, 9, dim);
+    }
+    EndScissorMode();
+    DrawRumorCard(top, bottom, selY);   // v0.20.1 hunt-systems
+    (void)rows; (void)firstRow;
+    std::string count = std::to_string(RumorsFound()) + " of " + std::to_string(AllRumorNodes().size()) + " on the map";
+    UIText(count.c_str(), VW - 16 - UIMeasure(count.c_str(), 6.5f), bottom + 1, 6.5f, Fade(WHITE, 0.45f));
+    if (journalScroll > 0) UIText("^ more", VW - 60, top - 9, 7, Fade(WHITE, 0.6f));
+    if (journalScroll < maxScroll) UIText("v more", 16, bottom + 1, 7, Fade(WHITE, 0.6f));
+}
+
+static void DrawTimeline() {
+    const Color ice = { 150, 210, 230, 255 }, dim = { 86, 88, 100, 255 };
+    if (story.Tutorial()) {
+        // loop 1: he has no idea there is anything to keep track of
+        const char* l1 = "Christmas Eve. One hour until Julenissen.";
+        const char* l2 = "What is there to keep track of?";
+        UIText(l1, VW / 2.0f - UIMeasure(l1, 10) / 2, 118, 10, Fade(WHITE, 0.8f));
+        UIText(l2, VW / 2.0f - UIMeasure(l2, 8) / 2, 136, 8, dim);
+        return;
+    }
+    // v0.20.1 hunt-systems: drawn in time order. AllTimeline() keeps its own order (new rows go at the end of the list)
+    std::vector<TimelineEntry> tl = AllTimeline();
+    std::stable_sort(tl.begin(), tl.end(), [](const TimelineEntry& a, const TimelineEntry& b) { return a.minute * 60 + a.second < b.minute * 60 + b.second; });
+    const float top = 53, rowH = std::min(12.2f, (VH - 22 - 53) / (float)std::max<size_t>(1, tl.size()));   // more rows: they sit closer, the page doesn't run off
+    const float fs = std::min(8.0f, rowH - 1.0f);   // v0.20.1 hunt-systems
+    int next = -1;
+    for (size_t i = 0; i < tl.size(); ++i) if (next < 0 && tl[i].minute * 60 + tl[i].second > story.t) next = (int)i;
+    DrawRectangle((int)(61 * US), (int)((top + 3) * US), (int)std::max(1.0f, US), (int)((tl.size() - 1) * rowH * US), Fade(ice, 0.25f));
+    for (size_t i = 0; i < tl.size(); ++i) {
+        auto& e = tl[i];
+        float y = top + i * rowH;
+        bool known = story.KnowsEvent(e.id), past = e.minute * 60 + e.second <= story.t;
+        char tb[16]; std::snprintf(tb, sizeof tb, "%02d:%02d", 16 + e.minute / 60, e.minute % 60);
+        if ((int)i == next) {
+            DrawRectangle((int)(16 * US), (int)((y - 2) * US), (int)((VW - 32) * US), (int)((rowH - 1) * US), Fade(ice, 0.10f));
+            UIText(">", 18, y, fs, Color{ 255, 210, 90, 255 });
+        }
+        UIText(tb, 28, y, fs, known ? (past ? Fade(ice, 0.5f) : ice) : dim);
+        DrawCircleV({ 61.5f * US, (y + 4.2f) * US }, (known ? 2.2f : 1.5f) * US, known ? (past ? Fade(ice, 0.5f) : ice) : dim);
+        UIText(known ? e.text.c_str() : "?", 70, y, fs, known ? (past ? Fade(WHITE, 0.5f) : WHITE) : dim);
+    }
+    std::string now = "NOW " + story.ClockText() + (story.collection ? "   the last 600 seconds" : "");
+    UIText(now.c_str(), VW - 16 - UIMeasure(now.c_str(), 7), 53, 7, Color{ 255, 210, 90, 255 });
 }
 
 static void DrawJournal() {
     DrawRectangle(0, 0, SW, SH, Fade(Color{ 10, 8, 14, 255 }, 0.94f));
     bool dark = story.Stage() >= 2;
     UIText("MEMORY LOG", 16, 12, 14, dark ? Color{ 200, 60, 60, 255 } : Color{ 190, 150, 255, 255 });
-    std::string pct = std::to_string(story.Awareness() * 100 / AllMemories().size()) + "%   endings " + std::to_string(story.endings.size()) + "/" + std::to_string(AllEndings().size());
-    UIText(pct.c_str(), VW - 16 - UIMeasure(pct.c_str(), 9), 15, 9, WHITE);
+    std::string pct = std::to_string(story.Awareness() * 100 / std::max(1, story.MemoryTotal())) + "%   endings " + std::to_string(story.endings.size()) + "/" + std::to_string(AllEndings().size()) +
+                      "   awards " + std::to_string(story.achievements.size()) + "/" + std::to_string(AllAchievements().size());
+    UIText(pct.c_str(), VW - 16 - UIMeasure(pct.c_str(), 8), 16, 8, WHITE);
     auto& topics = AllTopics();
-    int nTabs = (int)topics.size() + 1;   // v0.6: + Endings
+    const int N = (int)topics.size(), nTabs = JournalTabs(), tabEnd = N + 1, tabAwards = N + 2, tabRumors = N + 3;   // v0.20 systems: rumors
+    const Color teal = { 120, 200, 220, 255 };
     float tx = 16;
     for (int i = 0; i < nTabs; ++i) {
-        bool isEnd = i == (int)topics.size();
-        const char* name = isEnd ? "Endings" : topics[i].c_str();
-        float w = UIMeasure(name, 7) + 8;
-        bool sel = i == journalTopic;
+        std::string name = i == 0 ? "Timeline" : i <= N ? topics[i - 1] : i == tabEnd ? "Endings" : i == tabRumors ? "Rumors" : "Awards";
+        if (name.rfind("The ", 0) == 0) { name = name.substr(4); name[0] = (char)std::toupper((unsigned char)name[0]); }
+        float w = UIMeasure(name.c_str(), 6.5f) + 7;
+        bool sel = i == journalTopic, gold = i >= tabEnd && i != tabRumors;
         int found = 0;
-        if (isEnd) found = (int)story.endings.size();
-        else for (auto& e : AllMemories()) if (e.topic == topics[i] && story.Knows(e.id)) found++;
-        Color edge = isEnd ? (found ? GOLD : Color{ 80, 80, 90, 255 }) : (found ? Color{ 190, 150, 255, 255 } : Color{ 80, 80, 90, 255 });
-        Panel(tx, 32, w, 13, sel ? (isEnd ? Color{ 90, 74, 30, 255 } : Color{ 70, 50, 110, 255 }) : Color{ 25, 22, 35, 255 }, edge);
-        UIText(name, tx + 4, 35, 7, found ? WHITE : GRAY);
-        tx += w + 3;
+        if (i == 0) { for (auto& e : AllTimeline()) if (story.KnowsEvent(e.id)) found++; }
+        else if (i == tabEnd) found = (int)story.endings.size();
+        else if (i == tabAwards) found = (int)story.achievements.size();
+        else if (i == tabRumors) found = RumorsFound();
+        else for (auto& e : AllMemories()) if (e.topic == topics[i - 1] && story.Knows(e.id)) found++;
+        Color lit = gold ? GOLD : i == 0 ? teal : Color{ 190, 150, 255, 255 };
+        Color fill = sel ? (gold ? Color{ 90, 74, 30, 255 } : i == 0 ? Color{ 28, 70, 84, 255 } : Color{ 70, 50, 110, 255 }) : Color{ 25, 22, 35, 255 };
+        Panel(tx, 32, w, 13, fill, found ? lit : Color{ 80, 80, 90, 255 });
+        UIText(name.c_str(), tx + 3.5f, 35.2f, 6.5f, found ? WHITE : GRAY);
+        tx += w + 2;
+    }
+    const float top = 52, bottom = VH - 22;
+    if (journalTopic == 0) {
+        DrawTimeline();
+        const char* help = touchMode ? "What I've watched happen. A ? is still worth being around for.    tap: close"
+                                     : "What I've watched happen. A ? is still worth being around for.    LEFT/RIGHT page    J or ESC close";
+        UIText(help, 16, VH - 14, 7, Fade(WHITE, 0.5f));
+        return;
+    }
+    if (journalTopic == tabRumors) {
+        DrawRumors(top, bottom);
+        // v0.20.1 hunt-systems: cards open now
+        const char* help = touchMode ? (rumorSel.empty() ? "What belongs together.    tap a card: read it    D-pad: page / pan    tap: close" : "D-pad: next card    tap: close the card")
+                                     : (rumorSel.empty() ? "What belongs together.    E: read a card    LEFT/RIGHT page    UP/DOWN pan    J close" : "ARROWS: next card    E or ESC: close the card    J close");
+        UIText(help, 16, VH - 14, 7, Fade(WHITE, 0.5f));
+        return;
+    }
+    if (journalTopic == tabAwards) {
+        // compact list: the name once you have it, a nudge until then
+        auto& all = AllAchievements();
+        const float rowH = 14;
+        int visible = (int)((bottom - top) / rowH);
+        int maxScroll = std::max(0, (int)all.size() - visible);
+        journalScroll = std::max(0, std::min(journalScroll, maxScroll));
+        float y = top;
+        for (int idx = journalScroll; idx < (int)all.size() && idx < journalScroll + visible; ++idx) {
+            bool have = story.achievements.count(all[idx].name) > 0;
+            if (idx % 2 == 0) DrawRectangle((int)(16 * US), (int)((y - 1.5f) * US), (int)((VW - 32) * US), (int)((rowH - 1) * US), Fade(WHITE, 0.03f));
+            if (have) {
+                DrawPoly({ 23 * US, (y + 4.5f) * US }, 4, 3.4f * US, 45 + globalT * 20, GOLD);
+                UIText(all[idx].name.c_str(), 32, y, 8, GOLD);
+                UIText(all[idx].hint.c_str(), 200, y + 0.5f, 7, Fade(WHITE, 0.45f));
+            } else {
+                UIText("?", 21, y, 8, Color{ 80, 80, 90, 255 });
+                UIText(all[idx].hint.c_str(), 32, y, 8, Color{ 120, 120, 135, 255 });
+            }
+            y += rowH;
+        }
+        if (journalScroll > 0) UIText("^ more", VW - 60, top - 9, 7, Fade(WHITE, 0.6f));
+        if (journalScroll < maxScroll) UIText("v more", VW - 60, bottom - 2, 7, Fade(WHITE, 0.6f));
+        const char* help = touchMode ? "D-pad: page / scroll    tap: close" : "LEFT/RIGHT page    UP/DOWN scroll    J or ESC close";
+        UIText(help, touchMode ? 120 : 16, VH - 14, 7, Fade(WHITE, 0.5f));
+        return;
     }
     // entries for this tab, scrollable (v0.6)
     struct Row { bool known; std::string title, text, hint; bool ending; };
     std::vector<Row> rows;
-    if (journalTopic == (int)topics.size()) {
+    if (journalTopic == tabEnd) {
         for (auto& e : AllEndings()) rows.push_back({ story.endings.count(e.id) > 0, e.title, "Found.", e.hint, true });
     } else {
-        for (auto& e : AllMemories()) if (e.topic == topics[journalTopic]) rows.push_back({ story.Knows(e.id), e.title, e.text, e.hint, false });
+        for (auto& e : AllMemories()) if (e.topic == topics[journalTopic - 1] && (story.Knows(e.id) || !Story::QuietMemory(e.id))) rows.push_back({ story.Knows(e.id), e.title, e.text, e.hint, false });   // v0.20 knife: the quiet one only once you have it
     }
-    const float top = 52, rowH = 42, bottom = VH - 22;
+    const float rowH = 42;
     int visible = (int)((bottom - top) / rowH);
     int maxScroll = std::max(0, (int)rows.size() - visible);
     journalScroll = std::max(0, std::min(journalScroll, maxScroll));
@@ -2028,9 +1759,10 @@ static void DrawJournal() {
             UIText(r.title.c_str(), 24, y + 4, 10, r.ending ? GOLD : WHITE);
             auto lines = Wrap(r.ending ? std::string("You reached this ending.") : r.text, VW - 52, adult ? 11 : 8, adult);
             float ly = y + 17;
+            bool fresh = !r.ending && LookNewThisLoop(r.title);   // v0.20 look: handwriting, and cold old entries on the dark path
             for (size_t i = 0; i < lines.size() && i < 2; ++i) {
-                if (adult && hasNarratorFont) DrawTextEx(narratorFont, lines[i].c_str(), { 24 * US, ly * US }, 11 * US, 1, Color{ 220, 170, 170, 255 });
-                else UIText(lines[i].c_str(), 24, ly, 8, Color{ 210, 210, 220, 255 });
+                if (r.ending) UIText(lines[i].c_str(), 24, ly, 8, Color{ 210, 210, 220, 255 });
+                else LookJournalText(lines[i], 24, ly, idx * 3 + (int)i, adult, fresh);
                 ly += 10;
             }
         } else {
@@ -2041,7 +1773,7 @@ static void DrawJournal() {
     }
     if (journalScroll > 0) UIText("^ more", VW - 60, top - 9, 7, Fade(WHITE, 0.6f));
     if (journalScroll < maxScroll) UIText("v more", VW - 60, bottom - 2, 7, Fade(WHITE, 0.6f));
-    const char* help = touchMode ? "D-pad: topic / scroll    tap: close" : "LEFT/RIGHT topic    UP/DOWN scroll    J or ESC close";
+    const char* help = touchMode ? "D-pad: page / scroll    tap: close" : "LEFT/RIGHT page    UP/DOWN scroll    J or ESC close";
     UIText(help, touchMode ? 120 : 16, VH - 14, 7, Fade(WHITE, 0.5f));
 }
 
@@ -2186,13 +1918,14 @@ static void DrawJukebox() {
     DrawRectangle(0, 0, (int)(VW * US), (int)(VH * US), Fade(Color{ 8, 8, 14, 255 }, 0.94f));
     UIText("JUKEBOX", 24, 20, 16, Color{ 230, 60, 60, 255 });
     UIText("debug  -  every song is code in src/audio/Soundtrack.cpp", 24, 40, 6, Fade(WHITE, 0.5f));
+    const float rowH = 19;   // v0.20 sound: ten tracks now, packed tighter
     for (int i = 0; i < TRACK_COUNT; ++i) {
-        float y = 62 + i * 30;
+        float y = 54 + i * rowH;
         bool sel = i == jukeboxSel, playing = i == musicCur;
-        if (sel) DrawRectangle((int)(20 * US), (int)((y - 4) * US), (int)((VW - 40) * US), (int)(28 * US), Color{ 50, 40, 80, 255 });
-        std::string name = std::string(playing ? "> " : "  ") + TrackName(i);
-        UIText(name.c_str(), 28, y, 10, playing ? Color{ 255, 210, 90, 255 } : WHITE);
-        UIText(TrackInfo(i), 40, y + 13, 6, Fade(WHITE, 0.55f));
+        if (sel) DrawRectangle((int)(20 * US), (int)((y - 2) * US), (int)((VW - 40) * US), (int)((rowH - 1) * US), Color{ 50, 40, 80, 255 });
+        std::string name = std::string(playing ? "> " : "  ") + TrackName(i) + (TrackFromFile(i) ? "   [file]" : "");
+        UIText(name.c_str(), 28, y, 8, playing ? Color{ 255, 210, 90, 255 } : WHITE);
+        UIText(TrackInfo(i), 40, y + 9, 5, Fade(WHITE, 0.55f));
     }
     // a tiny live scope of what's playing
     float sx = VW - 150, sy = 26;
@@ -2213,7 +1946,7 @@ static bool UpdateJukebox() {
     if (IsKeyPressed(KEY_ESCAPE)) { jukeboxOpen = false; return true; }
     if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) jukeboxSel = (jukeboxSel + 1) % TRACK_COUNT;
     if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W)) jukeboxSel = (jukeboxSel + TRACK_COUNT - 1) % TRACK_COUNT;
-    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_E)) { musicPrev = musicCur; musicCur = jukeboxSel; musicFade = 0.6f; }
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_E)) SetMusic(jukeboxSel, 0.6f);   // v0.20 sound
     return true;
 }
 
@@ -2222,7 +1955,7 @@ static bool UpdateJukebox() {
 static bool dbgOpen = false;
 static int dbgSel = 0;
 static bool dbgRestartLoop = false;
-enum DbgRow { D_SPEED, D_ON, D_TOILET, D_DOGGO, D_CHANCE, D_MINGAP, D_MAXGAP, D_FIRST, D_SHARE, D_FORCE, D_RESTART,
+enum DbgRow { D_SPEED, D_HUNT, D_ON, D_TOILET, D_DOGGO, D_CHANCE, D_MINGAP, D_MAXGAP, D_FIRST, D_SHARE, D_FORCE, D_RESTART,
               D_DARK, D_ALLMEM, D_CLEARMEM, D_BLIND, D_DEFAULTS, D_COUNT };
 
 static void SaveDebugCfg() {
@@ -2253,6 +1986,7 @@ static std::string DbgValue(int row) {
     auto onoff = [](bool b) { return std::string(b ? "ON" : "OFF"); };
     switch (row) {
     case D_SPEED: { char b[16]; std::snprintf(b, sizeof b, "%.1fx", c.timeMul); return b; }
+    case D_HUNT: return c.huntScale <= 1.01f ? std::string("real time (10 min)") : c.huntScale <= 2.01f ? std::string("half (5 min)") : std::string("old (2 min)");
     case D_ON: return onoff(c.enabled);
     case D_TOILET: return onoff(c.toilet);
     case D_DOGGO: return onoff(c.noDoggo);
@@ -2272,7 +2006,7 @@ static std::string DbgValue(int row) {
 }
 static const char* DbgLabel(int row) {
     static const char* L[D_COUNT] = {
-        "Game speed (how fast the clock runs)", "Reality shifts", "  45 minute toilet", "  No Doggo", "  Chance per loop (after cooldown)",
+        "Game speed (how fast the clock runs)", "Hunt clock (16:50 to 17:00)", "Reality shifts", "  45 minute toilet", "  No Doggo", "  Chance per loop (after cooldown)",
         "  Normal loops before the next can happen", "  Guaranteed after", "  First possible loop", "  Mix",
         "  Force the next loop", "Restart this loop now", "Dark points", "Give all memories", "Clear memories (keeps darkness)",
         "Visitor can't see you", "Reset these settings to default" };
@@ -2284,6 +2018,7 @@ static void DbgChange(int row, int dir, bool enter) {
     auto step = [&](int& v, int lo, int hi, int st) { v = std::clamp(v + dir * st, lo, hi); };
     bool tog = enter || dir != 0;
     switch (row) {
+    case D_HUNT: if (tog) { static const float hs[3] = { 1.0f, 2.0f, 5.0f }; int i = c.huntScale <= 1.01f ? 0 : c.huntScale <= 2.01f ? 1 : 2; i = (i + (dir < 0 ? 2 : 1)) % 3; c.huntScale = hs[i]; } break;
     case D_SPEED: if (dir) c.timeMul = std::clamp(std::round((c.timeMul + dir * 0.2f) * 10) / 10.0f, 1.0f, 2.0f); break;
     case D_ON: if (tog) c.enabled = !c.enabled; break;
     case D_TOILET: if (tog) c.toilet = !c.toilet; break;
@@ -2293,7 +2028,7 @@ static void DbgChange(int row, int dir, bool enter) {
     case D_MAXGAP: step(c.maxGap, 0, 30, 1); break;
     case D_FIRST: step(c.firstLoop, 1, 30, 1); break;
     case D_SHARE: step(c.toiletShare, 0, 100, 10); break;
-    case D_FORCE: if (tog) { int f = ((int)c.forceNext + (dir < 0 ? 3 : 1)) % 4; c.forceNext = (Shift)f; } break;
+    case D_FORCE: if (tog) { int f = ((int)c.forceNext + (dir < 0 ? 6 : 1)) % 7; c.forceNext = (Shift)f; } break;   // v0.20 story: two more shifts
     case D_RESTART: if (enter && screen == Screen::Game) { dbgRestartLoop = true; dbgOpen = false; } break;
     case D_DARK: if (dir) { story.DebugSetDark(story.darkPoints + dir); SaveGame(); } break;
     case D_ALLMEM: if (enter) { story.DebugAllMemories(); SaveGame(); ToastFor("DEBUG", "Every memory unlocked.", Color{ 120, 220, 140, 255 }); } break;
@@ -2343,7 +2078,6 @@ static void DrawDebugPanel() {
 
 // ============================================================ title
 static void DrawTitle() {
-    ClearBackground(Color{ 6, 6, 10, 255 });
     float pulse = 0.5f + 0.5f * std::sin(globalT * 2);
     const char* t = "600 SECONDS";
     UIText(t, VW / 2.0f - UIMeasure(t, 30) / 2, 60, 30, Color{ 220, 60, 60, 255 });
@@ -2379,19 +2113,20 @@ static void DrawTitle() {
     DrawAIBadge(8, VH - 18, Fade(WHITE, 0.55f));
     UIText(kVersion, VW - 8 - UIMeasure(kVersion, 7), 8, 7, Fade(WHITE, 0.45f));
     if (debugMode) {
-        const char* d1 = "DEBUG: O panel, M jukebox, 4 basement + tape, 5 living room, 6 chores, 7 Fliptendo, 8 +5, 9 16:49, 0 knock";
+        const char* d1 = "DEBUG: O panel, M jukebox, 3 gate, 4 basement + tape, 5 living room, 6 chores, 7 Fliptendo, 8 +5, 9 16:49, 0 knock";
         const char* d2 = hardResetArm > 0 ? "Shift+R again to WIPE EVERYTHING (memories, darkness, endings, achievements)" : "Shift+R: hard reset";
         // v0.9.3: top left, the bottom of the title is full
         UIText(d1, 8, 8, 6, Color{ 120, 220, 140, 200 });
         UIText(d2, 8, 18, 6, hardResetArm > 0 ? Color{ 240, 80, 80, 255 } : Color{ 120, 220, 140, 200 });
     }
-    const char* c2 = "Contains off-screen violence, implied child abuse and the death of a dog. Flashing lights.";
+    const char* c2 = "Contains off-screen violence, implied child abuse, the death of a dog and an off-screen suicide. Flashing lights.";   // v0.20 (D10)
     UIText(c2, VW / 2.0f - UIMeasure(c2, 6) / 2, 236, 6, Fade(WHITE, 0.35f));
 }
 
 // ============================================================ v0.9 pause menu and settings
 static void SaveSettings() {
-    std::string s = std::to_string(settings.music) + "|" + std::to_string(settings.sfx) + "|" + std::to_string(settings.text) + "|" + std::to_string(settings.calmFlashes ? 1 : 0);
+    std::string s = std::to_string(settings.music) + "|" + std::to_string(settings.sfx) + "|" + std::to_string(settings.text) + "|" + std::to_string(settings.calmFlashes ? 1 : 0) + "|" + std::to_string(settings.roofs ? 1 : 0)
+        + "|" + std::to_string(settings.blips ? 1 : 0);   // v0.20.1 sound-look
 #if defined(PLATFORM_WEB)
     EM_ASM({ try { localStorage.setItem('600s_settings', UTF8ToString($0)); } catch (e) {} }, s.c_str());
 #else
@@ -2415,21 +2150,22 @@ static void LoadSettings() {
 #else
     if (FileExists("600s_settings.txt")) { char* t = LoadFileText("600s_settings.txt"); if (t) s = t; UnloadFileText(t); }
 #endif
-    int a, b, c, d;
-    if (std::sscanf(s.c_str(), "%d|%d|%d|%d", &a, &b, &c, &d) == 4) {
+    int a, b, c, d, e = 1, f = 1;   // v0.20.1 sound-look: f = voice blips
+    if (std::sscanf(s.c_str(), "%d|%d|%d|%d|%d|%d", &a, &b, &c, &d, &e, &f) >= 4) {
+        settings.roofs = e != 0; settings.blips = f != 0;
         settings.music = std::max(0, std::min(10, a)); settings.sfx = std::max(0, std::min(10, b));
         settings.text = std::max(0, std::min(3, c)); settings.calmFlashes = d != 0;
     }
 }
-static const int PAUSE_ROWS = 6;
-static const float PAUSE_Y = 84, PAUSE_H = 20, PAUSE_X = 110, PAUSE_W = 260;
+static const int PAUSE_ROWS = 8;   // v0.20.1 sound-look: + Voice blips
+static const float PAUSE_Y = 76, PAUSE_H = 20, PAUSE_X = 110, PAUSE_W = 260;
 static void DrawPause() {
     DrawRectangle(0, 0, (int)(VW * US), (int)(VH * US), Fade(Color{ 8, 8, 14, 255 }, 0.86f));
     UIText("PAUSED", VW / 2.0f - UIMeasure("PAUSED", 16) / 2, 48, 16, Color{ 230, 60, 60, 255 });
     static const char* speed[4] = { "Slow", "Normal", "Fast", "Instant" };
     std::string val[PAUSE_ROWS] = { "", std::to_string(settings.music) + " / 10", std::to_string(settings.sfx) + " / 10", speed[settings.text],
-                                    settings.calmFlashes ? "Calm" : "Normal", "" };
-    static const char* name[PAUSE_ROWS] = { "Resume", "Music", "Sound", "Text speed", "Flashes", "Back to the title" };
+                                    settings.calmFlashes ? "Calm" : "Normal", settings.roofs ? "On" : "Off", settings.blips ? "On" : "Off", "" };
+    static const char* name[PAUSE_ROWS] = { "Resume", "Music", "Sound", "Text speed", "Flashes", "Roofs", "Voice blips", "Back to the title" };
     for (int i = 0; i < PAUSE_ROWS; ++i) {
         float y = PAUSE_Y + i * PAUSE_H;
         if (i == pauseSel) DrawRectangle((int)(PAUSE_X * US), (int)((y - 3) * US), (int)(PAUSE_W * US), (int)((PAUSE_H - 2) * US), Color{ 50, 40, 80, 255 });
@@ -2448,14 +2184,16 @@ static void UpdatePause() {
     if (pauseTapRow >= 0) { pauseSel = pauseTapRow; dir = pauseTapDir; use = true; pauseTapRow = -1; }
     switch (pauseSel) {
     case 0: if (use) { pauseOpen = false; SaveSettings(); } break;
-    case 1: if (dir) { settings.music = std::max(0, std::min(10, settings.music + dir)); if (musicOk) SetAudioStreamVolume(musicStream, settings.music / 10.0f); } break;
+    case 1: if (dir) { settings.music = std::max(0, std::min(10, settings.music + dir)); } break;
     case 2: if (dir) { settings.sfx = std::max(0, std::min(10, settings.sfx + dir)); Play("chime"); } break;
     case 3: if (dir) settings.text = std::max(0, std::min(3, settings.text + dir)); break;
     case 4: if (dir || use) settings.calmFlashes = !settings.calmFlashes; break;
-    case 5:
+    case 5: if (dir || use) settings.roofs = !settings.roofs; break;
+    case 6: if (dir || use) settings.blips = !settings.blips; break;   // v0.20.1 sound-look
+    case 7:
         if (use) {
             pauseOpen = false; SaveSettings(); SaveGame();
-            story.beats.clear(); beatActive = false; hushMusic = false; hidden = false; recapOpen = false; journalOpen = false;
+            story.beats.clear(); beatActive = false; hushMusic = false; aHumSolo = false; hidden = false; recapOpen = false; journalOpen = false;
             scene = SceneMode::None; hasSave = true; screen = Screen::Title;
         }
         break;
@@ -2469,7 +2207,7 @@ static void StartGame(bool fresh) {
     story.BeginLoop();
     Snap(player, 5, 5); player.dir = 0;
     Snap(mom, 8, 16); Snap(dad, 24, 16); Snap(doggo, 6, 6); Snap(visitor, 20, 29);
-    scene = SceneMode::None; hidden = false; wasCollection = false; flashT = 0; journalOpen = false;
+    scene = SceneMode::None; hidden = false; wasCollection = false; flashT = 0; journalOpen = false; climbing = false;
     screen = Screen::Game;
     SaveGame();
     StartNextBeat();
@@ -2578,7 +2316,7 @@ static void UpdateTouch() {
         if (In(p, l.run, l.sr + 4) || In(p, l.wait, l.sr + 4)) continue;
         if (SkipShown() && In(p, l.skip, l.sr + 4)) { vPress[KEY_TAB] = true; continue; }
         if (p.x < 100 && p.y < 44) { vPress[KEY_J] = true; continue; }   // top left: memory log
-        if (journalOpen) { vPress[KEY_J] = true; continue; }              // tap anywhere closes the log
+        if (journalOpen) { if (RumorTap({ p.x, p.y })) continue; vPress[KEY_J] = true; continue; }   // tap anywhere closes the log (v0.20.1 hunt-systems: a rumor card first)
         if (beatActive && cur.type == BeatType::Choice) {
             // tap a choice directly (same geometry as DrawChoice)
             float w = 300, lineH = 16, h = 26 + cur.choices.size() * lineH;
@@ -2618,7 +2356,7 @@ static void DrawTouchControls() {
     }
     TouchButton(l.e, l.er, "E", vDown[KEY_E], 12);
     TouchButton(l.run, l.sr, "RUN", vDown[KEY_LEFT_SHIFT], 6);
-    TouchButton(l.wait, l.sr, "WAIT", vDown[KEY_T], 6);
+    TouchButton(l.wait, l.sr, story.chase ? "THROW" : "WAIT", vDown[KEY_T], 6);
     if (SkipShown()) TouchButton(l.skip, l.sr, "SKIP", false, 6);
     if (!journalOpen && !beatActive) UIText("tap here: memory", 8, 33 + (story.tainted ? 8 : 0), 5, Fade(WHITE, 0.4f));
 }
@@ -2630,6 +2368,210 @@ static void DrawRotateHint() {
     const char* b = "600 Seconds plays in landscape";
     UIText(a, VW / 2.0f - UIMeasure(a, 40) / 2, VH / 2.0f - 30, 40, WHITE);
     UIText(b, VW / 2.0f - UIMeasure(b, 20) / 2, VH / 2.0f + 22, 20, Fade(WHITE, 0.55f));
+}
+
+#if defined(SHOTS)
+#include "../test/shots.inc"   // v0.15: scripted screenshots on a virtual screen. Never in a release build
+#endif
+// ============================================================ v0.18: parents in the hunt (branches map, section 3)
+static const Room kMomRooms[] = { Room::KidsRoom, Room::Bathroom, Room::ParentsRoom, Room::Hallway, Room::Kitchen, Room::LivingRoom };
+static const Room kDadRooms[] = { Room::LivingRoom, Room::Kitchen, Room::Hallway, Room::ParentsRoom, Room::KidsRoom, Room::Outside, Room::Shed, Room::Bathroom, Room::Backyard };
+static void ParentPlan(PHunt& h, Room r, Vector2 from) {
+    h.path.clear(); h.pathI = 0; h.spots.clear(); h.spotObj = -1;
+    if (r == Room::Outside) {
+        const int pts[3][2] = { { 6, 23 }, { 25, 26 }, { 33, 12 } };
+        for (auto& p : pts) h.path.push_back(TileCenter(p[0], p[1]));
+    } else if (r == Room::Backyard) {
+        const int pts[4][2] = { { 12, 0 }, { 26, -6 }, { 18, -9 }, { 10, -16 } };
+        for (auto& p : pts) h.path.push_back(TileCenter(p[0], p[1]));
+    } else {
+        float cx = 0, cy = 0; int n = 0;
+        for (int y = 0; y < 34; ++y) for (int x = 0; x < World::W; ++x)
+            if (story.world.RoomAt(x, y) == r && story.world.tiles[y][x] != Tile::Door && story.world.Walkable(x, y, false)) { cx += x; cy += y; ++n; }
+        if (n) {
+            int tx = (int)std::round(cx / n), ty = (int)std::round(cy / n);
+            if (story.world.Walkable(tx, ty, false)) h.path.push_back(TileCenter(tx, ty));
+        }
+    }
+    // they live here. They know every spot, and they check all of them
+    for (int i = 0; i < (int)story.world.objs.size(); ++i) {
+        const Obj& o = story.world.objs[i];
+        if (IsHideObj(o.id) && story.world.RoomAt(o.x, o.y) == r) h.spots.push_back(i);
+    }
+    std::sort(h.spots.begin(), h.spots.end(), [&](int a, int b) {
+        const Obj& A = story.world.objs[a]; const Obj& B = story.world.objs[b];
+        return std::hypot(A.x * TS - from.x, A.y * TS - from.y) < std::hypot(B.x * TS - from.x, B.y * TS - from.y);
+    });
+}
+static bool ParentSees(const Actor& a, bool torch) {
+    if (hidden || climbing) return false;
+    float dx = player.pos.x - a.pos.x, dy = player.pos.y - a.pos.y, d = std::hypot(dx, dy);
+    float range = (torch && OutdoorsAt(player.pos) && OutdoorsAt(a.pos)) ? TS * 12.0f : TS * 6.0f;
+    if (d > range) return false;
+    if (d > 26) {
+        const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
+        if ((dx * fx[a.dir] + dy * fy[a.dir]) / d < 0.2f) return false;
+    }
+    return LineOfSight(a.pos, player.pos);
+}
+// grown-ups have keys. A closed door in the way just opens
+static void ParentWalk(Actor& a, Vector2 to, float sp, float dt, float stop) {
+    Vector2 st = NextStep(a.pos, TX(to.x), TX(to.y), false);
+    int sx = TX(st.x), sy = TX(st.y);
+    if (story.world.InBounds(sx, sy) && story.world.tiles[sy][sx] == Tile::Door && story.DoorClosed(sx, sy)) {
+        story.OpenDoor(sx, sy);
+        if (std::hypot(a.pos.x - player.pos.x, a.pos.y - player.pos.y) < TS * 9) Play("door");
+    }
+    MoveActor(a, TX(to.x), TX(to.y), sp, dt, false, stop);
+}
+// he goes where they point
+static void SendVisitor(Vector2 at, bool toSpot) {
+    if (story.handlers || downedT > 0 || defStage == 2) return;
+    if (vmode == VMode::Grace || vmode == VMode::Chase || vmode == VMode::GoToHide) return;
+    if (toSpot) { vmode = VMode::GoToHide; return; }
+    vmode = VMode::Investigate; vNoise = at; vNoiseWait = 0.6f; vNoiseT = 0; vPause = 0; vHunchSearch = false;
+}
+// one parent looking for you. True if it stopped the hunt
+static bool HuntWith(Actor& a, PHunt& h, const char* who, float dt) {
+    bool dadMode = std::string(who) == "Dad";
+    bool torch = dadMode && story.handlers;
+    if (h.startT > 0) { h.startT -= dt; a.anim = 0; return false; }
+    float walk = dadMode ? 58.0f : 52.0f, run = dadMode ? 96.0f : 84.0f;
+    h.seeCD -= dt; h.callT -= dt;
+    if (h.callT <= 0) { story.OnParentCall(who); StartNextBeat(); h.callT = (float)GetRandomValue(9, 14); }
+    bool sees = ParentSees(a, torch);
+    if (sees) {
+        if (h.seeCD <= 0) {
+            story.OnParentSpots(who, story.world.RoomAt(TX(player.pos.x), TX(player.pos.y)));
+            StartNextBeat(); h.seeCD = 6;
+            SendVisitor(player.pos, false);
+            // the other one comes too
+            PHunt& o = dadMode ? pMom : pDad;
+            if (story.handlers && !o.chasing) { o.path.assign(1, player.pos); o.pathI = 0; o.spots.clear(); o.spotObj = -1; o.pause = 0; }
+        }
+        h.chasing = true; h.last = player.pos;
+    }
+    float dk = std::hypot(a.pos.x - player.pos.x, a.pos.y - player.pos.y);
+    if (h.chasing) {
+        ParentWalk(a, h.last, run, dt, 2);
+        if (dk < 12 && !hidden && !climbing) { scene = SceneMode::None; story.OnParentGrabs(who); StartNextBeat(); return true; }
+        if (!sees && std::hypot(a.pos.x - h.last.x, a.pos.y - h.last.y) < 6) { h.chasing = false; h.pause = 1.4f; }
+        return false;
+    }
+    if (h.pause > 0) {
+        h.pause -= dt; a.anim = 0;
+        if (std::fmod(h.pause, 0.5f) < dt) a.dir = (a.dir + 1 + GetRandomValue(0, 2)) % 4;
+        return false;
+    }
+    if (h.spotObj >= 0) {
+        const Obj& o = story.world.objs[h.spotObj];
+        Vector2 at = SpotNextTo(o, a.pos);
+        if (std::hypot(a.pos.x - at.x, a.pos.y - at.y) > 2) { ParentWalk(a, at, walk, dt, 0); return false; }
+        Vector2 oc = TileCenter(o.x, o.y);
+        float dx = oc.x - a.pos.x, dy = oc.y - a.pos.y;
+        a.dir = std::fabs(dx) > std::fabs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
+        bool there = hidden && std::hypot(hidePos.x - oc.x, hidePos.y - oc.y) < 2;
+        h.spotObj = -1;
+        if (there) {
+            story.OnParentFinds(who); StartNextBeat();
+            if (!story.chase) { hidden = false; scene = SceneMode::None; return true; }
+            SendVisitor(hidePos, true);
+            h.pause = 4.0f;   // they stand there with the lid up and wait for him
+        } else h.pause = 1.0f;
+        return false;
+    }
+    if (h.pathI < h.path.size()) {
+        if (std::hypot(a.pos.x - h.path[h.pathI].x, a.pos.y - h.path[h.pathI].y) < 2) {
+            ++h.pathI; h.pause = 0.6f;
+            if (h.tellX >= 0) {
+                // v0.19: at the barricaded door. If you're in there, they tell him, and he takes the door with him
+                int bx = h.tellX; h.tellX = -1; h.pause = 1.5f; a.dir = 1;
+                if (story.Barricaded(bx, 9) && story.world.RoomAt(TX(player.pos.x), TX(player.pos.y)) == Story::BarricadeRoom(bx, 9)) {
+                    story.OnBarricadeTold(who); StartNextBeat(); SendVisitor(TileCenter(bx, 7), false);
+                }
+            }
+        }
+        else ParentWalk(a, h.path[h.pathI], walk, dt, 0);
+        return false;
+    }
+    if (!h.spots.empty()) { h.spotObj = h.spots.front(); h.spots.erase(h.spots.begin()); return false; }
+    const Room* rooms = dadMode ? kDadRooms : kMomRooms;
+    int n = dadMode ? (int)(sizeof(kDadRooms) / sizeof(Room)) : (int)(sizeof(kMomRooms) / sizeof(Room));
+    Room nr = rooms[h.visited++ % n];
+    int bx = nr == Room::KidsRoom ? 6 : nr == Room::Bathroom ? 13 : nr == Room::ParentsRoom ? 22 : -1;
+    if (bx >= 0 && story.Barricaded(bx, 9)) {
+        // v0.19: furniture against the door. They can't get in. If you're in there, they tell him
+        h.path.assign(1, TileCenter(bx, 10)); h.pathI = 0; h.spots.clear(); h.spotObj = -1; h.tellX = bx;
+        return false;
+    }
+    ParentPlan(h, nr, a.pos);
+    return false;
+}
+// the whole family, once a frame during the hunt. True if the hunt stopped
+static bool UpdateParents(float dt) {
+    if (scene != SceneMode::Chase || !story.chase || beatActive) return false;
+    // they went down fighting. They stay where they fell
+    if (story.momFought && momFell.x >= 0) { mom.pos = momFell; mom.anim = 0; }
+    if (story.dadFought && dadFell.x >= 0) { dad.pos = dadFell; dad.anim = 0; }
+    if (story.MomSearches() && HuntWith(mom, pMom, "Mom", dt)) return true;
+    if (story.DadSearches() && HuntWith(dad, pDad, "Dad", dt)) return true;
+    if (story.DadGuardsDoor()) {
+        // Dark: Dad takes the door. He doesn't go looking. He waits, and grabs you if you try it
+        Vector2 post = TileCenter(20, 19);
+        if (pDad.startT > 0) { pDad.startT -= dt; return false; }
+        if (std::hypot(dad.pos.x - post.x, dad.pos.y - post.y) > 2) ParentWalk(dad, post, 60, dt, 0);
+        else { dad.anim = 0; dad.dir = 1; }
+        pDad.seeCD -= dt; pDad.callT -= dt;
+        if (ParentSees(dad, false) && pDad.seeCD <= 0) {
+            story.OnParentSpots("Dad", story.world.RoomAt(TX(player.pos.x), TX(player.pos.y))); StartNextBeat(); pDad.seeCD = 7;
+            SendVisitor(player.pos, false);
+        }
+        if (pDad.callT <= 0 && std::hypot(dad.pos.x - player.pos.x, dad.pos.y - player.pos.y) < TS * 9) { story.OnParentCall("Dad"); StartNextBeat(); pDad.callT = (float)GetRandomValue(10, 15); }
+        if (std::hypot(dad.pos.x - player.pos.x, dad.pos.y - player.pos.y) < 15 && !hidden && !climbing) { scene = SceneMode::None; story.OnParentGrabs("Dad"); StartNextBeat(); return true; }
+    }
+    // Normal: they stand where they are and hand you over. Mom can't help saying something
+    if (story.stance == Stance::Normal && !story.handlers && story.MomHere() && !story.momOnFloor && !story.momTurned) {
+        normalCallT -= dt;
+        if (normalCallT <= 0 && std::hypot(mom.pos.x - player.pos.x, mom.pos.y - player.pos.y) < TS * 10) { story.OnParentCall("Mom"); StartNextBeat(); normalCallT = (float)GetRandomValue(12, 17); }
+    }
+    // the one who knows. Mom stays close to you. Dad stays close to him. When he gets close to you, they go
+    std::string d = defStage == 0 ? story.Defender() : defWho;
+    if (!d.empty() && defStage < 3) {
+        Actor& a = d == "Mom" ? mom : dad;
+        float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
+        if (defStage == 0) {
+            if (d == "Mom") { if (std::hypot(a.pos.x - player.pos.x, a.pos.y - player.pos.y) > TS * 3) ParentWalk(a, player.pos, 70, dt, TS * 2.5f); else a.anim = 0; }
+            else { if (std::hypot(a.pos.x - visitor.pos.x, a.pos.y - visitor.pos.y) > TS * 3) ParentWalk(a, visitor.pos, 62, dt, TS * 2.5f); else a.anim = 0; }
+            bool near = (vmode == VMode::Chase && dk < TS * 6) ||
+                        (hidden && (vmode == VMode::GoToHide || vmode == VMode::CheckSpot) && std::hypot(visitor.pos.x - hidePos.x, visitor.pos.y - hidePos.y) < TS * 3);
+            if (near && downedT <= 0) { defWho = d; defStage = 1; defT = 0; story.OnDefend(d); StartNextBeat(); }
+        } else if (defStage == 1) {
+            defT += dt;
+            ParentWalk(a, visitor.pos, 125, dt, 9);
+            if (std::hypot(a.pos.x - visitor.pos.x, a.pos.y - visitor.pos.y) < 14 || defT > 3.5f) { defStage = 2; defT = 0; }
+        } else {
+            // the fight. He doesn't move while it lasts. It doesn't last long
+            defT += dt;
+            a.anim += dt * 14; visitor.anim += dt * 10;
+            a.pos.x += std::sin(globalT * 37) * 0.35f;
+            if (std::fmod(defT, 0.55f) < dt) { Play("thud"); AddBubble(d, GetRandomValue(0, 1) ? "RUN!" : "GO!", 0.8f); }
+            if (defT > 2.6f) {
+                Play("crack"); flashT = 0.35f;
+                defStage = 3;
+                (d == "Mom" ? momFell : dadFell) = a.pos;
+                // it skids across the floor, most of the way to you. Then he needs a second to get his breath back
+                Vector2 to = player.pos;
+                for (float k : { 0.7f, 0.55f, 0.4f, 0.85f, 1.0f }) {
+                    Vector2 c = { visitor.pos.x + (player.pos.x - visitor.pos.x) * k, visitor.pos.y + (player.pos.y - visitor.pos.y) * k };
+                    if (story.world.Walkable(TX(c.x), TX(c.y), false) && LineOfSight(visitor.pos, c)) { to = c; break; }
+                }
+                story.OnDefendDone(d, TX(to.x), TX(to.y)); StartNextBeat();
+                a.anim = 0; visitor.anim = 0;
+                vmode = VMode::Lost; vPause = 1.8f; vLastSeen = player.pos; vLostT = 0;
+            }
+        }
+    }
+    return false;
 }
 
 // ============================================================ frame
@@ -2644,19 +2586,78 @@ static void UpdateDrawFrame() {
     if (cw != SW || ch != SH) { SW = cw; SH = ch; }
     US = std::min(SW / (float)VW, SH / (float)VH);
     UpdateTouch();
+#if defined(SHOTS)
+    ShotsStep();
+#endif
 
     // soundtrack follows the act
+    // v0.20 sound (T-033): plus the title, the basement, the recap and the endings, and the hunt in two halves
+    float musicMuff = 0;
     {
         int track = 0;
-        if (screen == Screen::Title) track = story.Act();
+        float fade = 2.5f;
+        static float spottedHold = 0;   // stays "spotted" a few seconds after he loses sight, so it doesn't flicker
+        if (screen == Screen::Title) track = TRACK_TITLE;
         else if (screen == Screen::Game) {
-            if (story.collection && !(beatActive && (cur.type == BeatType::Ending || cur.type == BeatType::EndLoop))) track = 4;
-            else track = story.Act();
+            if (story.collection && !(beatActive && (cur.type == BeatType::Ending || cur.type == BeatType::EndLoop))) {
+                bool sees = scene == SceneMode::Chase && story.chase && vmode == VMode::Chase && !story.handlers;
+                spottedHold = sees ? 3.5f : std::max(0.0f, spottedHold - dt);
+                track = spottedHold > 0 ? TRACK_SPOTTED : TRACK_CHASE;
+                fade = sees ? 0.6f : 2.0f;   // in fast, out slow
+            } else {
+                spottedHold = 0;
+                track = story.Act();
+                if (!story.collection && (story.inBasement || story.world.RoomAt(TX(player.pos.x), TX(player.pos.y)) == Room::Basement)) track = TRACK_BASEMENT;
+            }
             if (hushMusic) track = 0;
-            if (beatActive && cur.type == BeatType::Ending) track = 3;
+            if (beatActive && cur.type == BeatType::Ending) track = cur.id == "screen" ? TRACK_CUTE : TRACK_ENDING;   // the joke ending stays a joke
+            if (recapOpen) { track = TRACK_RECAP; fade = 1.2f; }
+            // T-035: a gentle low-pass on the music outdoors, and on the hunt music down in the basement
+            bool card = beatActive && (cur.type == BeatType::Ending || cur.type == BeatType::Black || cur.type == BeatType::Card);
+            Room r = story.world.RoomAt(TX(player.pos.x), TX(player.pos.y));
+            if (!card && !recapOpen && !pauseOpen && !journalOpen && !miniOpen) {
+                if (IsYard(r) || r == Room::Vidda) musicMuff = 1;
+                else if ((story.inBasement || r == Room::Basement) && track != TRACK_BASEMENT) musicMuff = 0.7f;
+            }
         }
-        if (!jukeboxOpen) SetMusic(track);
+        if (!jukeboxOpen) SetMusic(track, fade);
         UpdateMusic();
+        UpdateMusicFiles(dt, jukeboxOpen ? 0.0f : musicMuff);
+        PlayV20Later();
+    }
+    // v0.10: ambience follows where the kid is standing. The audio thread glides to these
+    {
+        gMusicVol = settings.music / 10.0f; gSfxVol = settings.sfx / 10.0f;
+        float wind = 0, bright = 1, hum = 0, stove = 0, momHum = 0;
+        float dadHum = 0, momMuff = 0, dadMuff = 0;   // v0.20 sound
+        if (screen == Screen::Title) { wind = 0.2f; bright = 0.55f; }
+        else if (screen == Screen::Game && !hushMusic && !pauseOpen && !journalOpen && !miniOpen && !recapOpen) {
+            int px = TX(player.pos.x), py = TX(player.pos.y);
+            Room r = story.world.RoomAt(px, py);
+            bool storm = story.Storm() || story.collection;
+            if (story.inBasement || r == Room::Basement) hum = story.PowerOut() ? 0.0f : 1.0f;   // v0.20 sound: the hum dies with the power
+            else if (IsYard(r) || r == Room::Vidda) wind = storm ? 1.0f : 0.32f;
+            else {
+                wind = storm ? 0.42f : 0.07f; bright = 0.3f;   // through the walls
+                float db = std::hypot((float)(px - World::BASEMENT_X), (float)(py - World::BASEMENT_Y));
+                if (db < 5) hum = (story.BasementOpen() ? 0.6f : 0.22f) * (1 - db / 5);
+                float dsv = std::hypot((float)(px - 27), (float)(py - 18));
+                if (r == Room::LivingRoom && dsv < 6) stove = 1 - dsv / 6;
+                if (story.MomHums() && mom.visible) {
+                    float dm = std::hypot(mom.pos.x - player.pos.x, mom.pos.y - player.pos.y) / TS;
+                    if (dm < 9) momHum = (1 - dm / 9) * VoiceThrough(mom.pos, r, momMuff);   // v0.20 sound: muffled through walls and doors
+                }
+            }
+            // v0.20 sound (T-148): Dad hums at his work, in the shed and at the woodpile. You hear him from the yard too
+            if (story.DadHums() && dad.visible) {
+                float dd = std::hypot(dad.pos.x - player.pos.x, dad.pos.y - player.pos.y) / TS;
+                if (dd < 8) dadHum = (1 - dd / 8) * VoiceThrough(dad.pos, r, dadMuff);
+            }
+        }
+        aWindT = wind; aBrightT = bright; aHumT = hum; aStoveT = stove; aMomT = momHum;
+        aDadT = dadHum; aMomMuffT = momMuff; aDadMuffT = dadMuff; aMusicMuffT = musicMuff;   // v0.20 sound
+        if (screen != Screen::Game) aVhsT = 0;
+        if (screen != Screen::Game) aHumSolo = false;
     }
 
     if (screen == Screen::Splash) {
@@ -2675,10 +2676,12 @@ static void UpdateDrawFrame() {
     }
 
     if (screen == Screen::Title) {
+#if !defined(PUBLIC_BUILD)   // v0.20 release (T-107): public builds have no debug panel, no Shift+D and no ?debug
         if (!dbgOpen && IsKeyDown(KEY_LEFT_SHIFT) && IsKeyPressed(KEY_D)) {
             debugMode = !debugMode; // debug without the URL
             if (debugMode) LoadDebugCfg(); else { gShiftCfg = ShiftConfig(); visitorBlind = false; }
         }
+#endif
         if (hardResetArm > 0) hardResetArm -= GetFrameTime();
         if (debugMode && (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && IsKeyPressed(KEY_R)) {
             if (hardResetArm > 0) {
@@ -2697,10 +2700,11 @@ static void UpdateDrawFrame() {
         if (jb) {}
         else if (IsKeyPressed(KEY_N)) StartGame(true);
         else if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) StartGame(!hasSave);
+        DrawTitleScene();
         BeginDrawing();
-        BeginTextureMode(target); ClearBackground(BLACK); EndTextureMode();
         float ox = (SW - VW * US) / 2, oy = (SH - VH * US) / 2;
         ClearBackground(BLACK);
+        DrawTexturePro(target.texture, { 0, 0, (float)VW, -(float)VH }, { ox, oy, VW * US, VH * US }, { 0, 0 }, 0, WHITE);
         // UI is drawn in "virtual" units scaled by US; offset by letterbox
         Camera2D ui{}; ui.offset = { ox, oy }; ui.zoom = 1;
         BeginMode2D(ui);
@@ -2733,9 +2737,11 @@ static void UpdateDrawFrame() {
         UpdateMini(dt);
     } else if (recapOpen) {
         UpdateRecap(dt);
+    } else if (journalOpen && RumorKeys()) {
+        // v0.20.1 hunt-systems: the rumor page used the keys (a card is open, or you just opened one)
     } else if (journalOpen) {
         if (IsKeyPressed(KEY_ESCAPE)) journalOpen = false;
-        int n = (int)AllTopics().size() + 1;   // + Endings
+        int n = JournalTabs();   // Timeline + topics + Endings + Awards + Rumors (v0.20 systems)
         if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) { journalTopic = (journalTopic + 1) % n; journalScroll = 0; }
         if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A)) { journalTopic = (journalTopic + n - 1) % n; journalScroll = 0; }
         if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) journalScroll++;
@@ -2752,39 +2758,123 @@ static void UpdateDrawFrame() {
         if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) mv.y += 1;
         if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) mv.y -= 1;
         bool running = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        // v0.12: in the hunt you can't sprint forever
+        if (story.chase) {
+            if (winded && stamina > 0.35f) winded = false;
+            if (winded) running = false;
+        } else { stamina = 1; winded = false; }
         kidRunning = running && !story.kidShot && (mv.x != 0 || mv.y != 0) && !hidden;
+        if (story.chase) {
+            if (kidRunning) { stamina -= dt / 3.5f; if (stamina <= 0) { stamina = 0; winded = true; } }
+            else stamina = std::min(1.0f, stamina + dt / ((mv.x != 0 || mv.y != 0) ? 9.0f : 5.0f));
+        }
         float speed = story.kidShot ? 26 : running ? 128 : 84;
-        if (IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6)))) speed *= 0.88f;   // v0.8: snow to your shins
-        if (hidden) mv = { 0, 0 };
+        Tile under = TileAt(TX(player.pos.x), TX(player.pos.y + 4));
+        if (IsOutsideT(under)) speed *= 0.88f;   // v0.8: snow to your shins
+        if (under == Tile::Bush) speed *= 0.42f;           // v0.15: pushing through the bushes
+        else if (under == Tile::ChainGap) speed *= story.gapCut ? 0.8f : 0.35f;  // squeezing through the torn fence. v0.20 knife: cut wider, nearly a walk
+        if (hidden || climbing) { mv = { 0, 0 }; kidRunning = false; }
+        if (climbing) {
+            // v0.15: a bang first if it's stuck, then up, over the sill and down the other side
+            climbT += dt;
+            float bang = climbBanged ? 1.2f : 0;
+            if (climbBanged && climbT < bang && std::fmod(climbT, 0.6f) < dt) Play("thud");
+            float k = std::max(0.0f, std::min(1.0f, (climbT - bang) / 2.5f));
+            float e = k * k * (3 - 2 * k);
+            player.pos = { climbFrom.x + (climbTo.x - climbFrom.x) * e, climbFrom.y + (climbTo.y - climbFrom.y) * e - std::sin(e * 3.14159f) * 7 };
+            player.anim = climbT > bang ? climbT * 6 : 0;
+            if (climbT >= climbDur) {
+                climbing = false; player.pos = climbTo; player.anim = 0;
+                if (climbOut) player.dir = climbTo.y < climbFrom.y ? 1 : 0;
+                if (!climbOut) wetT = 14;
+                if (scene == SceneMode::Chase && vmode == VMode::Chase) ++vJukes;   // v0.15.2: out the window right in front of him
+                story.OnClimbed(climbWin, climbOut, climbDoggo && story.DoggoExists());
+                if (!story.beats.empty()) StartNextBeat();
+            }
+        }
         if (mv.x != 0 || mv.y != 0) {
             float l = std::hypot(mv.x, mv.y); mv.x /= l; mv.y /= l;
             float nx = player.pos.x + mv.x * speed * dt, ny = player.pos.y + mv.y * speed * dt;
+            tutorialEdge = false;
             if (CanStand(nx, player.pos.y)) player.pos.x = nx;
             if (CanStand(player.pos.x, ny)) player.pos.y = ny;
             if (std::fabs(mv.x) > std::fabs(mv.y)) player.dir = mv.x > 0 ? 3 : 2; else player.dir = mv.y > 0 ? 0 : 1;
+            if (tutorialEdge) {
+                // turn around, take a step back into the yard and say why
+                static const int back[4] = { 1, 0, 3, 2 };
+                player.dir = back[player.dir];
+                const float bx[4] = { 0, 0, -1, 1 }, by[4] = { 1, -1, 0, 0 };
+                for (int k = 0; k < 6; ++k) { float tx = player.pos.x + bx[player.dir] * 2, ty = player.pos.y + by[player.dir] * 2; if (CanStand(tx, ty)) player.pos = { tx, ty }; }
+                story.TooColdToLeave();
+                StartNextBeat();
+                tutorialEdge = false;
+            }
             player.anim += dt * (running && !story.kidShot ? 15 : 10);
         } else player.anim = 0;
 
+        // v0.20.1 story-knife: out of marbles, and you know what your watch does. Throw that (it lands like a marble)
+        if (!story.chase) watchTossOn = false;
+        if (story.chase && scene == SceneMode::Chase && !hidden && story.pebbles == 0 && !watchTossOn && story.CanThrowWatch() && (IsKeyPressed(KEY_Q) || (touchMode && vPress[KEY_T]))) {
+            const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
+            Vector2 at = player.pos, land = player.pos;
+            for (int i = 0; i < 26; ++i) {
+                at.x += fx[player.dir] * 4; at.y += fy[player.dir] * 4;
+                if (BlocksSight(TX(at.x), TX(at.y))) break;
+                if (story.world.Walkable(TX(at.x), TX(at.y), false)) land = at;
+            }
+            float d = std::hypot(land.x - player.pos.x, land.y - player.pos.y);
+            if (d > 10) { watchToss = { player.pos, land, 0, d / 230.0f, false }; watchTossOn = true; }
+        }
+        // v0.12: throw a marble the way you are facing
+        if (story.chase && scene == SceneMode::Chase && !hidden && story.pebbles > 0 && (IsKeyPressed(KEY_Q) || (touchMode && vPress[KEY_T]))) {
+            const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
+            Vector2 at = player.pos, land = player.pos;
+            for (int i = 0; i < 26; ++i) {
+                at.x += fx[player.dir] * 4; at.y += fy[player.dir] * 4;
+                if (BlocksSight(TX(at.x), TX(at.y))) break;
+                if (story.world.Walkable(TX(at.x), TX(at.y), false)) land = at;
+            }
+            float d = std::hypot(land.x - player.pos.x, land.y - player.pos.y);
+            if (d > 10) { marbles.push_back({ player.pos, land, 0, d / 230.0f, false }); story.pebbles--; }
+        }
         if (interactCooldown > 0) interactCooldown -= dt;
+        else if (climbing) {}
         else if (IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
             if (hidden) {
-                hidden = false;
+                hidden = false; breathHeardT = 0; gasped = false;
             } else {
                 Target tg = FindTarget();
                 if (!tg.id.empty()) {
-                    if (story.ShouldHide(tg.id)) {
-                        hidden = true; hideT = 0;
+                    if (tg.id == "doggo" && (doggoGuard == 1 || doggoGuard == 2) && story.chase) {
+                        // v0.16: you got to him in time
+                        doggoGuard = 3; story.OnDoggoCalled(); StartNextBeat();
+                    } else if (story.ShouldHide(tg.id)) {
+                        hidden = true; hideT = 0; story.hideSpot = tg.id; breathHeardT = 0; gasped = false;
                         const Obj* o = nullptr;
                         for (auto& ob : story.world.objs) if (ob.id == tg.id) o = &ob;
                         hidePos = o ? TileCenter(o->x, o->y) : player.pos;
                     } else if (tg.id == lastTalkId && globalT - lastTalkT < 0.9f) {
                         // v0.6: a stray extra click right after a conversation doesn't restart it
-                    } else { talkingTo = tg.id; lastTalkId = tg.id; story.Interact(tg.id, TX(player.pos.x), TX(player.pos.y)); }
+                    } else { talkingTo = tg.id; lastTalkId = tg.id; LookOnInteract(tg.id); story.Interact(tg.id, TX(player.pos.x), TX(player.pos.y)); }   // v0.20 look: close-ups
                 }
             }
         }
+        // v0.13 debug: H sets up the next hinge. A: key in hand, outside the bathroom at 16:46. B: at the shed, Dad inside. C: key in hand at the basement door
+        // v0.14: D: at the front door, he is in his car. E: at his car while he is at the window
+        if (debugMode && IsKeyPressed(KEY_H) && !story.collection && !story.Tutorial()) {
+            static int hinge = 0;
+            int x = TX(player.pos.x), y = TX(player.pos.y);
+            if (hinge == 0) { story.Hold(Item::Key, true); story.AdvanceMinutes(std::max(0, 46 - (int)(story.t / 60)), x, y); story.t = std::max(story.t, 46 * 60 + 25.0f); Snap(player, 13, 10); player.dir = 1; ToastFor("DEBUG", "Hinge A: Mom goes in at 16:46. Lock her in", SKYBLUE); }
+            else if (hinge == 1) { if (story.t < 9 * 60) story.AdvanceMinutes(9 - (int)(story.t / 60), x, y); Snap(player, 34, 11); player.dir = 1; ToastFor("DEBUG", "Hinge B: Dad is in the shed. Bar the door", SKYBLUE); }
+            else if (hinge == 2) { story.Hold(Item::Key, true); if (story.t < 45 * 60) story.AdvanceMinutes(45 - (int)(story.t / 60), x, y); Snap(player, 28, 10); player.dir = 3; ToastFor("DEBUG", "Hinge C: go down and wait", SKYBLUE); }
+            else if (hinge == 3) { story.memory.insert("visitor_time"); story.frontLocked = false; story.t = std::max(story.t, (float)(story.visitorTime - Story::VISIT_IN_CAR + 5)); Snap(player, 20, 19); player.dir = 0; ToastFor("DEBUG", "Hinge D: he's in his car. Open the front door", SKYBLUE); }
+            else { story.memory.insert("his_car"); story.t = (float)(story.visitorTime - 360); Snap(player, 20, 29); player.dir = 0; ToastFor("DEBUG", "Hinge E: his car is empty. Get in the back", SKYBLUE); }
+            hinge = (hinge + 1) % 5;
+        }
         if (debugMode && IsKeyPressed(KEY_FOUR) && !story.inBasement && !story.collection) story.DebugToBasement();   // debug: the tape, downstairs
+        if (debugMode && IsKeyPressed(KEY_THREE) && !story.inBasement) { Snap(player, 20, 29); player.dir = 0; }   // debug: hop to the gate
         if (debugMode && IsKeyPressed(KEY_FIVE) && !story.inBasement) { Snap(player, 16, 16); player.dir = 3; }   // debug: hop to the living room
+        if (debugMode && IsKeyPressed(KEY_TWO) && !story.inBasement) { Snap(player, 13, -6); player.dir = 3; }   // v0.15 debug: hop out back, next to the snow beast
         if (debugMode && IsKeyPressed(KEY_SIX)) { story.fed = story.trashDone = story.roomClean = story.dishesDone = story.firewoodDone = true; ToastFor("DEBUG", "All five chores done", SKYBLUE); }
         if (debugMode && IsKeyPressed(KEY_SEVEN)) story.Choose("ft_flappy", TX(player.pos.x), TX(player.pos.y));   // debug: jump into the Fliptendo
         if (debugMode && IsKeyPressed(KEY_EIGHT)) story.AdvanceMinutes(5, TX(player.pos.x), TX(player.pos.y));
@@ -2818,8 +2908,11 @@ static void UpdateDrawFrame() {
         };
         bool momTalking = beatActive && talkingTo == "mom" && !story.collection;
         bool dadTalking = beatActive && talkingTo == "dad" && !story.collection && scene == SceneMode::None;
-        if (momTalking) face(mom); else MoveActor(mom, ms.x, ms.y, npcSpeed, dt, true);
+        // v0.18: in the hunt she might be looking for you, standing by you, or lying where she fell
+        bool momOwn = story.collection && (story.MomSearches() || story.momFought || (!story.Defender().empty() && story.Defender() == "Mom") || (defStage > 0 && defWho == "Mom"));
+        if (momTalking) face(mom); else if (!momOwn) MoveActor(mom, ms.x, ms.y, npcSpeed, dt, true);
         if (ms.facingWall && TX(mom.pos.x) == ms.x && TX(mom.pos.y) == ms.y) mom.dir = 1;
+        story.momRoomNow = story.world.RoomAt(TX(mom.pos.x), TX(mom.pos.y));   // v0.13: hinge A needs her really in there
 
         // v0.7: grown-ups open closed doors on the way (they have keys) and close them again behind them
         auto humanDoors = [&](Actor& a, HeldDoor& hd, const char* who) {
@@ -2841,6 +2934,8 @@ static void UpdateDrawFrame() {
                 int x = k ? fx : ax, y = k ? fy : ay;
                 if (!story.world.InBounds(x, y) || story.world.tiles[y][x] != Tile::Door || !story.DoorClosed(x, y)) continue;
                 if (x == 6 && y == 9 && story.grounded) continue;   // your door stays locked while you're grounded
+                if (x == 13 && y == 9 && story.momBathLocked) continue;   // v0.13: the key is on your side
+                if (story.Barricaded(x, y)) continue;                      // v0.19: furniture. Their keys don't help
                 if (hd.x >= 0 && (hd.x != x || hd.y != y)) restore();
                 hd.x = x; hd.y = y; hd.locked = story.DoorLocked(x, y);
                 story.OpenDoor(x, y);
@@ -2887,6 +2982,7 @@ static void UpdateDrawFrame() {
             dad.visible = ds.visible;
             if (dadTalking) face(dad);
             else if (!story.collection) MoveActor(dad, ds.x, ds.y, npcSpeed, dt, false);
+            else if (story.dadFought && dadFell.x >= 0) { dad.pos = dadFell; dad.anim = 0; }   // v0.18: where he went down
             else if (story.dadOnFloor) { Snap(dad, ds.x, ds.y); dad.anim = 0; }
             if (!story.collection) humanDoors(dad, dadDoor, "Dad");
             if (scene != SceneMode::Chase) {
@@ -2900,6 +2996,11 @@ static void UpdateDrawFrame() {
                 }
             }
         }
+        // v0.20 systems: once they get there they look at what they're doing: the TV, the stove, the tree (Schedule.h)
+        if (!story.collection) {
+            if (ms.face >= 0 && !momTalking && TX(mom.pos.x) == ms.x && TX(mom.pos.y) == ms.y) mom.dir = ms.face;
+            if (ds.face >= 0 && !dadTalking && scene == SceneMode::None && TX(dad.pos.x) == ds.x && TX(dad.pos.y) == ds.y) dad.dir = ds.face;
+        }
         if (story.collection && !beatActive && (story.dadOnFloor || story.momOnFloor) && scene == SceneMode::Chase) {
             momSobT -= dt;
             if (momSobT <= 0 && story.MomHere()) { AddBubble("Mom", story.momOnFloor ? "*crying, very quietly*" : GetRandomValue(0, 1) ? "*sobbing*" : "Please wake up. Please.", 2.0f); momSobT = (float)GetRandomValue(5, 8); }
@@ -2909,10 +3010,40 @@ static void UpdateDrawFrame() {
         auto visitorStep = [&](int tx, int ty, float sp, float stop) -> bool {
             if (vDoorT > 0) {
                 vDoorT -= dt;
-                if (std::fmod(vDoorT, 0.5f) < dt) Play("thud");
-                if (vDoorT <= 0) { Play("crack"); story.BreakDoor(vDoorX, vDoorY); AddBubble("The visitor", "There we go.", 1.4f); }
+                // v0.20 sound (T-034): his boot on the door, from where the door is. Furniture shifts between kicks
+                if (std::fmod(vDoorT, 0.5f) < dt) {
+                    bool alt = vDoorBar && std::fmod(vDoorT, 1.0f) < 0.5f;
+                    PlayAt(alt ? "scrape" : "kick", TileCenter(vDoorX, vDoorY));
+                    if (vDoorBar) AddRing(TileCenter(vDoorX, vDoorY), 0);
+                }
+                if (vDoorT <= 0) {
+                    PlayAt("door_break", TileCenter(vDoorX, vDoorY));
+                    if (vDoorBar) {
+                        // v0.19: through the furniture. Near enough and you hear what he says
+                        Room br = Story::BarricadeRoom(vDoorX, vDoorY);
+                        bool kidNear = story.world.RoomAt(TX(player.pos.x), TX(player.pos.y)) == br ||
+                                       std::hypot(player.pos.x - visitor.pos.x, player.pos.y - visitor.pos.y) < TS * 10;
+                        story.BreakDoor(vDoorX, vDoorY);
+                        story.OnBarricadeBroken(vDoorX, vDoorY, kidNear); StartNextBeat();
+                        vDoorBar = false; vBreathT = 2.4f;
+                    } else { story.BreakDoor(vDoorX, vDoorY); AddBubble("The visitor", "There we go.", 1.4f); }
+                }
                 visitor.anim = 0;
                 return true;
+            }
+            // v0.13: the basement is its own floor. He takes the stairs (the top is by the basement door)
+            {
+                bool vDown = visitor.pos.y >= 34 * TS, tDown = ty >= 34;
+                if (vDown != tDown) {
+                    int sx = vDown ? 6 : 28, sy = vDown ? 38 : 11;
+                    Vector2 sc = TileCenter(sx, sy);
+                    if (std::hypot(visitor.pos.x - sc.x, visitor.pos.y - sc.y) < 6) {
+                        Snap(visitor, vDown ? 28 : 6, vDown ? 11 : 38);
+                        Play("door"); AddRing(visitor.pos, 0);
+                        return false;
+                    }
+                    tx = sx; ty = sy;
+                }
             }
             gMover = 1;
             Vector2 st = NextStep(visitor.pos, tx, ty, false);
@@ -2920,14 +3051,17 @@ static void UpdateDrawFrame() {
             if (story.world.InBounds(sx, sy) && story.world.tiles[sy][sx] == Tile::Door && story.DoorClosed(sx, sy) &&
                 std::hypot(st.x - visitor.pos.x, st.y - visitor.pos.y) < TS + 3) {
                 if (story.DoorLocked(sx, sy)) {
-                    vDoorT = 1.6f; vDoorX = sx; vDoorY = sy; Play("thud");
-                    AddBubble("The visitor", GetRandomValue(0, 1) ? "Locked? Really?" : "Knock knock, 06.", 1.6f);
+                    vDoorBar = story.Barricaded(sx, sy);
+                    vDoorT = vDoorBar ? 7.0f : 1.6f; vDoorX = sx; vDoorY = sy; PlayAt("kick", TileCenter(sx, sy));   // v0.19: furniture takes him a while. v0.20 sound: a kick
+                    if (vDoorBar) { story.OnBarricadeHit(sx, sy); StartNextBeat(); }
+                    else AddBubble("The visitor", GetRandomValue(0, 1) ? "Locked? Really?" : "Knock knock, 06.", 1.6f);
                     gMover = 0;
                     return true;
                 }
                 story.OpenDoor(sx, sy);
                 Play("door");
             }
+            if (TileAt(TX(visitor.pos.x), TX(visitor.pos.y + 4)) == Tile::Bush) sp *= 0.6f;   // v0.15: he's slowed by bushes too, less than you
             MoveActor(visitor, tx, ty, sp, dt, false, stop);
             gMover = 0;
             return false;
@@ -2958,25 +3092,227 @@ static void UpdateDrawFrame() {
                     scene = SceneMode::None; hidden = false;
                     story.OnLeftPremises();
                     StartNextBeat();
+                } else if (story.handlers) {
+                    // v0.18: he's dead. They're the ones looking now
+                    visitor.anim = 0; vShowT = 0.3f; vmode = VMode::Grace;
+                } else if (defStage == 2) {
+                    // v0.18: somebody is on top of him. He doesn't move while it lasts
+                    vShowT = 0.3f;
                 } else if (story.visitorStun > 0) {
                     // v0.6: blinded by the flashlight
                     story.visitorStun -= dt;
                     visitor.dir = (int)(globalT * 6) % 4;
                 } else if (downedT > 0) {
+                    { Vector2 eye = hidden ? hidePos : player.pos;   // v0.19: on the floor you still only see him if you could
+                      if (std::hypot(visitor.pos.x - eye.x, visitor.pos.y - eye.y) < TS * 2.2f || LineOfSight(eye, visitor.pos)) vShowT = 0.3f; else vShowT -= dt; }
+                    if (story.HoldDown()) downedT = std::max(downedT, 0.5f);   // v0.17: tied, or listening. He isn't getting up
                     downedT -= dt;
                     visitor.dir = 0;
                     if (downedT <= 0 && story.visitorDowned) { story.OnVisitorUp(); StartNextBeat(); vmode = VMode::Search; PickNextRoom(); }
+                    if (downedT <= 0 && innerFall) { innerFall = false; AddBubble("The visitor", "(getting up) ...Okay.", 1.2f); if (vmode == VMode::Chase) { vmode = VMode::Lost; vPause = 1.0f; } }
+                } else if (vBreathT > 0) {
+                    // v0.19: out of breath in the doorway. You get to hear him, and a head start
+                    vBreathT -= dt; visitor.anim = 0;
+                    { Vector2 eye = hidden ? hidePos : player.pos;
+                      if (std::hypot(visitor.pos.x - eye.x, visitor.pos.y - eye.y) < TS * 2.2f || LineOfSight(eye, visitor.pos)) vShowT = 0.3f; else vShowT -= dt; }
+                    if (vBreathT <= 0) vSpotCooldown = 6;   // the line stays up. No "There you are" on top of it
                 } else {
+                    // v0.19: the inside traps. He walks into the doorway and it's waiting for him
+                    {
+                        std::string tr = story.InnerTrapAt(TX(visitor.pos.x), TX(visitor.pos.y));
+                        if (!tr.empty()) {
+                            bool kidNear = std::hypot(player.pos.x - visitor.pos.x, player.pos.y - visitor.pos.y) < TS * 12;
+                            story.OnInnerTrap(tr, kidNear); StartNextBeat();
+                            Play(tr == "paint" ? "bang" : "crack"); AddRing(visitor.pos, 0);
+                            if (tr == "paint") story.visitorStun = 4.0f;
+                            else { downedT = tr == "marbles" ? 3.0f : 4.5f; innerFall = true; visitor.dir = 0; }
+                            goto chaseDone;
+                        }
+                    }
                     bool sees = VisitorSeesKid();
+                    if (sees && seenFar) { story.OnLitUp(); StartNextBeat(); }
+                    // ---- v0.15.2: the taser. He stops, aims, and if he still sees you he fires
+                    vTaserCD -= dt;
+                    if (vTaserT > 0) {
+                        vTaserT -= dt;
+                        float dx = player.pos.x - visitor.pos.x, dy = player.pos.y - visitor.pos.y;
+                        visitor.dir = std::fabs(dx) > std::fabs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
+                        visitor.anim = 0;
+                        if (vTaserT <= 0) {
+                            if (!hidden && std::hypot(dx, dy) < TS * 10 && LineOfSight(visitor.pos, player.pos)) {
+                                Play("crack"); taserFx = 0.5f; taserA = { visitor.pos.x, visitor.pos.y - 10 }; taserB = player.pos;
+                                climbing = false; scene = SceneMode::None; hidden = false;
+                                story.OnTased(); StartNextBeat();
+                            } else { AddBubble("The visitor", "Tch.", 1.0f); vTaserCD = 3; }
+                        }
+                        goto chaseDone;
+                    }
+                    if (sees && !hidden && vTaserCD <= 0 && !story.dadFought) {   // v0.18: Dad tore it out of his hand
+                        float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
+                        vPathCD -= dt;
+                        if (vPathCD <= 0) {
+                            vPathCD = 0.25f;
+                            int pl = PathLen(visitor.pos, TX(player.pos.x), TX(player.pos.y));
+                            vCantReach = climbing || pl < 0 || pl > dk / TS * 2.0f + 8;
+                        }
+                        vNoReachT = vCantReach ? vNoReachT + dt : std::max(0.0f, vNoReachT - dt);
+                        bool kited = vJukes >= 2 && dk < TS * 8;
+                        bool stuck = vJukes >= 1 && vCantReach && dk < TS * 10;   // he only sees you for a moment before he turns to go round, so he aims at once
+                        if (kited || stuck) {
+                            vTaserT = 0.7f; Play("point");
+                            AddBubble("The visitor", kited ? "Enough games, 06." : "Fine. The hard way.", 1.4f);
+                        }
+                    } else if (!sees) vNoReachT = std::max(0.0f, vNoReachT - dt);
+                    // v0.15: he gets to the window before you're through. He pulls you back
+                    if (climbing && std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y) < 18 && sceneT > 0.4f) {
+                        climbing = false; player.pos = climbFrom;
+                        AddBubble("The visitor", "Not that way.", 1.4f);
+                        caught();
+                        goto chaseDone;
+                    }
                     if (sees && vmode != VMode::Grace && vmode != VMode::GoToHide) {
-                        if (vmode != VMode::Chase && vSpotCooldown <= 0) { VisitorBark(kSpotLines, 3); vSpotCooldown = 6; }
+                        if (vmode != VMode::Chase && vSpotCooldown <= 0 && vTaserT <= 0) { VisitorBark(kSpotLines, 3); vSpotCooldown = 6; }
                         vmode = VMode::Chase; vLostT = 0; vLastSeen = player.pos;
+                    }
+                    // ---- v0.12: what he hears
+                    bool busy = vmode == VMode::Grace || vmode == VMode::GoToHide || (vmode == VMode::Chase && (sees || vLostT < 0.3f));
+                    float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
+                    auto hear = [&](Vector2 at, float wait) { vmode = VMode::Investigate; vNoise = at; vNoiseWait = wait; vNoiseT = 0; vPause = 0; vHunchSearch = false; };
+                    vHearCD -= dt;
+                    // ---- v0.20.1 hunt-systems: banging your stuck window open. Like a slammed door, it carries through the house.
+                    // The knife opens it without a bang (Knife.inc sets windowBanged first), so climbBanged is false and he hears only the climb
+                    {
+                        static bool bangDone = false;
+                        if (!climbing || !climbBanged) bangDone = false;
+                        else if (!bangDone) {
+                            bangDone = true;
+                            AddRing(climbFrom, 1);
+                            if (!busy && !visitorBlind && std::hypot(visitor.pos.x - climbFrom.x, visitor.pos.y - climbFrom.y) < TS * 14) {
+                                hear(climbFrom, 1.6f);
+                                story.OnHeard("window"); StartNextBeat();
+                            }
+                        }
+                    }
+                    if (!busy && !hidden && !visitorBlind) {
+                        bool loudOut = IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6))) && story.Storm();
+                        if ((kidRunning || climbing) && dk < TS * (loudOut ? 5.0f : 10.0f)) {
+                            // running feet carry through walls. In the storm, less
+                            if (vHearCD <= 0) { vHearCD = 0.45f; AddRing(player.pos, 1); }
+                            bool first = vmode != VMode::Investigate;
+                            hear(player.pos, 1.2f);
+                            if (first) { story.OnHeard("run"); StartNextBeat(); }
+                        } else if (player.anim > 0 && dk < TS * 2.6f) {
+                            // a walking kid he only hears when he is close. He turns around
+                            float dx = player.pos.x - visitor.pos.x, dy = player.pos.y - visitor.pos.y;
+                            visitor.dir = std::fabs(dx) > std::fabs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
+                            if (!LineOfSight(visitor.pos, player.pos) && vmode != VMode::Investigate) hear(player.pos, 1.0f);
+                        }
+                    }
+                    // ---- v0.20 systems: T-088. Doors you open, shut or slam carry through the house like running feet
+                    {
+                        static std::set<int> doorWas; static int doorLoop = -1; static float ranT = 9;
+                        ranT = kidRunning ? 0 : ranT + dt;
+                        if (doorLoop != story.loop) { doorWas = story.closedDoors; doorLoop = story.loop; }
+                        if (doorWas != story.closedDoors) {
+                            for (auto& d : AllDoors()) {
+                                int k = d.y * World::W + d.x;
+                                bool was = doorWas.count(k) > 0, shut = story.closedDoors.count(k) > 0;
+                                if (was == shut || story.DoorBroken(d.x, d.y)) continue;
+                                Vector2 at = TileCenter(d.x, d.y);
+                                auto far = [&](const Actor& a) { return !a.visible || std::hypot(a.pos.x - at.x, a.pos.y - at.y) > TS * 2.5f; };
+                                bool mine = std::hypot(player.pos.x - at.x, player.pos.y - at.y) < TS * 1.8f && far(visitor) && far(mom) && far(dad);
+                                if (!mine) continue;
+                                bool slam = shut && ranT < 0.6f;
+                                float range = TS * (slam ? 14.0f : shut ? 8.0f : 6.0f);
+                                AddRing(at, 1);
+                                if (slam) Play("thud");
+                                if (!busy && !visitorBlind && std::hypot(visitor.pos.x - at.x, visitor.pos.y - at.y) < range) {
+                                    bool first = vmode != VMode::Investigate;
+                                    hear(at, slam ? 1.6f : 1.2f);
+                                    if (first) { story.OnHeard(slam ? "slam" : shut ? "door_shut" : "door_open"); StartNextBeat(); }
+                                }
+                            }
+                            doorWas = story.closedDoors;
+                        }
+                    }
+                    // ---- holding your breath in a hiding spot
+                    if (hidden) {
+                        float dh = std::hypot(visitor.pos.x - hidePos.x, visitor.pos.y - hidePos.y);
+                        bool close = dh < TS * 3.2f && LineOfSight(visitor.pos, hidePos);
+                        bool want = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+                        if (!want) gasped = false;
+                        holdingBreath = want && !gasped && breath > 0;
+                        if (holdingBreath) {
+                            breath -= dt / 6.0f;
+                            if (breath <= 0) {
+                                breath = 0; gasped = true; holdingBreath = false; AddRing(hidePos, 1);
+                                if (!busy && dh < TS * 9 && !visitorBlind) { story.OnHeard("gasp"); StartNextBeat(); vmode = VMode::GoToHide; }
+                            }
+                        } else breath = std::min(1.0f, breath + dt / 7.0f);
+                        if (close && !holdingBreath && !busy && !visitorBlind) {
+                            breathHeardT += dt;
+                            if (breathHeardT > 0.9f) { story.OnHeard("breath"); StartNextBeat(); vmode = VMode::GoToHide; breathHeardT = 0; }
+                        } else breathHeardT = std::max(0.0f, breathHeardT - dt * 0.5f);
+                    } else { holdingBreath = false; breath = std::min(1.0f, breath + dt / 7.0f); }
+                    // ---- marbles in the air
+                    for (auto& m : marbles) {
+                        if (m.landed) continue;
+                        m.t += dt;
+                        if (m.t < m.dur) continue;
+                        m.landed = true; Play("point"); AddRing(m.to, 1);
+                        bool deaf = vmode == VMode::Grace || vmode == VMode::GoToHide || (vmode == VMode::Chase && sees) || visitorBlind;
+                        if (!deaf && std::hypot(visitor.pos.x - m.to.x, visitor.pos.y - m.to.y) < TS * 12) {
+                            if (story.OnDecoy()) hear(m.to, 2.4f);
+                            StartNextBeat();
+                        }
+                    }
+                    // v0.20.1 story-knife: the watch lands. Two short, one long. He always comes to look, and stays a while
+                    if (watchTossOn && !watchToss.landed && (watchToss.t += dt) >= watchToss.dur) {
+                        watchToss.landed = true; Play("beep"); AddRing(watchToss.to, 1); AddRing(watchToss.to, 1);
+                        bool deaf = vmode == VMode::Chase && sees;
+                        if (story.OnWatchLure() && !deaf && !visitorBlind) hear(watchToss.to, 4.0f);
+                        StartNextBeat();
+                    }
+                    // ---- you only see him when you could. Otherwise you hear where he walks
+                    {
+                        Vector2 eye = hidden ? hidePos : player.pos;
+                        float de = std::hypot(visitor.pos.x - eye.x, visitor.pos.y - eye.y);
+                        if (de < TS * 2.2f || LineOfSight(eye, visitor.pos)) vShowT = 0.3f; else vShowT -= dt;
+                        static Vector2 lastStep = visitor.pos;
+                        vStepAcc += std::min(12.0f, std::hypot(visitor.pos.x - lastStep.x, visitor.pos.y - lastStep.y));
+                        lastStep = visitor.pos;
+                        if (vStepAcc > 30) { vStepAcc = 0; if (vShowT <= 0 && de < TS * 11) AddRing(visitor.pos, 0); }
+                    }
+                    // ---- v0.15.2: the hunch. He walks to the area you're in and searches it. He doesn't know the spot
+                    if (vmode == VMode::Search || vmode == VMode::Lost) {
+                        vHunchT -= dt;
+                        if (vHunchT <= 0 && !visitorBlind) {
+                            // v0.15.2 (Noah): the closer it gets to 17:00, the more psychic he gets. More often, and closer
+                            float late = std::max(0.0f, std::min(1.0f, (story.t - 50 * 60.0f) / (9 * 60.0f)));
+                            vHunchT = (float)GetRandomValue(20, 26) * (1.0f - 0.65f * late);
+                            int spread = late > 0.8f ? 0 : late > 0.5f ? 1 : late > 0.25f ? 2 : 3;
+                            Vector2 at = hidden ? hidePos : player.pos;
+                            for (int k = 0; spread > 0 && k < 12; ++k) {
+                                Vector2 c = { at.x + GetRandomValue(-spread, spread) * (float)TS, at.y + GetRandomValue(-spread, spread) * (float)TS };
+                                if (story.world.Walkable(TX(c.x), TX(c.y), false) && story.world.RoomAt(TX(c.x), TX(c.y)) == story.world.RoomAt(TX(at.x), TX(at.y))) { at = c; break; }
+                            }
+                            AddBubble("The visitor", late > 0.8f ? kLateHunch[vHunches % 3] : kHunchLines[vHunches % 4], 2.6f);
+                            ++vHunches;
+                            vmode = VMode::Investigate; vNoise = at; vNoiseWait = 1.4f; vNoiseT = 0; vPause = 0; vHunchSearch = late < 0.6f;   // late in the hour he checks every spot there
+                        }
                     }
                     switch (vmode) {
                     case VMode::Grace:
                         if (goTo(vGraceGoal, 34, 0)) {
                             vGraceWait -= dt;
-                            if (vGraceWait <= 0) { vmode = VMode::Search; PickNextRoom(); }
+                            if (doggoGuard == 2) vGraceWait = std::max(vGraceWait, 0.5f);   // v0.16: busy with the dog
+                            if (vGraceWait <= 0 && trailOn) {
+                                // v0.19: your tracks out the back. He goes all the way out to where they end
+                                trailOn = false; trailFollow = true;
+                                story.OnFalseTrail(false); StartNextBeat();
+                                vmode = VMode::Investigate; vNoise = TileCenter(29, -24); vNoiseWait = 2.5f; vNoiseT = -60; vPause = 0; vHunchSearch = true;
+                            }
+                            else if (vGraceWait <= 0) { vmode = VMode::Search; PickNextRoom(); }
                         }
                         break;
                     case VMode::Chase:
@@ -2994,7 +3330,7 @@ static void UpdateDrawFrame() {
                         else {
                             vLostT += dt;
                             if (goTo(vLastSeen, chaseSp * 0.9f, 2) || vLostT > 4.0f) {
-                                vmode = VMode::Lost; vPause = 1.6f; VisitorBark(kLostLines, 3);
+                                vmode = VMode::Lost; vPause = 1.6f; VisitorBark(kLostLines, 3); ++vJukes;
                             }
                         }
                         if (std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y) < 9 && sceneT > 0.4f) caught();
@@ -3011,20 +3347,64 @@ static void UpdateDrawFrame() {
                             if (ri >= 0) PlanRoom(ri); else PickNextRoom();
                         }
                         break;
+                    case VMode::Investigate:
+                        // v0.12: he goes to the sound, listens, then turns that room inside out
+                        vNoiseT += dt;
+                        if (vPause > 0) {
+                            vPause -= dt;
+                            if (std::fmod(vPause, 0.4f) < dt) visitor.dir = (visitor.dir + 1 + GetRandomValue(0, 2)) % 4;
+                            if (vPause <= 0) {
+                                Room r = story.world.RoomAt(TX(vNoise.x), TX(vNoise.y));
+                                int ri = -1;
+                                for (int k = 0; k < kRoomCount; ++k) if (kSearchRooms[k] == r) ri = k;
+                                vmode = VMode::Search;
+                                if (ri >= 0) { vSure = !vHunchSearch; PlanRoom(ri); } else PickNextRoom();
+                                vHunchSearch = false;
+                            }
+                        } else if (goTo(vNoise, searchSp * 1.7f, 4) || vNoiseT > 8) {
+                            vPause = vNoiseWait;
+                            if (trailFollow && std::hypot(visitor.pos.x - TileCenter(29, -24).x, visitor.pos.y - TileCenter(29, -24).y) < 40) {
+                                trailFollow = false; story.OnFalseTrail(true); StartNextBeat();
+                                for (auto& p : prints) if (p.who == 0 && p.t >= 60) p.t = std::max(p.t, 101.0f);   // he's read that trail. He won't walk it twice
+                            }
+                        }
+                        break;
                     case VMode::Search:
-                        // v0.8: outside he reads your tracks
-                        vPrintCD -= dt;
-                        if (vPrintCD <= 0 && story.world.RoomAt(TX(visitor.pos.x), TX(visitor.pos.y)) == Room::Outside) {
-                            vPrintCD = 1.0f;
+                        // v0.12: indoors he reads the wet prints you bring in from the snow
+                        if (vPrintCD <= 0.05f) {
+                            Vector2 newest{}; bool any = false, near = false;
                             for (auto it = prints.rbegin(); it != prints.rend(); ++it) {
-                                if (it->who != 0 || it->t > 14) continue;
-                                if (std::hypot(it->p.x - visitor.pos.x, it->p.y - visitor.pos.y) < 56) {
-                                    vmode = VMode::Chase; vLostT = 0; vLastSeen = prints.back().who == 0 ? prints.back().p : it->p;
-                                    AddBubble("The visitor", "Little feet.", 1.4f); vPrintCD = 5;
-                                }
+                                if (it->who != 3 || it->t > 40) continue;
+                                if (!any) { newest = it->p; any = true; }
+                                if (std::hypot(it->p.x - visitor.pos.x, it->p.y - visitor.pos.y) < 52 && LineOfSight(visitor.pos, it->p)) { near = true; break; }
+                            }
+                            if (near && std::hypot(newest.x - visitor.pos.x, newest.y - visitor.pos.y) > 14) {
+                                story.OnTracked(); StartNextBeat();
+                                vPrintCD = 3;
+                                if (hidden && std::hypot(newest.x - hidePos.x, newest.y - hidePos.y) < TS * 2.6f) { vmode = VMode::GoToHide; break; }
+                                vmode = VMode::Investigate; vNoise = newest; vNoiseWait = 0.8f; vNoiseT = 0; vPause = 0;
                                 break;
                             }
-                            if (vmode == VMode::Chase) break;
+                        }
+                        // v0.8: outside he reads your tracks
+                        vPrintCD -= dt;
+                        if (vPrintCD <= 0 && IsYard(story.world.RoomAt(TX(visitor.pos.x), TX(visitor.pos.y)))) {
+                            // v0.15.2: your prints stay in the snow. He finds the trail and follows it to the newest print
+                            vPrintCD = 1.0f;
+                            Vector2 newest{}; bool any = false, near = false;
+                            for (auto it = prints.rbegin(); it != prints.rend(); ++it) {
+                                if (it->who != 0 || it->t > 100) continue;
+                                if (!any) { newest = it->p; any = true; }
+                                if (std::hypot(it->p.x - visitor.pos.x, it->p.y - visitor.pos.y) < 64) { near = true; break; }
+                            }
+                            if (near && std::hypot(newest.x - visitor.pos.x, newest.y - visitor.pos.y) > 20) {
+                                static float littleT = 0;
+                                if (globalT - littleT > 12) { AddBubble("The visitor", "Little feet.", 1.4f); littleT = globalT; }
+                                vPrintCD = 2.5f;
+                                if (hidden && std::hypot(newest.x - hidePos.x, newest.y - hidePos.y) < TS * 2.6f) { vmode = VMode::GoToHide; break; }
+                                vmode = VMode::Investigate; vNoise = newest; vNoiseWait = 0.6f; vNoiseT = 0; vPause = 0; vHunchSearch = false;
+                                break;
+                            }
                         }
                         vBarkT -= dt;
                         if (vBarkT <= 0) { VisitorBark(kSearchLines, 6); vBarkT = (float)GetRandomValue(8, 13); }
@@ -3069,14 +3449,42 @@ static void UpdateDrawFrame() {
                         StartNextBeat();
                     }
                 }
-                story.visitorChasing = vmode == VMode::Chase;
+                chaseDone:
+                story.visitorChasing = vmode == VMode::Chase && !story.handlers;
+                UpdateParents(dt);
             }
         }
         story.kidHidden = hidden;
         UpdatePrints(dt);
         if (!hidden) AddPrint(player, 0, dt, 0.2f);
+        // v0.12: snow on your boots. It comes off on the floor for a while
+        if (IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6)))) wetT = 14;
+        else if (wetT > 0 && player.anim > 0 && !hidden && player.pos.y < 34 * TS) {
+            wetT -= dt; wetCD -= dt;
+            if (wetCD <= 0) { wetCD = 0.17f; printSide = 1 - printSide; prints.push_back({ { player.pos.x, player.pos.y + 6 }, 0, 3, printSide }); if (prints.size() > 500) prints.erase(prints.begin()); }
+        }
         if (visitor.visible) AddPrint(visitor, 1, dt, 0.28f);
-        if (doggo.visible && story.DoggoExists()) AddPrint(doggo, 2, dt, 0.12f);
+        if (doggo.visible && (story.DoggoExists() || (story.doggoOut && !doggoRanOff))) AddPrint(doggo, 2, dt, 0.12f);
+
+        // v0.15: his torch points where he walks, and sweeps a little while he searches
+        {
+            const float da[4] = { 1.5708f, -1.5708f, 3.14159f, 0.0f };
+            float want = da[visitor.dir] + (vmode == VMode::Search ? std::sin(globalT * 1.3f) * 0.35f : 0.0f);
+            beamAng += std::remainder(want - beamAng, 6.2831853f) * std::min(1.0f, dt * 5);
+        }
+        // v0.15: the dog at the far fence. Doggo growls at it. Walk up to it and there's nobody
+        {
+            static int huskyLoop = -1; static bool gone = false; static float growlT = 0;
+            if (story.loop != huskyLoop) { huskyLoop = story.loop; gone = false; }
+            bool want = !story.collection && !story.Tutorial() && story.t >= 40 * 60 && !gone;
+            Vector2 hp = { 12 * TS + 8.0f, World::TOP * TS + 8.0f };
+            if (want && std::hypot(player.pos.x - hp.x, player.pos.y - hp.y) < TS * 6 && !beatActive) { gone = true; story.OnHusky(); StartNextBeat(); }
+            huskyA += ((want ? 1.0f : 0.0f) - huskyA) * std::min(1.0f, dt * (want ? 0.8f : 3.0f));
+            growlT -= dt;
+            if (huskyA > 0.5f && story.DoggoExists() && growlT <= 0 && std::hypot(doggo.pos.x - hp.x, doggo.pos.y - hp.y) < TS * 14) {
+                AddBubble("Doggo", "*low growl*", 1.6f); growlT = 6;
+            }
+        }
 
         // v0.7: Doggo. Follows you unless you told him to stay. Can't open doors.
         if (!story.doggoDead) doggoShownDead = false;
@@ -3090,6 +3498,28 @@ static void UpdateDrawFrame() {
             if (story.t >= 35 * 60 && story.t < 40 * 60 && !story.collection) { gx = 20; gy = 19; stop = 0; }
             if (story.collection && tut) { gx = 16; gy = 18; stop = 0; }
             if (story.inBasement) { gx = 28; gy = 11; stop = 0; }
+            if (story.doggoTangled) { gx = 25; gy = 15; stop = 0; }   // v0.20 knife: caught in the ribbon under the tree
+            // v0.16: to the door, to see who it is. He gives him a few seconds. Then he doesn't
+            if (scene == SceneMode::Chase && story.chase && (doggoGuard == 1 || doggoGuard == 2) && !story.doggoStay) {
+                gx = TX(visitor.pos.x); gy = TX(visitor.pos.y); stop = 20;
+                float dv = std::hypot(doggo.pos.x - visitor.pos.x, doggo.pos.y - visitor.pos.y);
+                if (doggoGuard == 1) {
+                    gMover = 2;
+                    Vector2 st = NextStep(doggo.pos, gx, gy, false);
+                    gMover = 0;
+                    bool moves = TX(st.x) != TX(doggo.pos.x) || TX(st.y) != TX(doggo.pos.y) || dv < 30;
+                    doggoStuckT = moves ? 0 : doggoStuckT + dt;
+                    if (doggoStuckT > 0.8f) doggoGuard = 3;                       // shut in. He scratches at the door, and lives
+                    if (dv < 26) { doggoGuard = 2; story.OnDoggoAtDoor(); StartNextBeat(); }
+                } else if (!beatActive) {
+                    doggoGuardT -= dt;
+                    if (barkT <= 0 && GetRandomValue(0, 30) == 0) barkT = 1.6f;
+                    if (doggoGuardT <= 0) {
+                        doggoGuard = 3;
+                        story.OnDoggoPutDown(TX(doggo.pos.x), TX(doggo.pos.y)); StartNextBeat();
+                    }
+                }
+            }
             float dd = std::hypot(doggo.pos.x - player.pos.x, doggo.pos.y - player.pos.y);
             if (!story.doggoStay) {
                 gMover = 2;
@@ -3103,12 +3533,81 @@ static void UpdateDrawFrame() {
             bool sameRoom = story.world.RoomAt(TX(doggo.pos.x), TX(doggo.pos.y)) == story.world.RoomAt(TX(player.pos.x), TX(player.pos.y));
             story.doggoWithKid = story.collection && !tut && !story.doggoStay && sameRoom && dd < TS * 6;
             // instability, or the man at the door: barking fits
-            if ((story.Act() >= 2 || scene == SceneMode::Chase) && !beatActive && barkT <= 0 && GetRandomValue(0, scene == SceneMode::Chase ? 200 : 2400) == 0) { barkT = 2.5f; }
+            // v0.16 (Noah): in the hunt he only barks when the man is in the same room. Otherwise the whole hunt is barking
+            bool withHim = story.world.RoomAt(TX(doggo.pos.x), TX(doggo.pos.y)) == story.world.RoomAt(TX(visitor.pos.x), TX(visitor.pos.y)) && visitor.visible;
+            if (scene == SceneMode::Chase && !withHim) barkT = std::min(barkT, 0.0f);
+            if ((scene == SceneMode::Chase ? withHim : story.Act() >= 2) && !beatActive && barkT <= 0 && GetRandomValue(0, scene == SceneMode::Chase ? 200 : 2400) == 0) { barkT = 2.5f; }
             if (barkT > 0) {
                 barkT -= dt;
                 if (std::fmod(barkT, 0.35f) < dt) { Play("bark"); barkText = GetRandomValue(0, 1) ? "WOOF" : "WOOF WOOF"; AddBubble("Doggo", barkText, 0.6f); }
             }
+        } else if (story.doggoOut && story.shift != Shift::NoDoggo && !story.doggoGone) {
+            // v0.10: you let him out. Flat out for the gate, and gone
+            story.doggoWithKid = false;
+            if (!doggoRanOff) {
+                doggo.visible = true;
+                gMover = 2; MoveActor(doggo, 20, 33, 170, dt, false, 0); gMover = 0;
+                if (doggo.pos.y > 32 * TS || story.collection) doggoRanOff = true;
+            }
         } else story.doggoWithKid = false;
+        if (!story.doggoOut) doggoRanOff = false;
+
+        // v0.10: she hums while she thinks nobody is listening (for players without sound, too)
+        static float momHumT = 5;
+        if (story.MomHums() && mom.visible && !beatActive && std::hypot(mom.pos.x - player.pos.x, mom.pos.y - player.pos.y) < TS * 7) {
+            momHumT -= dt;
+            if (momHumT <= 0) { AddBubble("Mom", "hm hm hmm, hm hmm...", 2.4f); momHumT = (float)GetRandomValue(10, 16); }
+        }
+        // v0.20 sound (T-148): and Dad at his work, lower and slower
+        static float dadHumT = 7;
+        if (story.DadHums() && dad.visible && !beatActive && std::hypot(dad.pos.x - player.pos.x, dad.pos.y - player.pos.y) < TS * 7) {
+            dadHumT -= dt;
+            if (dadHumT <= 0) { AddBubble("Dad", "mm... mm-hm, mmm...", 2.6f); dadHumT = (float)GetRandomValue(13, 19); }
+        }
+    }
+
+    // v0.10: footsteps by surface. His carry through walls, duller and quieter, so you can hear where he is
+    {
+        static Vector2 lastP = player.pos, lastV = visitor.pos;
+        static float accP = 0, accV = 0;
+        auto surface = [&](Vector2 p) {
+            int x = TX(p.x), y = TX(p.y + 5);
+            Tile t = TileAt(x, y);
+            Room r = story.world.RoomAt(x, y);
+            if (t == Tile::Gravel || t == Tile::ShedFloor) return 3;
+            if (IsOutsideT(t)) return 2;
+            return (r == Room::Kitchen || r == Room::Bathroom) ? 1 : 0;
+        };
+        float dp = std::hypot(player.pos.x - lastP.x, player.pos.y - lastP.y), dv = std::hypot(visitor.pos.x - lastV.x, visitor.pos.y - lastV.y);
+        lastP = player.pos; lastV = visitor.pos;
+        bool quietBeat = beatActive && cur.type != BeatType::Say && cur.type != BeatType::Choice;
+        bool live = audioOk && !journalOpen && !pauseOpen && !recapOpen && !miniOpen && !quietBeat && !hushMusic;
+        if (live && dp > 0.01f && dp < 12 && !hidden) {
+            accP += dp;
+            if (accP > 26) {
+                accP = 0;
+                Sound& sn = sStep[0][surface(player.pos)];
+                SetSoundVolume(sn, gSfxVol * (kidRunning ? 0.34f : 0.2f));
+                SetSoundPitch(sn, 0.92f + GetRandomValue(0, 16) / 100.0f);
+                PlaySound(sn);
+            }
+        }
+        if (live && visitor.visible && dv > 0.01f && dv < 12) {
+            accV += dv;
+            if (accV > 30) {
+                accV = 0;
+                float d = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
+                float nearK = std::max(0.0f, 1 - d / (TS * 15.0f));
+                if (nearK > 0) {
+                    bool los = LineOfSight(visitor.pos, player.pos);
+                    Sound& sn = sStep[1][surface(visitor.pos)];
+                    SetSoundVolume(sn, gSfxVol * nearK * nearK * (los ? 0.6f : 0.36f));
+                    SetSoundPitch(sn, (los ? 0.74f : 0.6f) + GetRandomValue(0, 6) / 100.0f);
+                    SetSoundPan(sn, 0.5f - 0.35f * std::max(-1.0f, std::min(1.0f, (visitor.pos.x - player.pos.x) / 160.0f)));
+                    PlaySound(sn);
+                }
+            }
+        }
     }
 
     // v0.7: if a door closed on your shoulder, slide back to the middle of your tile
@@ -3120,11 +3619,13 @@ static void UpdateDrawFrame() {
     // ---------------- draw world
     Camera2D cam{};
     float cxw = std::max(VW / 2.0f, std::min(World::W * TS - VW / 2.0f, player.pos.x));
-    float cyw = std::max(VH / 2.0f, std::min(World::H * TS - VH / 2.0f, player.pos.y));
+    float cyw = std::max(World::TOP * TS + VH / 2.0f, std::min(World::H * TS - VH / 2.0f, player.pos.y));
     cam.target = { std::round(cxw), std::round(cyw) };
     cam.offset = { VW / 2.0f, VH / 2.0f };
     cam.zoom = 1;
     worldCam = cam;
+    LookTick(dt);   // v0.20 look
+    VoicesTick(dt);   // v0.20.1 sound-look: thunder, blips
     BuildLightmap(cam);
     BeginTextureMode(target);
     DrawWorld(cam);
@@ -3149,15 +3650,16 @@ static void UpdateDrawFrame() {
     SW = (int)(VW * US); SH = (int)(VH * US);
     DrawBubbles(dt);
     DrawHUD();
+    bool closeUpDone = LookCloseUp();   // v0.20 look: the mirror, the screens, the chair, the tape. True if it drew the words too
     if (beatActive) {
         switch (cur.type) {
         case BeatType::Say: DrawDialogue(); break;
         case BeatType::Narrate: DrawNarrator(cur.text, typed); break;
-        case BeatType::Black: DrawBlack(); break;
+        case BeatType::Black: if (!closeUpDone) DrawBlack(); break;
         case BeatType::Choice: DrawChoice(); break;
         case BeatType::Fade: DrawFade(); break;
         case BeatType::Card: DrawCard(); break;
-        case BeatType::Ending: DrawCard(); break;
+        case BeatType::Ending: LookEndingCard(); break;   // v0.20 look: with a picture
         case BeatType::QTE: DrawQTE(); break;
         case BeatType::EndLoop: DrawRectangle(0, 0, SW, SH, BLACK); break;
         default: break;
@@ -3169,6 +3671,7 @@ static void UpdateDrawFrame() {
     if (jukeboxOpen) DrawJukebox();
     if (dbgOpen) DrawDebugPanel();
     if (pauseOpen) DrawPause();
+    if (taserFx > 0) taserFx -= dt;
     if (flashT > 0) { flashT -= dt; DrawRectangle(0, 0, SW, SH, Fade(settings.calmFlashes ? BLACK : WHITE, flashT)); }
     DrawToasts(dt);
     SW = saveSW; SH = saveSH;
@@ -3212,6 +3715,7 @@ int main() {
 #endif
     target = LoadRenderTexture(VW, VH);
     lightRT = LoadRenderTexture(VW, VH);
+    LoadArt();
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
     {
         // Latin-1 plus curly quotes and ellipsis, rendered big and mipmapped so it stays soft at any size
@@ -3232,6 +3736,7 @@ int main() {
     }
     InitSounds();
     LoadSettings();
+    InitMusicFiles();   // v0.20 sound (T-100): before the stream starts
     InitMusic();
     if (FileExists("assets/logo.png")) {
         logoTex = LoadTexture("assets/logo.png");
@@ -3245,7 +3750,9 @@ int main() {
         if (hasSave) story.LoadSave(sv);
     }
 #if defined(PLATFORM_WEB)
+#if !defined(PUBLIC_BUILD)
     debugMode = EM_ASM_INT({ return location.search.indexOf('debug') >= 0 ? 1 : 0; });
+#endif
 #endif
     if (debugMode) LoadDebugCfg();   // your playtest settings only apply in debug mode
 #if defined(PLATFORM_WEB)
@@ -3286,12 +3793,16 @@ int main() {
     })();)JS");
 #endif
     Snap(player, 5, 5); Snap(mom, 8, 16); Snap(dad, 24, 16); Snap(doggo, 6, 6); Snap(visitor, 20, 29);
+#if defined(SHOTS)
+    ShotsInit();
+#endif
 
 #if defined(PLATFORM_WEB)
     emscripten_set_main_loop(UpdateDrawFrame, 0, 1);
 #else
     SetTargetFPS(60);
     while (!WindowShouldClose()) UpdateDrawFrame();
+    UnloadArt();
     CloseWindow();
 #endif
     return 0;

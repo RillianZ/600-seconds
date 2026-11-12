@@ -13,7 +13,7 @@ This is a prototype and proof of concept from Sund Origin Studio. Placeholder ar
 | ![The house](docs/house.png) | ![The snow](docs/snow.png) |
 | ![The collection](docs/collection.png) | ![Memory log](docs/memory-log.png) |
 
-Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains off screen violence, implied child abuse and the death of a dog. Flashing lights, which can be calmed in the pause menu.
+Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains off screen violence, implied child abuse, the death of a dog and, on the darkest path, an off screen suicide. Flashing lights, which can be calmed in the pause menu.
 
 ## Controls
 
@@ -22,18 +22,20 @@ Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains off scr
 | WASD / arrows | Walk |
 | Shift | Run |
 | F | Fullscreen |
-| E / Space | Use things, talk, continue |
+| E / Space | Use things, talk, continue. Facing a window: climb through it |
 | Enter | Continue / pick a choice |
 | Hold T | Wait (time runs much faster) |
 | J | Memory log |
+| Q | During the hunt: throw a marble the way you face (take some from the jar in your room first) |
+| Hold Shift while hiding | Hold your breath (he hears you breathe when he is right outside) |
 | Tab | Skip talking (from loop 2) and any line you've already read |
 | P or Esc | Pause: music, sound, text speed, flashes |
 
-Debug: add `?debug` to the URL, or press Shift+D on the title screen. `M` opens the jukebox (every song), `5` hops to the living room, `6` marks all five chores done, `7` opens the Fliptendo (Flappy Plane), `8` jumps 5 minutes, `9` jumps to 16:49, `0` jumps straight to the knock at the door. On the title screen, `Shift+R` twice is a true hard reset (memories, darkness, endings, achievements, save). `O` opens the debug panel (title or in game): reality shift frequency, force the next loop's reality, restart the loop, set dark points, give or clear all memories, make the visitor blind. Panel settings are saved in the browser and only apply in debug mode.
+Debug: add `?debug` to the URL, or press Shift+D on the title screen. `M` opens the jukebox (every song), `2` hops out back to the snow beast, `3` hops to the gate, `4` goes to the basement with the tape, `5` hops to the living room, `6` marks all five chores done, `7` opens the Fliptendo (Flappy Plane), `8` jumps 5 minutes, `9` jumps to 16:49, `0` jumps straight to the knock at the door, `H` sets up the next hinge (A to E in turn). On the title screen, `Shift+R` twice is a true hard reset (memories, darkness, endings, achievements, save). `O` opens the debug panel (title or in game): the hunt clock (real time, half or the old speed), reality shift frequency, force the next loop's reality, restart the loop, set dark points, give or clear all memories, make the visitor blind. Panel settings are saved in the browser and only apply in debug mode.
 
-Phone: touch the screen and phone mode turns on. D-pad bottom left, E / RUN / WAIT bottom right, SKIP during talk, tap anywhere to use or continue, tap the top left for the memory log, tap a choice to pick it. The first tap goes fullscreen and asks for landscape.
+Phone: touch the screen and phone mode turns on. D-pad bottom left, E / RUN / WAIT bottom right (in the hunt WAIT becomes THROW, and RUN holds your breath while hiding), SKIP during talk, tap anywhere to use or continue, tap the top left for the memory log, tap a choice to pick it. The first tap goes fullscreen and asks for landscape.
 
-In the Fliptendo mini game: E / Space / tap to flap, Esc to put it down. Memory log: left/right for topics (the last one is Endings), up/down or the mouse wheel to scroll.
+In the Fliptendo mini game: E / Space / tap to flap, Esc to put it down. Memory log: left/right for pages (Timeline first, then the topics, Endings and Awards), up/down or the mouse wheel to scroll.
 
 Progress (memory log, loop count, achievements) is saved in the browser. `N` on the title screen starts over.
 
@@ -42,11 +44,24 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Big spoilers in
 ## Code layout
 
 ```
-src/game/World.h     map, rooms, objects (plain C++)
+src/game/World.h     map, rooms, objects, windows (plain C++). Rows go from World::TOP (-26, the backyard) to 45
 src/game/Story.h/.cpp all rules: clock, events, choices, memory log, saves (plain C++)
+src/game/StoryMore.inc v0.20 story lines: endings that teach, the watch, questions, TV, shifts, predictions (included by Story.cpp)
+src/game/Knife.inc   the kitchen knife: clean jobs, darker jobs, the mirror (included at the end of Story.cpp)
+src/game/PolishStoryKnife.inc v0.20.1: oh-seven says 07, hunt payoffs, the door frame, Mom and the clean knife (included by Story.cpp)
+src/game/Schedule.h  where Mom and Dad are hour by hour, and when he comes early (data)
+src/game/Links.h     the rumor map in the memory log: which memories belong together (data)
+src/art/Couch.inc    the couch (it faces the TV) and Mom and Dad sitting on it for Kaptein Fjord
+src/art/RumorCard.inc open a card on the rumor map and read the memory on it (keys, mouse, tap)
 src/audio/Soundtrack.h/.cpp every song, written as code (plain C++)
+src/audio/SfxV20.inc  v0.20 sound effects made in code (power cut, locks, phone, tape, trunk, kicks) and sounds placed in the house
+src/audio/MusicFiles.inc v0.20: assets/music/<name>.ogg plays instead of a code track, if the file is there
+src/audio/VoiceSynth.h v0.20.1: speech blips and thunder made in code (plain C++, checked by test/audio_check.cpp)
+src/audio/Voices.inc  v0.20.1: plays them: blips while a line types out and on bubbles, thunder after each flash
 src/main.cpp         raylib: drawing, input, sound, UI
 test/sim.cpp         plays scripted loops headless and checks every memory is reachable
+test/shots.inc       screenshot scripts for a virtual screen (build with -DSHOTS, never shipped)
+test/audio_check.cpp renders every code track offline: not silent, not clipping, no clicks
 web/index.html       itch.io friendly page shell
 ```
 
@@ -57,7 +72,8 @@ web/index.html       itch.io friendly page shell
 - **New object**: add it to `objs` in `World.h`, give it a branch in `Story::Interact`, draw it in `DrawObj` in `main.cpp`.
 - **New memory**: add a line to `AllMemories()` in `Story.cpp`, then call `AddClue("id")` where the kid learns it.
 - **New knowledge choice**: in `Interact`, `if (Knows("id")) o.push_back({"choice_id", "text", true});` and handle `choice_id` in `Choose`.
-- **New timed event**: add a `Crossed(prev, now, minute)` block in `CheckEvents`.
+- **New timed event**: add a `Crossed(prev, now, minute)` block in `CheckEvents`. If the player should see it on the timeline, add a row to `AllTimeline()` and call `See("id")` when they watch it happen.
+- **New achievement**: call `Achieve("Name")` and add the name with a hint to `AllAchievements()`. The test fails if one is missing from the list.
 
 Run the logic test: `g++ -std=c++17 -Isrc test/sim.cpp src/game/Story.cpp -o sim && ./sim`
 
@@ -90,4 +106,10 @@ Keep the `assets` folder next to the exe.
 
 ## Credits
 
-Code and writing: Noah Sund with Claude. Narrator font: Lora (SIL Open Font License, see `assets/narrator-font-OFL.txt`). UI font: Poppins (SIL Open Font License, see `assets/ui-font-OFL.txt`). Engine: raylib.
+Code and writing: Noah Sund with Claude. Narrator font: Lora (SIL Open Font License, see `assets/narrator-font-OFL.txt`). UI font: Poppins (SIL Open Font License, see `assets/ui-font-OFL.txt`). Engine: raylib. Logo: Sund Origin Studio, made by Noah with AI tools.
+
+## Licence
+
+All rights reserved, see [LICENSE](LICENSE). The repo is public so you can read it and play the builds. raylib and the two fonts keep their own licences.
+
+Public builds: `PUBLIC=1 ./build_all.sh` and `PUBLIC=1 ./package_play.sh` leave out the debug panel, Shift+D and `?debug`.

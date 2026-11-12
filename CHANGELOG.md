@@ -2,6 +2,420 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.20.1
+New branch `claude-batch-v0.20.1-polish`, on top of v0.20.0. The leftovers from v0.20, done before the release by three parallel lanes. The story test now has 107 memories and 13 endings. Notes with every line and call: `docs/lanes/polish-*.md`.
+
+**Sound and look**
+- Thunder after every lightning flash. The closer the storm, the sooner it rolls in. Muffled indoors, softer with Calm flashes.
+- Soft speech blips while people talk, a different voice for each of them. From another room or behind a door they're quiet and muffled. Pause menu: Voice blips on/off.
+- The painted board behind the shed goes dark with the yard lamps at 16:50, and the satellite dish's battery light blinks red after.
+
+**Story and knife**
+- In the oh-seven reality everyone says 07, the radio too.
+- The photos and oh-seven each get a last beat on the way to the bells.
+- Hunt payoffs: in oh-seven he doesn't know your spots; out of marbles you can throw your watch once (he always goes to look); Small hands lets you slip out of your sweater the first time he grabs you; tell Dad about the knock and he's in the doorway with his wrench.
+- With his brakes cut, Screen Time crashes too.
+- Darkness 13: carve 06 into your door frame. Under the paint there are older lines. New memory Under the paint.
+- After a clean job with the knife, Mom asks what you're cutting instead of scolding.
+
+**Hunt and systems**
+- He hears your stuck window bang open. The quiet knife way stays quiet.
+- Mom and Dad sit on the couch for Kaptein Fjord.
+- The timeline is in time order.
+- Open a card on the rumor map (E) to read the memory, arrows to move between cards.
+- If they want him gone, Mom (or Dad) unlocks the locked front door and lets him in.
+- The nod across the yard follows his schedule, so it can happen when he comes early too.
+
+## What's in v0.20.0
+New branch `claude-batch-v0.20-finish`, on top of v0.19.0. The finish sprint: the rest of the PRJ-039 task list, built by five parallel lanes and merged into one. The story test now has 106 memories and 13 endings. Every new line is Claude's, for Noah to react to. The full notes for each lane, with every line and every call, are in `docs/lanes/`.
+
+**The knife (T-149, Noah's idea)**
+- Clean jobs, no darkness: slit the tape on the big present (an empty box and a packing slip), do the firewood in 12 minutes instead of 20, cut Doggo out of the present ribbon at 16:15, cut the twine in the torn fence out back so it's a door your size, and skip the bang on your frozen window. Three of them: Blade Down.
+- In the hunt you can grab it from the block, quickly if you had it earlier.
+- Darker jobs as you darken: cut the phone cord (dark 3), his brake line while he's at the window (dark 8: whoever drives his car next goes off the road), the wire to the box on his belt.
+- At the very bottom of the dark path, the bathroom mirror. Off screen, two confirmations, then 16:00 again. The loop doesn't let go. No achievement, and its memory doesn't count toward 100%.
+- Once you know a clean job, the knife block only asks twice.
+
+**Story (T-062, T-064, T-068, T-069, T-084, T-085, T-089)**
+- Every ending now teaches something: a memory, or a new thing to say.
+- New memory topic: The watch (5 entries), plus two more for The program.
+- 6 new questions each for Mom and Dad, and new lines for a tainted kid.
+- 4 new TV episodes that change with how the last loop ended.
+- Two stranger realities: a boy in the photo album who grows up into the man, and a day where Dad calls you oh-seven.
+- Shove Mom, hit Dad. It barely works. Small hands.
+- Tell them what's about to happen before it does: the phone, the flagpole, the storm, the knock. It scares them a step at a time. All four: Fortune Teller.
+
+**Systems (T-083, T-086, T-087, T-088, T-092)**
+- Mom and Dad have fuller days: Kaptein Fjord's Christmas special at 16:15, lefse at 16:40, potatoes, the oven, the path, the stove.
+- The front door fight: lock it and they unlock it, then scold you, then ground you.
+- Nobody Home: door locked, Mom shut away, Dad barred in the shed. He talks to you through the door, then comes in through your window. The hunt starts in your room.
+- Very dark (tainted, 10+): he knocks at 16:48.
+- In the hunt he hears doors open, shut and slam.
+- The rumor map: a new last page in the memory log with your memories as cards and lines between the ones that belong together.
+
+**Look (T-043 to T-049, T-103)**
+- The darkness lives in the house now, not as a number: a tally over your bed, your drawing of the family, scratched-out faces in the hallway photo, a tall shadow with a hat, the watch cracking and showing UNIT 06.
+- From loop 2 small things are wrong: a tilted photo, a stopped clock, a moved mug.
+- At 16:50 the lights die room by room. Lightning shows him in the storm. His headlights sweep the walls at 16:43.
+- Full screen close-ups for the mirror, the screens, the chair and the tape.
+- New portraits with expressions for the kid, Mom, Dad and the visitor (an older you under the hat).
+- A quieter HUD: the watch carries the time, chores are on a note on the fridge.
+- The memory log is in the kid's pencil early, the narrator's hand later, and old entries go cold on the dark path.
+- A small picture on every ending card.
+
+**Sound (T-033, T-034, T-035, T-100, T-148)**
+- New music: title, basement, recap and an ending theme. The hunt music turns harder when he sees you.
+- Sound pass: power cut, locks, the phone, the tape, the trunk, kicks at doors and furniture.
+- Voices and humming are muffled through walls and closed doors. Music goes dull outdoors.
+- Dad hums now: low and slow, in the shed and at the woodpile.
+- Own music: drop `assets/music/<name>.ogg` in and it replaces that code track (D9).
+
+**Release**
+- LICENSE: all rights reserved (Noah). The logo is credited as Noah's, made with AI tools.
+- `PUBLIC=1 ./build_all.sh` and `PUBLIC=1 ./package_play.sh` make builds without the debug panel, Shift+D or `?debug` (T-107).
+- The content note now also covers the darkest path (D10).
+
+## What's in v0.19.0
+New branch `claude-batch-v0.19-before-knock`, on top of v0.18.0 (`claude-batch-v0.18-parents`). Expansion 4 of the branches map: before the knock. The fifty minutes before he comes are now a place to set the stage, and each thing you set up pays off in the hunt. Each one also has one thing you only hear because you did it. The story test now has 86 memories and 13 endings. Every new line is Claude's, for Noah to react to.
+
+**Barricade a door**
+- In your room, the bathroom or Mom and Dad's room, before he comes: push the furniture against the door (5 min). Your chest of drawers, the laundry cabinet, Dad's dresser.
+- Nobody gets through it with a key. Not Mom, not Dad. He has to break it, and that takes him about seven seconds of noise instead of one and a half. Your way out is the window.
+- From the inside you can pull it away again (1 min). From the outside nothing moves.
+- When he breaks through your door, and you're close enough to hear: new memory New hinges. Achievement Not Through Here.
+- Mom and Dad in the Dark stance can't get in either. If you're in there, they walk up to the door, rattle it and tell him. He comes and takes the door with him.
+- If you're behind your own barricade at the knock, Mom tells him at the door.
+
+**His car key**
+- While he's at the window, his engine is running and nobody is in the car. New option: reach in, turn it off, take the key. The headlights go out.
+- Then: throw it into the snow, hide it in the woodpile, or keep it in your pocket. Achievement No Ride Home.
+- He finds out when he gets back to the car. He doesn't sit and wait for his minute, he comes straight up. At the door: "Somebody turned my engine off."
+- In the snow: when he catches you there's no trunk. You wait in his dead car together for a plough that never comes. New memory Hand-me-downs.
+- In the woodpile: he walks straight to it on the way down. In your pocket: he holds out his hand.
+- False Hope and The Handlers change with it too (the spare under the sun visor, the woodpile, your pocket).
+
+**Tracks out the back**
+- The gap in the back fence has a new option: walk tracks out onto the vidda and come back in your own steps (3 min).
+- Too early and the storm fills them in before he comes (the narrator tells you how long it had). Finished no more than six minutes before the knock (three in the early storm), they hold.
+- In the hunt he follows them all the way out to the gap, a long walk. Achievement Breadcrumbs. Then he searches the backyard.
+- If he gets you after that, he tells you what he did once, for real. New memory Thirty kilometres.
+
+**Traps at other doors**
+- Each trap has a second place now, instead of the front step: marbles in your own doorway (3 min), the tripwire across the living room door (5 min), the paint can over the shed door (5 min). Same darkness as before.
+- In the hunt they wait for him. Marbles put him on the floor for 3 seconds, the tripwire for 4.5, the paint can blinds him for 4. Achievement House Rules.
+- The tripwire is tied with Dad's knot. Close enough to hear him on the floor: new memory Dad's knot.
+- The three traps on the front step (and tying him up) work as before. A trap can only be in one place.
+
+**Smaller**
+- All four new memories: achievement Stage Manager.
+- New lines under the hunt title while he's on your trail and while he's working on the furniture.
+- On the floor after a trap you now only see him if you could, like the rest of the hunt.
+- Screenshot runner: `bar`, `itrap`, `carkey`, `tracks`, `goto`, `blind`.
+
+## What's in v0.18.0
+New branch `claude-batch-v0.18-parents`, on top of v0.17.0 (`claude-batch-v0.17-true-ending`). Expansion 3 of the branches map: whose side are Mom and Dad on. Plus Noah's answer 7: beating him plays out differently depending on who was on your side. The story test now has 82 memories and 13 endings. Every new line is Claude's, for Noah to react to.
+
+**When they want him gone (the Dark stance)**
+- Mom helps him look. She walks the house room by room, checks every hiding spot (she knows all of them) and calls your name.
+- If she sees you, she shouts which room you're in and he comes. If she opens your hiding spot she stands there with the lid up until he gets there.
+- Dad takes the front door. He doesn't search. He waits, and if you come near him he grabs you and holds you for the man.
+- New memory: They looked too. Achievement Search Party.
+
+**Telling them one at a time**
+- Turning a parent is still five chores plus proof. But now each of them has to hear it from you. Tell Mom and she says not to tell Dad yet. Tell Dad and he says not to tell Mom.
+- Both of them: the old plan (his car, or sit down and eat).
+- Only one: that one stays close in the hunt. Mom stays near you. Dad stays near him. When he gets close to you, they run at him and fight him. They lose. It takes about three seconds, then he needs a moment to get his breath back.
+- Mom goes for his belt. The box slides across the floor to you. Pick it up and his heart is no longer tied to yours. New memory: She went for the box. Achievement Just Her.
+- Dad tears the taser out of his hand. No more taser for him this loop, and it skids across the floor to you. One shot: let him get close, face him (E) and use it. He goes down. New memories: He went for the taser, His own medicine. Achievements Just Him, His Own Medicine.
+
+**Beating him (Noah's answer 7)**
+- **The Handlers.** Finish him while Mom or Dad is standing there and still on his side. They pick up his radio. Finse tells them to deliver you themselves. Then they hunt you, Mom through the house, Dad with his big torch. If they catch you, or when the bells ring, they drive you there. At Finse they're walked round the back of the building. Handlers don't deliver. New memory: Handlers. Achievement Family Business.
+- **Last Toll.** Both of them on your side and him on the floor: "Mom! Dad! Help me hold him!" (or finish him in front of them). Dinner by candlelight, riskrem, Dad gets the almond. Mom counts the bells. On the last one, BEEP, 16:00. New memory: The last toll. Achievement Last Toll.
+- End of the Program and Monster now need Mom and Dad out of the room (locked away or on the floor). With them standing there it's The Handlers.
+
+**Smaller**
+- Normal stance: Mom stands in the living room and quietly asks you to come out now and then.
+- He's drawn lying down while he's on the floor (traps, taser, tied, dead). Before he stood up the whole time.
+- New lines under the hunt title for all of the above.
+
+## What's in v0.17.0
+New branch `claude-batch-v0.17-true-ending`, on top of v0.16.0 (`claude-batch-v0.15-outside`). The true ending, woven into the dark path, and the other half of Noah's answer 10: tying him up. The story test now has 76 memories and 11 endings. Every line is new and Claude's, for Noah to react to.
+
+**Tie him up**
+- Rig all three traps on the front step (marbles, tripwire, paint can). He goes down three times in one go.
+- While he's on the floor, walk up and press E: "Tie his hands with the tripwire." He stays down for the rest of the hour.
+- Talk to him and he only speaks in riddles, one at a time. Or sit by the door and wait for the bells.
+- He can't hurt anyone tied up, so no threats. At 17:00 he reports "Restrained. By the subject." and the hour starts over anyway. Memory: Not going anywhere. Achievement Knots.
+
+**He remembers**
+- With all five pieces, five new things to say to him while he's down: hum Mom's song, make him read the back of his watch, ask what reissue means, tell him he hasn't had his dose, tell him it's his last pickup.
+- Once you start, he stays down and listens. Each one gets something back.
+- After all five he remembers the house. He pulls you close and whispers the part nobody else hears: he stood where you're standing once, and what you'll do next time. If you didn't take the box off his belt, he hands it to you himself.
+- Memory: He remembers. Achievement He Remembers.
+
+**Two true endings**
+- **Same House.** Finish it. Only with nobody else in the room: Mom bolted or locked away, Dad barred in the shed (answer 10). Knife, or his own gun if you have no knife. You take his coat, his watch and his radio. "Confirmed." Next cycle you're the man at the window, and a small kid in a red sweater opens the door before you knock.
+- **After.** Don't. Works with the parents right there too. He snaps the dose in half and lies to Finse for you. At 16:00 his car is at the gate, early. He never comes in. Now two of you remember.
+- Both change with: where Mom and Dad are (basement, bathroom, shed, in the room), whether you hummed the song back to Mom, what happened to Doggo, how dark you are, whether you read Appendix C, whether you found the cross out back, knife or no knife, and which of the five things you said first (it comes back at the very end).
+- Ending cards say TRUE ENDING. Achievements Same House and After.
+
+## What's in v0.16.0
+Same branch, `claude-batch-v0.15-outside`, on top of v0.15.2. From Noah's playtest: Doggo, Dad, and parents who feel less stiff. The story test now has 74 memories and 9 endings.
+
+**Doggo at the door**
+- In the hunt Doggo only barks when the man is in the same room. No more barking all ten minutes from the other end of the house.
+- When the hunt starts, Doggo goes to see who's at the door. Unless you told him to stay, let him out, or shut him in somewhere he can't get out of.
+- He barks at the man in the doorway. The man stays busy with him, which buys you a few seconds. After about six seconds he puts him down, right there, while you're still hiding.
+- Get to Doggo before that and call him (E) and he comes with you. Achievement Called Back.
+- New memory: He goes to see who it is.
+
+**Dad has a day now**
+- He reads the paper, swears at the generator, whistles (her song, once you know it), says "Copy. No change." into the radio, carries in firewood at 16:36, says something to Mom in the kitchen and calls everybody inside when the storm hits. Only when you're close enough to hear.
+- Six new things to talk about: a joke (three of them, achievement Dad Jokes), the storm, the army, how he met Mom, your present, and talking back about the generator.
+- Five new things to ask him once you know them: the car, are you even my dad, who was zero-five (he does not like that one), the small footprints, and the man's watch.
+
+**Asking the same thing again**
+- Mom and Dad answer properly once. Ask the same thing again and they get shorter, then annoyed, then cross. The fifth time Mom grounds you and Dad sends you to your room for ten minutes. Achievement Asked and Answered.
+
+
+Same branch, `claude-batch-v0.15-outside`. Noah's playtest of the hunt: too much sitting and waiting, then he kills your parents. More chase now.
+
+- **The hunt is longer.** 16:50 to 17:00 now takes about five real minutes instead of two. The debug panel (O) has "Hunt clock": real time (ten minutes), half (the new default) or the old speed.
+- **Your prints stay.** Two minutes in the snow, even in the storm. He finds the trail and follows it to the newest print. If you hid at the end of it, he walks straight there.
+- **A tiny sixth sense.** About every 20 to 25 seconds without a sighting he gets a hunch: "I used to hide over... here. Didn't I?" He walks to the area you are in and searches that room. He doesn't know the spot.
+- **More hunt before he starts on them, and more time between.** The warning comes at 16:57:30, then 16:58:40, then 16:59:40. He says "Come out" instead of counting minutes.
+- **He has a taser.** Kite him (lose him out of a chase, or go out a window in front of him) twice and the next time he sees you within eight tiles he stops, aims and fires. After one juke, standing where he can see you but can't get to you (across a fence, out a window, the far side of the stream) does it too. Break his line of sight while he aims and he misses ("Tch.").
+- **He gets more psychic toward 17:00.** The hunches come more often (every 7 to 9 seconds at the end) and land closer to you. In the last minute he walks to your exact area and checks every spot there.
+- **New ending: The Empty House.** Bolt Mom in the basement, bar Dad in the shed, send Doggo out the front door, then last the whole hunt. At the bells he stops, reports in, sits down in Dad's chair and talks to the empty room. Achievement Nobody Left.
+- New memories: He doesn't run any more, Nobody left to hurt. The story test now has 73 memories and 9 endings.
+
+## What's in v0.15.1
+Same branch, `claude-batch-v0.15-outside`. A fix from Noah's playtest.
+
+- In the first loop nothing bad is supposed to happen, but walking out of the gate still ended it as running away. Now in loop 1 you can't leave the yard: the kid turns around, steps back and says it's way too cold and Zulda is waiting inside. Three lines, in turn. Out the gate and through the gap in the back fence both.
+
+## What's in v0.15.0
+Built on the branch `claude-batch-v0.15-outside`, on top of v0.14.0 (`claude-batch-v0.14-hinges-de`). Not merged. Expansion 5: the outside. The story test now has 71 memories and the same 8 endings.
+
+**The backyard**
+- Behind the house there's a backyard now, about twice the size of the house. The map grew north into negative rows, so nothing that was already there moved.
+- Two lines of bushes with gaps. Pushing through a bush is slow. He gets slowed too, but less.
+- An old chain fence across the middle, with an open gate at one end and a torn gap at the other. You fit through the gap, slowly. He doesn't.
+- A frozen stream along the far end. Past it the back fence is down in one place. Out there is the vidda, and the same running away ending as the gate.
+
+**Windows**
+- Every window in the house works both ways: your room, the bathroom, Mom and Dad's room, the kitchen and both living room windows.
+- Climbing takes about two and a half seconds. Your own window sticks in the cold, so the first time each loop you have to bang it open first.
+- In the hunt it's loud. He hears it like running, and if he gets to you before you're through, he pulls you back.
+- Doggo can't follow you out. He whines at the glass.
+- Climbing out while grounded is neutral. No mood, no dark.
+
+**Cold**
+- Without the jacket you don't make it across the yard in the hunt. About eight seconds in the open. The shed and Doggo's house are still in reach from the front door.
+- With the jacket the cold never gets you. You just light up in his torch.
+- Hiding out of the wind is slower: the woodpile, the bins and Doggo's house, and out back the spruce and the old car.
+- A WARM bar shows how long you have.
+
+**Dark**
+- From 16:45 it gets darker outside, step by step. By 16:53 you only see a small circle around you. Dad's flashlight is a real beam out there.
+- The windows at the back of the house throw light on the snow while the power is on.
+
+**His torch**
+- Outside, after the power dies, he has a big torch. Long, wide, and it shines straight through bushes and the chain fence.
+- He spots your red sweater from about 15 tiles away. With the jacket on, the reflective stripes make it 20.
+
+**New hiding spots**: the snow beast, the old car and the big spruce.
+
+**Six things out back**
+- An old car on blocks, no wheels, snowed in to the door handles. A child seat in the back with the straps cut.
+- Small boot prints that start at the swing, walk north and stop. The snow never fills them in.
+- A little wooden cross with 05 carved into it.
+- A satellite dish whose cable goes straight down into the snow.
+- A swing set built for somebody smaller.
+- A hole cut in the ice, with a rope going down.
+- Find all six for an achievement.
+
+**Five nods**
+- A huge ride-on toy snow beast, grey-white, three horns, button eyes, a zip down the belly. You can climb inside. It's warm in there.
+- The flagpole. You can lick it.
+- A weathervane on the shed roof shaped like a fat rodent. Look up at it late in the hour.
+- A board behind the shed with the alphabet painted on it and a bulb over each letter. On a dark night it spells something.
+- A husky at the far fence that Doggo growls at. Walk up to it and there's nobody there.
+
+**New memories (4)**: The other way out, Somebody smaller, Zero-five, Lit up.
+**New achievements (7)**: Out the Window, Smells Worse Inside, Triple Dare, Same Day Again, Spelled Out, Not a Dog, Out Back.
+
+**Debug**
+- `2` hops you out back, next to the snow beast.
+- `test/shots.inc`: a small script runner for screenshots on a virtual screen. Only built with `-DSHOTS`.
+
+## What's in v0.14.0
+Built on the branch `claude-batch-v0.14-hinges-de`, on top of v0.13.0 (`claude-batch-v0.13-hinges`). Not merged. Expansion 1 of 4 is now complete: hinges D and E. All five pieces can be found. The true ending that uses them is not built yet. The story test now has 67 memories and the same 8 endings.
+
+**Hinge D: open the door yourself**
+- Once you know he comes at 16:50, and he has sat back down in his car (from 16:47), the front door offers "Open it and wait for him in the doorway."
+- There is no knock. He walks up the path and stops on the step. Nobody has ever opened the door for him, and for a minute he is off his script. What he says on the step is the fourth piece.
+- Traps on the step don't go off. He steps over them.
+- He doesn't grab you. The hunt starts with him on the step, counting rooms, and you get four seconds.
+
+**Hinge E: under a blanket in his car**
+- While he is at the window, his car has a new option (once you have looked in it or its trunk before): get in the back and hide on the floor.
+- He gets back in and sits there with you for two minutes. The radio talks to him. That is the fifth piece.
+- When he gets out you choose. Slip out, and you are back in the yard a minute before the knock. Or stay, and hear the rest of the hour from the car. It still ends at the bells.
+
+**The pieces**
+- Two new memories: After, always after, and The new collector.
+- New achievements: Open House, Stowaway, Five of Five (with a narrator line).
+
+**Debug**
+- `H` now cycles through all five hinges. D puts you at the front door at 16:47. E puts you at his car at 16:44.
+
+## What's in v0.13.0
+Built on the branch `claude-batch-v0.13-hinges`, on top of v0.12.0 (`claude-batch-v0.12-hunt`). Not merged. Expansion 1 of 4: the first three hinges. Each hinge is a door you shut on somebody before he comes. He has to deal with them first, and you get to listen. The story test now has 65 memories and the same 8 endings.
+
+**Hinge A: Mom in the bathroom**
+- Every loop at 16:46 Mom goes to the bathroom for two and a half minutes.
+- With the master key you can lock her in. When she's fine with you it's a trick, nothing dark. If you have had the knife this loop it's a dark act. If she's already scared of you it's darker.
+- At the knock he goes to her door before he starts on yours. What she tells him through it is the first piece.
+- He starts the hunt from the bathroom door, after a longer pause. If he can't find you, it's the bathroom door he kicks in.
+
+**Hinge B: Dad in the shed**
+- Bar Dad in the shed (the plank, as before). At the knock he asks where the father is and walks out to the shed with his torch. He leaves the plank where it is.
+- Dad makes him read the back of his watch. That's the second piece.
+- He starts the hunt out by the shed, so you get a head start in the house.
+
+**Hinge C: in the basement at the knock**
+- If you are downstairs when the power dies, you stay downstairs. One small screen keeps running on a battery and the radio channel is open. What Finse tells him is the third piece.
+- The stairs work during the hunt, both ways. He takes them too, once he gets round to the basement (only if its door is unlocked).
+- New hiding spot down there: the storage crates.
+
+**The pieces**
+- Three new memories: Not like with you, Crooked letters, Same house, next cycle. Together they say he was you once, and you will be him.
+- The true ending needs a piece from every hinge, so it isn't built yet. Two more hinges to go.
+- New achievements: Occupied, Three of Five.
+
+**Doors**
+- Doors now say which side you end up on. With the master key you can also step through and close or lock the door behind you. Closing a door without the key shows where you are standing. The front door says if you are about to lock yourself out.
+
+**Debug**
+- `H` sets up the next hinge (A, B, C in turn).
+
+## What's in v0.12.0
+Built on the branch `claude-batch-v0.12-hunt`, on top of v0.11.0 (`fable-visuals-20261112`). Not merged. The first of four expansions: the hunt. The story test now has 62 memories and the same 8 endings.
+
+**He learns**
+- He remembers every hiding spot he has pulled you out of, across loops and saves. Next time he goes to that room first and checks that spot first, with no looking around.
+- "You always pick that one" is no longer said the first time. He says it the second time. After that he says he doesn't know how he knows. He just walks there.
+
+**He hears**
+- Running is loud. He hears it through walls, from about ten tiles away (less out in the storm). He goes to the sound and turns that room inside out.
+- Walking he only hears when he is close. He turns around.
+- In a hiding spot he hears you breathe when he stands right outside. Hold Shift (RUN on a phone) to hold your breath. The AIR bar runs out in about six seconds, and then you gasp.
+
+**He tracks**
+- Snow on your boots. Come in from the yard and you leave wet prints on the floor for about fifteen seconds of walking. They dry in about 45. He follows them, all the way to your hiding spot.
+
+**You can**
+- Take a handful of marbles from the jar in your room (once you know he comes at 16:50). Q throws one the way you face. He goes to where it lands. Twice. The third time he just smiles.
+- Hide in five new places: the pantry, behind the Christmas tree, the woodpile, Doggo's house and the trash bins. The yard ones are cold, but slower to freeze in than standing out in the open.
+- Sprint for about three and a half seconds. Then your legs give out and you walk until they come back (the LEGS bar).
+
+**You see less**
+- During the hunt you only see him when you could really see him. Otherwise you see where his steps land, as red rings, and your own noise as yellow rings.
+
+**New memories (6)**: He remembers where he caught me, Running is loud, Hold my breath, Snow on my boots, He looks where it lands, Hiding doesn't end it (make it to 17:00 without being found).
+**New achievements (2)**: Creature of Habit, Lost Your Marbles.
+
+**Under the hood**
+- The save has one more field (the spots he found you in). Older saves load fine.
+- The debug line shows the hunt state while the hunt runs.
+
+## What's in v0.11.0
+Built on the branch `fable-visuals-20261112`, on top of the v0.10.0 audit branch. Not merged. A visual overhaul. No story changes, the story test is the same 56 memories and 8 endings.
+
+The prototype look is still the reference: a top-down house drawn in code, no image files. Everything is just drawn with a lot more care.
+
+**The world**
+- **Painted ground.** Floors, walls and snow are now painted once, pixel by pixel, when the game starts (`src/art/Bake.h`). Pine planks with knots and nails, a checkered kitchen, small bathroom tiles, carpet, cracked concrete in the basement.
+- **Every room has its own wall.** Pine panels in the living room, stars in your room, white tiles in the kitchen, wainscot in the hallway.
+- **Snow with shape.** Drifts, wind ripples on the plateau, ploughed banks along the road, snow up against the south wall, icicles under the eave.
+- **Rugs.** A red wool rug under the couch, a runner in the hallway, a town play mat in your room, a door mat.
+- **The plateau goes on.** South of the gate there used to be a black void. Now the road and the snow continue.
+
+**Roofs**
+- The house and the shed have roofs with snow on them. Step inside and the roof lifts away. Step out and it is back.
+- A brick chimney over the wood stove, with smoke. The storm tears the smoke sideways.
+- A string of coloured bulbs along the eave, and a porch lamp by the front door. They die with the power. They go red if you have gone dark.
+- From outside you no longer see into the house, only the lit windows. If you want the old view: Pause, Roofs, Off.
+
+**Light**
+- A new light pass. Soft round lights, warm pools from the windows on the snow, headlight beams up the road, and a glow on everything that shines (tree bulbs, the fire, the TV, the screens in the basement).
+- The night is a deeper blue. Indoors is warmer.
+- Snow falls in three depths and is drawn after the light, so you can see it at night. The storm adds white air.
+- A smooth vignette.
+
+**Things and people**
+- Every object is redrawn with an outline, a lit edge and a shaded edge. The tree has branches, a garland, 11 bulbs and a star. The flag waves properly.
+- People have shading, faces and clothes: your Christmas jumper, a parka and a red hat when you take the coat, Mom's apron, Dad's knitted band. The visitor has a long coat and a hat. You never quite see his eyes.
+- Doggo has a snout, a collar and a tongue.
+- Breath in the cold. Deeper footprints.
+- The car has headlights, tail lights and snow on the roof.
+
+**Screens**
+- **A title picture.** The house at 16:49, the car at the gate, and him halfway to the door.
+- **Faces in the dialogue box.** Whoever talks stands on the top edge of the box.
+- Panels have a soft shadow.
+
+**Under the hood**
+- New files: `src/art/Bake.h`, `src/art/Sprites.inc`, `src/art/WorldDraw.inc`. `main.cpp` lost about 800 lines of drawing code to them.
+- A debug jump could leave the kid in the basement while the game thought he was upstairs. The camera now decides which floor to draw.
+
+## What's in v0.10.0
+Built on the branch `fable-audit-20261112` after a full audit. Not merged. The audit and the story calls Claude made are in [docs/AUDIT-v0.10.md](docs/AUDIT-v0.10.md).
+
+**New things to find (56 memories now, was 45)**
+- **The tiny watch.** The "old watch" in Dad's cabinet was never used. Now you can take it. It is yours, from when you were a baby: ANCHOR 06. Show it to Mom, to Dad and to the man at the gate.
+- **The thin folder.** The filing cabinet has a second folder, ORIGIN PROTOCOL. It says in plain words why the hour repeats. A last page, Appendix C, only shows if you know about the box on his belt.
+- **His car.** While he stands at the window his car is empty at the gate. Look in through the window, open the trunk, or climb in yourself (Express Delivery).
+- **Doggo wants out.** He whines at the front door at 16:35. Open it and he is far away when the banging starts.
+- **Pull the phone plug.** If you know what the 16:22 call is, you can stop it. No call, no confirmation, and he leaves Mom and Dad alive. If you behave.
+- **Hum her song.** After the tape you can hum the carol back to Mom. At the end she says your name.
+- **Ask him.** "We do this every time." You can ask the man what he meant. He doesn't know he said it.
+- **Dad at the flagpole.** At 16:44 Dad walks out and checks the tiny box under the flag. Watch him do it and you can take the key. The clean route to the basement is now something you can find by paying attention.
+- **A new topic in the log:** The program.
+
+**Endings**
+- **One Good Hour.** A new ending for a kid who never went dark. False Hope now teaches you the leash (a memory), and that unlocks staying instead of running.
+- Monster and End of the Program gain a few lines if you have read Appendix C.
+
+**Reality**
+- **Somebody is in the bathroom.** A fourth reality shift. Achievement: Table for Four.
+
+**The log**
+- **Timeline.** A new first page: the hour from 16:00 to 17:00. Things show up once you have watched them happen.
+- **Awards.** A page with all 36 achievements and a nudge for each one you don't have.
+- A new memory opens the log on the right page.
+
+**The narrator**
+- He now mentions how the last loop ended, and has twice as many opening lines.
+- After three loops with nothing new he drops a hint.
+
+**Talking**
+- Everything a memory lets you ask Mom or Dad sits behind "Ask about something I remember". The lists had grown taller than the screen.
+- 13 new questions and answers for Mom and Dad. Any proof now works on them: the phone call, the files, his clipboard or the scar.
+- The radio follows the hour. The TV has more wrong episodes. Several objects have new lines later in the game.
+
+**Sound (not heard by a person yet)**
+- Wind outside and through the walls, the storm, the hum of the basement, the stove.
+- Footsteps on planks, tiles, snow and gravel. His can be heard through walls, duller and from the side he is on.
+- Mom hums in the kitchen. It is the Act 1 tune, slow. On the tape it is the only sound.
+
+**Fixes**
+- Answering the phone with Mom locked away did nothing at all. Now somebody is on the line.
+- The basement was drawn under the yard when you stood at the gate.
+- His car is solid, so walking up to it no longer sends you running onto the vidda.
+- Debug key 3 hops to the gate.
+
 ## What's in v0.9.3
 - **Debug text on the title** moved to the top left, so it no longer covers the content note.
 - **Debug key 4** takes you to the basement with the tape in your hand.

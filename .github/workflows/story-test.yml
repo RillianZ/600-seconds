@@ -1,0 +1,16 @@
+# Runs the headless story test on every pull request and push to main.
+# It plays scripted loops and fails if a memory or an ending can't be reached.
+name: Story test
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run test/sim.cpp
+        run: |
+          g++ -std=c++17 -Wall -Isrc test/sim.cpp src/game/Story.cpp -o sim
+          ./sim

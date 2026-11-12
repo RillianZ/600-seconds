@@ -66,16 +66,17 @@ struct NpcState {
     int x = 0, y = 0;
     bool visible = true;
     bool facingWall = false;
+    int face = -1;   // v0.20 systems: which way they look once they get there (-1 = don't care)
 };
 
-enum class Shift { None, Toilet45, NoDoggo, EarlyStorm };
+enum class Shift { None, Toilet45, NoDoggo, EarlyStorm, Sister, Fourth, NextUnit };   // v0.20 story: Fourth, NextUnit
 
 // v0.5: how a parent feels about you right now (per loop). Big choices lock them into a state,
 // so you can't chat about dinner with someone you just pulled a knife on.
 enum class Attitude { Normal, Cold, Scared, Broken };
 
 // v0.6: the kid holds one thing at a time
-enum class Item { None, Knife, Key, Stick, Bag, DogFood, Flashlight, Tape };
+enum class Item { None, Knife, Key, Stick, Bag, DogFood, Flashlight, Tape, BabyWatch };
 
 // v0.7: how the parents act when he comes. Normal = reluctantly hand you over (they don't know they're
 // next). Dark = they want him gone. Befriended = all chores, nothing dark this loop: they fight for you.
@@ -91,6 +92,13 @@ const char* ItemName(Item it);
 struct EndingEntry { std::string id, title, hint; };
 const std::vector<EndingEntry>& AllEndings();
 
+// v0.10: the hour as a list. An entry shows once you have seen it happen (or hold the memory that proves it)
+struct TimelineEntry { int minute, second; std::string id, text, memory; };
+const std::vector<TimelineEntry>& AllTimeline();
+// v0.10: every achievement, with a nudge for the ones you don't have
+struct AchievementEntry { std::string name, hint; };
+const std::vector<AchievementEntry>& AllAchievements();
+
 // v0.4.2: how often reality shifts. Tweakable live from the debug panel (O with ?debug).
 // Default: never two anomalies within 5 loops, and one is guaranteed within 10.
 struct ShiftConfig {
@@ -98,6 +106,10 @@ struct ShiftConfig {
     bool toilet = true;          // the 45 minute toilet
     bool noDoggo = true;         // the reality without Doggo
     bool earlyStorm = true;      // v0.9: the storm at 16:37, the power out at 16:40
+    bool sister = true;          // v0.10: somebody is in the bathroom. Not saved, no panel row yet
+    // v0.20 story: two stranger ones. Not saved, no panel row
+    bool fourth = true;          // somebody else is in the photos. He grows up in them
+    bool nextUnit = true;        // everybody calls you oh-seven
     int chance = 20;             // % chance per loop once the cooldown is over
     int minGap = 4;              // normal loops needed after an anomaly before the next one can happen
     int maxGap = 9;              // after this many normal loops one is guaranteed (0 = never forced)
@@ -105,6 +117,7 @@ struct ShiftConfig {
     int toiletShare = 60;        // % of anomalies that are the toilet (the rest: no Doggo)
     Shift forceNext = Shift::None; // one shot, not saved
     float timeMul = 1.0f;        // v0.5.1: game clock speed, 1.0x to 2.0x (debug panel)
+    float huntScale = 2.0f;      // v0.15.2 (Noah): game seconds per real second in the hunt. 2 = the last ten minutes take five. 1 = real time, 5 = the old speed
     std::string Save() const;
     void Load(const std::string& s);
 };
@@ -139,6 +152,12 @@ public:
     bool prototypeEndShown = false;
     int cleanStreak = 0;       // normal loops in a row since the last reality shift
     std::set<unsigned> seenLines;   // v0.9: hashes of every line already read (so it can be skipped)
+    // v0.10 persistent
+    std::set<std::string> seenEvents;   // things you watched happen: they fill in the timeline
+    int dryLoops = 0;                   // loops in a row without a new memory (the narrator nudges at 3)
+    std::string lastEnd;                // how the last loop ended, so the next one can mention it
+    // v0.12 persistent: the spots he has pulled you out of. He checks those first, every loop after
+    std::map<std::string, int> caughtSpots;
     // ---- darkness. Survives even a New Game. You can't undo it.
     int darkPoints = 0;
     bool tainted = false;
@@ -201,8 +220,105 @@ public:
     // v0.8 per loop
     bool hasCoat = false, openedEarly = false;
     float cold = 0;                            // 0 to 1 outside in the storm during the chase. 1 = the snow gets you
+    // v0.10 per loop
+    bool phoneUnplugged = false;               // no call, no confirmation
+    bool momRemorse = false;                   // you hummed it back to her
+    bool sisterNoticed = false;
+    bool echoAsked = false;
+    // v0.12 per loop: the hunt
+    std::string hideSpot;                      // set by the presentation: the object the kid is hiding in
+    int pebbles = 0;                           // marbles in your pocket, to throw
+    int decoys = 0;                            // how many he has fallen for this loop
     std::string pendingKnifeAct;
     int knifeChecks = 0;
+    // v0.13 per loop: the hinges. Each one changes the knock and where the hunt starts
+    bool momBathLocked = false;                // hinge A: Mom locked in the bathroom (16:46 to 16:48)
+    bool bathLockDark = false;                 // she was scared, or you had the knife: that one counts
+    std::string huntStart;                     // "", "bath", "shed" or "basement": the presentation reads it
+    Room momRoomNow = Room::Kitchen;           // set by the presentation: where Mom really stands right now
+    // v0.14 per loop: hinges D and E
+    bool doorGreeted = false;                  // hinge D: you opened the front door for him before he knocked
+    bool carHidden = false;                    // hinge E: you sat under the blanket in his car while he was in it
+    // v0.15 per loop: the outside
+    bool windowBanged = false;                 // your window sticks in the cold. The first time each loop it needs a bang
+    bool tongueStuck = false;                  // the flagpole. Once a loop is plenty
+    bool backyardCold = false;                 // the first time out back without the jacket you notice
+    // v0.16 per loop: Noah. Parents get tired of the same question, and Doggo goes to the door
+    std::map<std::string, int> asked;          // how many times you asked this topic this loop
+    int nagMom = 0, nagDad = 0;                // how many times you pushed the same thing on them
+    int dadJokes = 0;
+    // v0.17 per loop: the true ending. He's down, you have all five pieces, and you say them to him
+    std::vector<std::string> toldPieces;       // in the order you said them. The first one comes back at the very end
+    bool remembered = false;                   // all five: he knows the house. He knows he was you
+    bool visitorTied = false;                  // Noah's answer 10: knocked down three times, then tied with the tripwire
+    int tiedTalk = 0;
+    // v0.18 per loop: whose side are they on (branches map, section 3)
+    bool momTurned = false, dadTurned = false; // five chores + proof, told one at a time. Both = parentsAllied
+    bool momFought = false, dadFought = false; // a turned parent ran at him in the hunt, and lost
+    std::string dropItem;                      // what the fight left on the floor: "box" or "taser" ("" = nothing)
+    int dropX = -1, dropY = -1;
+    bool hasTaser = false;                     // his own taser. One shot
+    bool visitorDead = false;                  // you finished it, and somebody saw
+    bool handlers = false;                     // answer 7: he's dead, they weren't on your side. They take over the hunt
+    // v0.19 per loop: before the knock (branches map, section 4). Fifty minutes to set the stage
+    std::set<int> barricades;                  // door keys with furniture pushed against them, from the room side
+    std::set<std::string> innerTraps;          // marbles at your door, tripwire at the living room door, paint can over the shed door
+    std::string carKey;                        // his car key: "" (in the car), "pocket", "snow" or "woodpile"
+    float falseTracksAt = 0;                   // when you finished the fake trail out the back (0 = never)
+    bool falseTracks = false;                  // the trail was still there at the knock
+    bool falseTrailWalked = false;             // he followed it all the way out to the fence
+    int kidX = 5, kidY = 5;                    // where you stood last tick (the knock wants to know)
+    // v0.20 story: endings that teach, the watch, predictions, early lessons, stranger shifts
+    std::string prevEnd;                       // how the last loop ended (lastEnd is cleared at 16:00). The TV reads it
+    int predMom = 0, predDad = 0;              // things you told them before they happened, this loop
+    bool fourthNoticed = false, unitNoticed = false;
+    // v0.20 knife: the knife matters more. Clean jobs first (no darkness), darker ones open as you darken. Code in Knife.inc
+    bool tapeCut = false;                      // slit the tape on the big present. The paper is still whole
+    bool doggoTangled = false;                 // 16:15, in the living room with you: the ribbon off the big present, round his legs
+    bool gapCut = false;                       // the twine out of the torn chain fence out back. A door your size. Still not his
+    bool phoneCut = false;                     // the cord, not the plug. Nobody puts that back
+    bool brakesCut = false;                    // under his car while he was at the window. Whoever drives it next doesn't get far
+    bool KnowsKnifeJob() const;                // you've done a clean job with it, or seen where one is (persistent, via seenEvents)
+    bool MirrorReady() const;                  // Noah's request: max darkness, the knife, the bathroom mirror. Off screen, never an escape
+    static bool QuietMemory(const std::string& id) { return id == "no_way_out"; }   // not counted, not shown, not nudged until you have it
+    int MemoryTotal() const;                   // what the HUD and the log count to (the quiet one only once you have it)
+    bool KnifeInteract(const std::string& id, int px, int py);   // true if the knife took this one
+    bool KnifeChoose(const std::string& id);   // kn_* choices (and the knife's version of wp_stack)
+    void KnifeEvents(float prev, float now, int px, int py);
+    bool BrakesGo(const std::string& who);     // he (or they) drive his car. True if it took over the scene
+    void MirrorEnd();
+    void BladeCheck();
+    int KnifeNeeded() const { return tainted ? 2 : KnowsKnifeJob() ? 2 : 5; }
+    // v0.20 systems per loop
+    int fortressFights = 0;                    // T-083: how many times a parent unlocked the front door after you
+    bool nobodyHome = false;                   // T-083: locked, and nobody left to open it. He came round the back
+    bool NobodyToOpen() const;                 // front door locked, Mom and Dad both shut away somewhere
+    bool DarkEarly() const;                    // T-086: dark enough that he comes at 16:48
+    void NobodyHome();                         // T-083: the scene at the knock
+    // v0.20.1 story-knife: polish before the release. Code in PolishStoryKnife.inc
+    bool knifeCleanLoop = false;               // a clean job with the knife this loop (Mom worries instead of scolding)
+    bool frameCarved = false;                  // DARK_REVEL: 06 carved into your door frame, where Mom measures you
+    bool carveSkip = false;                    // the door menu asked for the plain door
+    bool watchThrown = false;                  // the hunt: you threw your watch. Two short, one long, over there
+    bool slipped = false;                      // the hunt: Small hands. You went limp once and came out of the sweater
+    bool dadReady = false;                     // you told Dad about the knock. He was in the doorway before the third one
+    std::string UnitLine(const std::string& who, const std::string& text) const;   // oh-seven: what people say to you says 07
+    bool OhSeven() const { return shift == Shift::NextUnit; }
+    void ShiftTrunk();                         // the photos and oh-seven: a last beat on the way to the bells
+    bool CanThrowWatch() const;
+    bool OnWatchLure();                        // the watch landed somewhere. He always goes to look
+    bool SlipGrip();                           // in OnCaught: true if you got away this once
+    bool DadReadyAtDoor(const std::string& how);   // at the knock
+    bool KnifeLooksClean(int px, int py) const;
+    void MomSeesKnife(int px, int py);
+    bool PolishInteract(const std::string& id, int px, int py);
+    bool PolishChoose(const std::string& id, int px, int py);
+    void ScreenTimeBrakes();
+    // v0.20.1 hunt-systems per loop
+    bool frontOpened = false;                  // the front door was locked at the knock, and a parent on his side opened it for him
+    const char* DarkOpener() const;            // Dark stance, door locked, somebody still in the house: "Mom", "Dad" or nullptr
+    void DarkOpensDoor();                      // they want him gone. The lock doesn't hold
+    int NodAt() const;                         // game second when Dad at the flagpole and the man at the window can nod (-1 = they can't this loop)
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -232,7 +348,65 @@ public:
     void OnLeftPremises();     // ran past the fence during the chase (v0.4)
     void QTEResult(bool stayedAwake);
     bool ShouldHide(const std::string& id) const;
+    // v0.12: the hunt
+    static bool IsHideSpot(const std::string& id);
+    int CaughtIn(const std::string& id) const { if (shift == Shift::NextUnit) return 0; auto it = caughtSpots.find(id); return it == caughtSpots.end() ? 0 : it->second; }   // v0.20.1 story-knife: he's looking for 07. He doesn't know 07's spots
+    void OnHeard(const std::string& how);   // run = running feet, breath = you breathed with him next to you, gasp = you ran out of air
+    void OnTracked();                       // he followed wet prints indoors
+    bool OnDecoy();                         // a thrown marble landed where he could hear it. True if he goes to look
     bool VisitorEntersWindow() const { return frontLocked; }
+    // v0.15: the outside
+    static bool IsWindow(const std::string& id) { return WindowById(id) != nullptr; }
+    bool WindowSticks(const std::string& id) const { return id == "window" && !windowBanged; }
+    void OnClimbed(const std::string& win, bool out, bool doggoLeft);   // the presentation finished the climb
+    void OnLitUp();                           // his torch found you from far away, out in the dark
+    void OnHusky();
+    void TooColdToLeave();
+    // v0.16 (Noah): at the knock Doggo goes to see who it is, unless he stays, is out, or is shut in
+    void OnDoggoAtDoor();                     // he's barking at the man in the doorway
+    void OnDoggoCalled();                     // you called him back in time
+    void OnDoggoPutDown(int x, int y);        // you didn't
+    void OnTased();
+    // v0.18: whose side are they on. The presentation moves them, the story says what it means
+    bool ParentsHunt() const { return chase && !handlers && stance == Stance::Dark && !Tutorial(); }   // they look for you with him
+    bool MomSearches() const { return (ParentsHunt() || handlers) && MomHere() && !momOnFloor && !momTurned; }
+    bool DadGuardsDoor() const { return ParentsHunt() && DadFree() && !dadOnFloor && !dadTurned; }
+    bool DadSearches() const { return handlers && DadFree() && !dadOnFloor && !dadTurned; }
+    bool OneTurned() const { return momTurned != dadTurned; }
+    std::string Defender() const;           // the one parent on your side who can still stand up for you, or ""
+    void OnParentSpots(const std::string& who, Room r);   // a parent saw you out in the open
+    void OnParentFinds(const std::string& who);           // a parent opened your hiding spot
+    void OnParentGrabs(const std::string& who);           // got you. With him: he's on his way. Without him: the car
+    void OnDefend(const std::string& who);                // a turned parent runs at him
+    void OnDefendDone(const std::string& who, int x, int y);   // they lost. Something is on the floor
+    void OnParentCall(const std::string& who);            // a line while they look (bubble)
+    // v0.19: before the knock. The presentation runs the hunt, the story says what it means
+    bool Barricaded(int x, int y) const { return barricades.count(y * World::W + x) > 0; }
+    static Room BarricadeRoom(int x, int y);           // the room a barricade at this door shuts (Room::Outside = can't)
+    std::string InnerTrapAt(int x, int y) const;       // "" or the trap waiting in this doorway
+    static void InnerTrapDoor(const std::string& trap, int& x, int& y);
+    bool EngineOn() const { return carKey.empty(); }
+    void OnBarricadeHit(int x, int y);                 // he found furniture against a door
+    void OnBarricadeBroken(int x, int y, bool kidNear); // he's through. Close enough and you hear what he says
+    void OnInnerTrap(const std::string& trap, bool kidNear);   // he walked into one of the inside traps
+    void OnFalseTrail(bool arrived);                   // he follows your fake trail out the back (false), and gets to the end of it (true)
+    void OnBarricadeTold(const std::string& who);      // a parent can't get in, and tells him why
+    // v0.17: the true ending. Once you start telling him the pieces, or once he's tied, he stays down
+    bool HoldDown() const { return visitorDowned && (visitorTied || !toldPieces.empty()); }
+    bool ParentsOut() const { return (!MomHere() || momOnFloor) && (!DadFree() || dadOnFloor); }   // answer 10: nobody else in the room
+    bool NobodyLeft() const { return momLocked && dadLocked && (doggoOut || shift == Shift::NoDoggo) && !doggoDead; }   // v0.15.2: nobody he can reach to make pay                           // v0.15.2: you kited him one time too many. He doesn't run after you any more                    // v0.15.1: loop 1. You walk up to the edge of the yard and turn back                           // you walked up to the dog at the far fence. Nobody there
+    bool BoardSpells() const { return (tainted || Act() >= 3) && t >= 45 * 60; }   // the lights behind the shed spell at you
+    bool Warm() const { return chase && kidHidden && hideSpot == "beast"; }
+    static int OutbackEggs(const std::set<std::string>& seen);
+    int EggsFound() const { return OutbackEggs(seenEvents); }
+    // v0.13: the hinges
+    bool MomInBath() const;                 // her two minutes in the bathroom, every loop
+    bool BathLockIsDark() const;            // Noah: a trick when she's happy, a dark act when she's scared or you hold the knife
+    int HingePieces() const { int n = 0; for (const char* id : {"piece_mom", "piece_dad", "piece_reissue", "piece_door", "piece_car"}) n += Knows(id) ? 1 : 0; return n; }
+    bool CanGreet() const;                  // v0.14: hinge D. He is in his car or on the step, and you know he's coming
+    bool BasementInHunt() const { return basementUnlocked; }   // he only searches down there if the door is open
+    // v0.13: which room is on the other side of a door, from where you stand
+    bool DoorSides(int dx, int dy, int px, int py, Room& here, Room& there, int& ox, int& oy) const;
 
     // queries
     int Awareness() const { return (int)memory.size(); }
@@ -253,10 +427,19 @@ public:
     bool PowerOut() const { return collection || t >= visitorTime || (shift == Shift::EarlyStorm && t >= 40 * 60); }
     bool Storm() const { return t >= (shift == Shift::EarlyStorm ? 37 : 47) * 60; }
     bool CarHere() const { return t >= visitorTime - VISIT_ARRIVE || collection; }
-    bool DoggoExists() const { return shift != Shift::NoDoggo && !doggoGone && !doggoDead; }
-    bool MomHere() const { return !momLocked; }
+    bool DoggoExists() const { return shift != Shift::NoDoggo && !doggoGone && !doggoDead && !doggoOut; }   // v0.10: out = safe, and not in the house
+    bool MomHere() const { return !momLocked && !momBathLocked; }
     bool DadFree() const { return !dadLocked && !dadDown; }
-    bool FullMemory() const { return memory.size() >= AllMemories().size(); }
+    bool FullMemory() const { return Awareness() >= MemoryTotal(); }   // v0.20 knife: the quiet memory never counts against you
+    // v0.10
+    bool KnowsEvent(const std::string& id) const;          // timeline: seen it, or hold the memory for it
+    bool SawEvent(const std::string& id) const { return seenEvents.count(id) > 0; }
+    bool HasProof() const { return Knows("phone_answer") || Knows("basement_files") || Knows("his_car") || Knows("leash"); }
+    bool CarEmpty() const;                                 // he is at the window, the car is running at the gate
+    bool DoggoAtDoor() const { return DoggoExists() && !collection && t >= 35 * 60 && t < 40 * 60; }
+    bool Spared() const;                                   // nobody confirmed the clean-up and nobody gave him a reason
+    bool MomHums() const;                                  // she hums in the kitchen while she thinks nobody listens
+    bool DadHums() const;                                  // v0.20 sound (T-148): he hums at his work, in the shed and at the woodpile
     NpcState Mom() const;
     NpcState Dad() const;
     NpcState Visitor() const;
@@ -293,7 +476,7 @@ private:
     void CollectionScript();
     void TutorialCollection();
     void ColdOut();
-    void TrunkScript();
+    void TrunkScript(bool quiet = false);
     void SecretEnding();
     void MonsterEnding();
     void DeadSwitchLoop();
@@ -304,12 +487,58 @@ private:
     void VisitorChoice();
     void TiredOut();
     void PaidEnding();
+    void EmptyHouseEnding();   // v0.15.2 (Noah): both parents where he can't reach them, Doggo gone, and you lasted to the bells
     void EscapeEnding();
     void Threat(int n);
     void DoggoShot(bool onScreen);
     void ConvinceParents(const std::string& who);
+    // v0.13: the hinges at the door
+    void HingeBath();
+    void HingeShed();
+    void HingeBasement();
+    void HingeDoor();          // v0.14: D, you opened the door yourself
+    void HingeCar();           // v0.14: E, under the blanket in his car
+    void GoneEnding();         // v0.14: E, you stayed in the car through the knock
+    void PieceCheck();
+    // v0.17: the true ending, woven into the dark path (branches map, section 6)
+    void TellPiece(const std::string& id);
+    void Remember();
+    void SameHouseEnding();    // finish it: you take the coat, the watch and the radio. Confirmed
+    void AfterEnding();        // don't: he snaps the dose, and keeps the house
+    void TiedBells();          // 17:00 with him still on the floor
+    // v0.18: answer 7
+    void StartHandlers();      // you finished him in front of them. They take over the hunt
+    void HandlersEnding(bool caught);
+    void LastTollEnding(bool killed);   // they were on your side and he's beaten. The bells ring anyway
+    // v0.19: before the knock
+    void NoKeyEnding();        // you threw his car key in the snow. You wait for the plough together
+    void Thirty();             // he followed your fake trail, and says what he did once, for real
+    void StageCheck();         // all four things from section 4, once
+    // v0.20 story (src/game/StoryMore.inc, included at the end of Story.cpp)
+    bool MoreInteract(const std::string& id, int px, int py);   // true if it handled the object
+    bool MoreChoose(const std::string& id, int px, int py);     // true if it handled the choice
+    void MoreMomQuestions(std::vector<ChoiceOpt>& o) const;
+    void MoreDadQuestions(std::vector<ChoiceOpt>& o) const;
+    std::vector<ChoiceOpt> VisitorQuestions() const;            // what you can say to him at the gate because of what you remember
+    void ShiftOpener();                                         // the first line of a stranger reality
+    void Predict(const std::string& who, const std::string& what);
+    void SameNumber();                                          // 05 on the cross, 05 on his clipboard
+    bool UntouchedParent() const { return (MomHere() && !momOnFloor && !momTurned) || (DadFree() && !dadOnFloor && !dadTurned); }
+    bool TurnedStanding() const { return (momTurned && MomHere() && !momOnFloor) || (dadTurned && DadFree() && !dadOnFloor); }
+    bool Nag(const std::string& id);   // v0.16: asked the same thing again. True if the parent answered with that instead
+    void Egg(const std::string& id);   // v0.15: one of the six things out back
     void AddDark(int n) { darkPoints = std::min(DARK_MAX, darkPoints + n); darkThisLoop += n; }
     void ScreenTimeEnding();
+    // v0.10
+    void See(const std::string& ev) { seenEvents.insert(ev); }
+    bool CleanUp();                 // the black screen lines for the handlers and Doggo. True if they lived
+    void DinnerEnding();
+    void ExpressDelivery();
+    void ShowWrist(bool downed);
+    void LoopOpener(const std::string& how);
+    void Nudge();
+    std::vector<ChoiceOpt> MomQuestions() const;   // what you can ask her because of what you remember
+    std::vector<ChoiceOpt> DadQuestions() const;
     void FliptendoPlayed(const std::string& what);
     int Dur(int minutes) const { return Tutorial() ? minutes * 2 : minutes; }
     bool TutorialLocked(const std::string& id) const;
