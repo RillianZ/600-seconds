@@ -46,6 +46,7 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Big spoilers in
 ```
 src/game/World.h     map, rooms, objects, windows (plain C++). Rows go from World::TOP (-26, the backyard) to 45
 src/game/Story.h/.cpp all rules: clock, events, choices, memory log, saves (plain C++)
+src/game/Knife.inc   the kitchen knife: clean jobs, darker jobs, the mirror (included at the end of Story.cpp)
 src/audio/Soundtrack.h/.cpp every song, written as code (plain C++)
 src/main.cpp         raylib: drawing, input, sound, UI
 test/sim.cpp         plays scripted loops headless and checks every memory is reachable

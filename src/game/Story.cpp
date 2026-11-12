@@ -2940,6 +2940,7 @@ void Story::SameHouseEnding() {
     if (darkBefore >= DARK_REVEL) Black("You can't drive. You learn. It takes nine loops. You don't mind loops any more.");
     else if (darkBefore >= DARK_TAINT) Black("You can't drive. The car can. It knows the road to Finse better than you know the house.");
     else Black("You sit in his car for a long time with your hands in your lap. Then it starts by itself. Somebody at Finse is driving.");
+    if (brakesCut) Black("Halfway down you remember the brake line. The car takes every bend anyway, slow and careful, like somebody else is driving.");   // v0.20 knife
     Black("They wiped me. They aged me. They reissued me.");
     Black("Snow on your shoulders. A black car at a gate. Two minutes, breathing like you're counting.");
     Black(std::string("You stand at the living room window and look in. A tree. A woman in the kitchen") + (momRemorse ? ", humming" : "") + ". A man by the stove with a newspaper.");
