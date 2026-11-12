@@ -32,6 +32,10 @@
 //   tracks              your fake trail out the back held (set before "hunt")
 //   goto X Y            send him to look at a tile (he walks there, kicking doors on the way)
 //   blind               he can't see you (to watch him from close by)
+//   sound LABEL         print what the music and ambience are doing, and every sound id played since the last one (v0.20 sound)
+//   title | recap       go to the title screen | open the memory recap (v0.20 sound)
+//   jukebox             open the debug jukebox (v0.20 sound)
+//   ending ID           show that ending card now (v0.20 sound)
 //   quit
 #include <fstream>
 #include <sstream>
@@ -113,6 +117,20 @@ static void ShotsStep() {
         }
         else if (c == "wait") { ss >> shotWait; return; }
         else if (c == "shot") { std::string f; ss >> f; TakeScreenshot(f.c_str()); }
+        // v0.20 sound: nobody can listen on the build machine, so the runner prints what would be heard
+        else if (c == "sound") {
+            std::string label; std::getline(ss, label);
+            std::string log; for (auto& e : sfxLog) log += e + " "; sfxLog.clear();
+            std::printf("SOUND%s | music: %s (fade %.1fs, %s) | mom %.2f muff %.2f | dad %.2f muff %.2f | music muff %.2f | hum %.2f wind %.2f vhs %.0f | DadHums %d MomHums %d | sfx: %s\n",
+                label.c_str(), TrackName(musicCur), (float)musicFadeSec, TrackFromFile(musicCur) ? "file" : "code", (float)aMomT, (float)aMomMuffT, (float)aDadT, (float)aDadMuffT,
+                (float)aMusicMuffT, (float)aHumT, (float)aWindT, (float)aVhsT, story.DadHums() ? 1 : 0, story.MomHums() ? 1 : 0, log.c_str());
+            std::printf("      kid %d,%d  dad %d,%d visible %d  mom %d,%d\n", TX(player.pos.x), TX(player.pos.y), TX(dad.pos.x), TX(dad.pos.y), dad.visible ? 1 : 0, TX(mom.pos.x), TX(mom.pos.y));
+            std::fflush(stdout);
+        }
+        else if (c == "jukebox") { debugMode = true; jukeboxOpen = true; jukeboxSel = musicCur; }
+        else if (c == "title") { screen = Screen::Title; story.beats.clear(); beatActive = false; }
+        else if (c == "recap") { recapList = { "phone_mom" }; recapOpen = true; recapT = 0; recapShown = 0; }
+        else if (c == "ending") { recapOpen = false; std::string id; ss >> id; Beat e; e.type = BeatType::Ending; e.id = id; e.speaker = "ENDING"; e.text = "TEST\n\n" + id; story.beats.clear(); story.beats.push_back(e); beatActive = false; StartNextBeat(); }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

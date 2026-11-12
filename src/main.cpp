@@ -272,6 +272,7 @@ static Sound MakeSound(int frames, float (*f)(float t, int i)) {
     return s;
 }
 static float Noise(int i) { unsigned x = i * 2654435761u; x ^= x >> 13; x *= 1274126177u; return ((x & 0xffff) / 32768.0f) - 1.0f; }
+#include "audio/SfxV20.inc"   // v0.20 sound: power cut, locks, phone, tape, trunk, kicks
 
 static void InitSounds() {
     InitAudioDevice();
@@ -350,14 +351,16 @@ static void InitSounds() {
         float f = 300 + 400 * std::exp(-t * 20);
         return (std::sin(t * 2 * PI * f) * 0.6f + Noise(i) * 0.25f) * std::exp(-t * 14) * (t < 0.2f ? 1 : 0);
     });
+    InitSoundsV20();   // v0.20 sound
 }
 
 static bool hushMusic = false;   // v0.9: the story asks for silence
 static void Play(const std::string& id) {
     if (id == "hush_on") { hushMusic = true; return; }
-    if (id == "hush_off") { hushMusic = false; aHumSolo = false; return; }
+    if (id == "hush_off") { hushMusic = false; aHumSolo = false; aVhsT = 0; return; }
     if (id == "hum_on") { aHumSolo = true; return; }
     if (id == "hum_off") { aHumSolo = false; return; }
+    if (PlayV20(id)) return;   // v0.20 sound: the new ids, and the knock that waits for the power cut
     if (!audioOk) return;
     auto P = [&](Sound& s) { SetSoundVolume(s, settings.sfx / 10.0f * (id == "bark" ? 0.5f : 1.0f)); PlaySound(s); };
     if (id == "beep") P(sBeep);
@@ -385,8 +388,11 @@ static bool IsBark(const std::string& t) {
 //   0 silence, 1 cute (EarthBound-ish), 2 eerie music box, 3 hopeless drone, 4 the collection
 static AudioStream musicStream{};
 static bool musicOk = false;
-static volatile int musicCur = 0, musicPrev = 0;
-static float musicFade = 1.0f;     // 0..1 crossfade progress
+// v0.20 sound: every track has its own gain that glides up or down, so a change in the middle of a fade can't jump
+static volatile int musicCur = 0;
+static volatile float musicFadeSec = 2.5f;      // how long the current change takes
+static float trackGain[TRACK_COUNT] = {};       // audio thread
+static bool trackIsFile[TRACK_COUNT] = {};      // T-100: a music file plays this one (set before the stream starts)
 static double musicT = 0;
 static const int MUSIC_RATE = 44100;
 static std::vector<float> echoBuf;
@@ -397,6 +403,9 @@ static float musicLP = 0;
 // up once per frame, which could run dry in the browser and crackle)
 // audio thread only
 static float aWind = 0, aBright = 1, aHum = 0, aStove = 0, aMom = 0, aSolo = 0, aLP1 = 0, aLP2 = 0, aCrack = 0;
+// v0.20 sound: Dad's hum, the muffle on each voice and on the music, the tape hiss
+static volatile float aDadT = 0, aMomMuffT = 0, aDadMuffT = 0, aMusicMuffT = 0;
+static float aDad = 0, aMomMuff = 0, aDadMuff = 0, aMusicMuff = 0, aVhs = 0, momLP = 0, dadLP = 0, vhsLP = 0, echoWet = 0.2f;
 static unsigned aSeed = 22222;
 static double aT = 0;
 static const float kWindGain = 1.6f;   // measured offline: full storm outside is about 0.057 RMS, the music tracks 0.035 to 0.06
@@ -405,24 +414,36 @@ static void MusicCallback(void* buffer, unsigned int frames) {
     const float lpA = 0.6f;   // gentle low-pass (~6.5 kHz), takes the edge off
     for (unsigned int i = 0; i < frames; ++i) {
         musicT += 1.0 / MUSIC_RATE;
-        if (musicFade < 1) musicFade = std::min(1.0f, musicFade + 1.0f / (MUSIC_RATE * 2.5f));
-        int curT = musicCur, prevT = musicPrev;
-        float v = TrackSample(curT, musicT) * musicFade;
-        if (musicFade < 1) v += TrackSample(prevT, musicT) * (1 - musicFade);
+        // v0.20 sound: each track glides toward its own target. Files (T-100) are mixed by raylib, not here
+        int curT = musicCur;
+        float rate = 1.0f / (MUSIC_RATE * std::max(0.05f, (float)musicFadeSec));
+        float v = 0;
+        for (int k = 1; k < TRACK_COUNT; ++k) {
+            float g = trackGain[k], tgt = k == curT ? 1.0f : 0.0f;
+            if (g != tgt) trackGain[k] = g = tgt > g ? std::min(tgt, g + rate) : std::max(tgt, g - rate);
+            if (g > 0 && !trackIsFile[k]) v += TrackSample(k, musicT) * g;
+        }
         v *= gMusicVol;
         // v0.10: glide to the frame's targets (about a third of a second)
         const float glide = 1.0f / (MUSIC_RATE * 0.35f);
         aWind += (aWindT - aWind) * glide; aBright += (aBrightT - aBright) * glide; aHum += (aHumT - aHum) * glide;
         aStove += (aStoveT - aStove) * glide; aMom += (aMomT - aMom) * glide; aSolo += ((aHumSolo ? 1.0f : 0.0f) - aSolo) * glide;
-        // her song. It is the Act 1 tune, slow. In the kitchen it sits under the music, on the tape it is alone
-        if (aMom > 0.002f || aSolo > 0.002f) v += HumSample(musicT) * (aMom * 0.04f + aSolo * 0.075f) * gSfxVol;
+        aDad += (aDadT - aDad) * glide; aMomMuff += (aMomMuffT - aMomMuff) * glide; aDadMuff += (aDadMuffT - aDadMuff) * glide;
+        aMusicMuff += (aMusicMuffT - aMusicMuff) * glide; aVhs += (aVhsT - aVhs) * glide;
+        // her song on the tape. It is alone there, and the tape wobbles a little
+        if (aSolo > 0.002f) v += HumSample(musicT + aVhs * 0.003 * std::sin(2 * PI * 0.6 * musicT)) * aSolo * 0.075f * gSfxVol;
         // echo: more of it the darker it gets
-        float wet = TrackEcho(curT);
+        echoWet += (TrackEcho(curT) - echoWet) * glide * 0.2f;
+        float wet = echoWet;
         float e = echoBuf[echoPos];
         echoBuf[echoPos] = v + e * wet * 0.85f;
         echoPos = (echoPos + 1) % (int)echoBuf.size();
         v += e * wet;
-        musicLP += (v - musicLP) * lpA;
+        musicLP += (v - musicLP) * (lpA - 0.44f * aMusicMuff);   // v0.20 sound: duller outdoors (T-035)
+        // v0.20 sound (T-035, T-148): people humming in the house. Their own low-pass: clear in the same room, dull through a door or a wall
+        float voices = 0;
+        if (aMom > 0.002f) { momLP += (HumSample(musicT) * aMom * 0.044f - momLP) * (0.5f - 0.43f * aMomMuff); voices += momLP; }
+        if (aDad > 0.002f) { dadLP += (DadHumSample(musicT) * aDad * 0.04f - dadLP) * (0.5f - 0.43f * aDadMuff); voices += dadLP; }
         // ambience: wind (two soft low-passes on noise), the basement hum, the stove
         aT += 1.0 / MUSIC_RATE;
         aSeed = aSeed * 1664525u + 1013904223u;
@@ -441,7 +462,12 @@ static void MusicCallback(void* buffer, unsigned int frames) {
             aCrack *= 0.9925f;
             amb += aCrack * n * 0.10f * aStove;
         }
-        out[i] = std::tanh(musicLP * 1.1f + amb * gSfxVol) * 0.85f;
+        if (aVhs > 0.002f) {
+            // v0.20 sound: tape hiss. High-passed noise that breathes a little with the tape
+            vhsLP += (n - vhsLP) * 0.35f;
+            amb += (n - vhsLP) * 0.03f * aVhs * (0.8f + 0.2f * (float)std::sin(aT * 2 * PI * 0.45));
+        }
+        out[i] = std::tanh(musicLP * 1.1f + (amb + voices) * gSfxVol) * 0.85f;
     }
 }
 
@@ -457,12 +483,12 @@ static void InitMusic() {
     PlayAudioStream(musicStream);
 }
 
-static void SetMusic(int track) {
+static void SetMusic(int track, float fadeSec = 2.5f) {
     if (track == musicCur) return;
-    musicPrev = musicCur;
-    musicFade = 0;
+    musicFadeSec = fadeSec;
     musicCur = track;
 }
+#include "audio/MusicFiles.inc"   // v0.20 sound (T-100): music files replace code tracks when they exist
 
 static void UpdateMusic() { /* the callback does the work now */ }
 
@@ -634,6 +660,14 @@ static bool LineOfSight(Vector2 a, Vector2 b) {
         if (BlocksSight(TX(a.x + (b.x - a.x) * k), TX(a.y + (b.y - a.y) * k))) return false;
     }
     return true;
+}
+// v0.20 sound (T-035): how a voice reaches the kid. Same room: clear. Through an open doorway: a little dull.
+// Through a wall or a closed door: quieter and dull. The yard front and back counts as one room
+static float VoiceThrough(Vector2 from, Room kidRoom, float& muffle) {
+    Room vr = story.world.RoomAt(TX(from.x), TX(from.y));
+    if (vr == kidRoom || (IsYard(vr) && IsYard(kidRoom))) { muffle = 0; return 1.0f; }
+    if (LineOfSight(from, player.pos)) { muffle = 0.35f; return 0.75f; }
+    muffle = 1; return 0.45f;
 }
 // v0.15: outside, after the power dies, he has a big torch
 static bool OutdoorsAt(Vector2 p) { Room r = story.world.RoomAt(TX(p.x), TX(p.y)); return IsYard(r) || r == Room::Vidda; }
@@ -899,7 +933,7 @@ static void SkipSeen() {
         bool text = f.type == BeatType::Say || f.type == BeatType::Black || f.type == BeatType::Narrate;
         if (f.type == BeatType::Say && story.Stage() >= 1) story.beats.pop_front();
         else if (text && story.SeenLine(f.text)) story.beats.pop_front();
-        else if (f.type == BeatType::Sound) { if (f.id.rfind("hush", 0) == 0 || f.id.rfind("hum_", 0) == 0) Play(f.id); story.beats.pop_front(); }
+        else if (f.type == BeatType::Sound) { if (f.id.rfind("hush", 0) == 0 || f.id.rfind("hum_", 0) == 0 || f.id.rfind("vhs_", 0) == 0) Play(f.id); story.beats.pop_front(); }   // v0.20 sound: vhs_
         else if (f.type == BeatType::Fade && f.minutes == 0 && f.tx < 0 && f.text.empty()) story.beats.pop_front();
         else break;
     }
@@ -1774,13 +1808,14 @@ static void DrawJukebox() {
     DrawRectangle(0, 0, (int)(VW * US), (int)(VH * US), Fade(Color{ 8, 8, 14, 255 }, 0.94f));
     UIText("JUKEBOX", 24, 20, 16, Color{ 230, 60, 60, 255 });
     UIText("debug  -  every song is code in src/audio/Soundtrack.cpp", 24, 40, 6, Fade(WHITE, 0.5f));
+    const float rowH = 19;   // v0.20 sound: ten tracks now, packed tighter
     for (int i = 0; i < TRACK_COUNT; ++i) {
-        float y = 62 + i * 30;
+        float y = 54 + i * rowH;
         bool sel = i == jukeboxSel, playing = i == musicCur;
-        if (sel) DrawRectangle((int)(20 * US), (int)((y - 4) * US), (int)((VW - 40) * US), (int)(28 * US), Color{ 50, 40, 80, 255 });
-        std::string name = std::string(playing ? "> " : "  ") + TrackName(i);
-        UIText(name.c_str(), 28, y, 10, playing ? Color{ 255, 210, 90, 255 } : WHITE);
-        UIText(TrackInfo(i), 40, y + 13, 6, Fade(WHITE, 0.55f));
+        if (sel) DrawRectangle((int)(20 * US), (int)((y - 2) * US), (int)((VW - 40) * US), (int)((rowH - 1) * US), Color{ 50, 40, 80, 255 });
+        std::string name = std::string(playing ? "> " : "  ") + TrackName(i) + (TrackFromFile(i) ? "   [file]" : "");
+        UIText(name.c_str(), 28, y, 8, playing ? Color{ 255, 210, 90, 255 } : WHITE);
+        UIText(TrackInfo(i), 40, y + 9, 5, Fade(WHITE, 0.55f));
     }
     // a tiny live scope of what's playing
     float sx = VW - 150, sy = 26;
@@ -1801,7 +1836,7 @@ static bool UpdateJukebox() {
     if (IsKeyPressed(KEY_ESCAPE)) { jukeboxOpen = false; return true; }
     if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) jukeboxSel = (jukeboxSel + 1) % TRACK_COUNT;
     if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W)) jukeboxSel = (jukeboxSel + TRACK_COUNT - 1) % TRACK_COUNT;
-    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_E)) { musicPrev = musicCur; musicCur = jukeboxSel; musicFade = 0.6f; }
+    if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_E)) SetMusic(jukeboxSel, 0.6f);   // v0.20 sound
     return true;
 }
 
@@ -2444,28 +2479,51 @@ static void UpdateDrawFrame() {
 #endif
 
     // soundtrack follows the act
+    // v0.20 sound (T-033): plus the title, the basement, the recap and the endings, and the hunt in two halves
+    float musicMuff = 0;
     {
         int track = 0;
-        if (screen == Screen::Title) track = story.Act();
+        float fade = 2.5f;
+        static float spottedHold = 0;   // stays "spotted" a few seconds after he loses sight, so it doesn't flicker
+        if (screen == Screen::Title) track = TRACK_TITLE;
         else if (screen == Screen::Game) {
-            if (story.collection && !(beatActive && (cur.type == BeatType::Ending || cur.type == BeatType::EndLoop))) track = 4;
-            else track = story.Act();
+            if (story.collection && !(beatActive && (cur.type == BeatType::Ending || cur.type == BeatType::EndLoop))) {
+                bool sees = scene == SceneMode::Chase && story.chase && vmode == VMode::Chase && !story.handlers;
+                spottedHold = sees ? 3.5f : std::max(0.0f, spottedHold - dt);
+                track = spottedHold > 0 ? TRACK_SPOTTED : TRACK_CHASE;
+                fade = sees ? 0.6f : 2.0f;   // in fast, out slow
+            } else {
+                spottedHold = 0;
+                track = story.Act();
+                if (!story.collection && (story.inBasement || story.world.RoomAt(TX(player.pos.x), TX(player.pos.y)) == Room::Basement)) track = TRACK_BASEMENT;
+            }
             if (hushMusic) track = 0;
-            if (beatActive && cur.type == BeatType::Ending) track = 3;
+            if (beatActive && cur.type == BeatType::Ending) track = cur.id == "screen" ? TRACK_CUTE : TRACK_ENDING;   // the joke ending stays a joke
+            if (recapOpen) { track = TRACK_RECAP; fade = 1.2f; }
+            // T-035: a gentle low-pass on the music outdoors, and on the hunt music down in the basement
+            bool card = beatActive && (cur.type == BeatType::Ending || cur.type == BeatType::Black || cur.type == BeatType::Card);
+            Room r = story.world.RoomAt(TX(player.pos.x), TX(player.pos.y));
+            if (!card && !recapOpen && !pauseOpen && !journalOpen && !miniOpen) {
+                if (IsYard(r) || r == Room::Vidda) musicMuff = 1;
+                else if ((story.inBasement || r == Room::Basement) && track != TRACK_BASEMENT) musicMuff = 0.7f;
+            }
         }
-        if (!jukeboxOpen) SetMusic(track);
+        if (!jukeboxOpen) SetMusic(track, fade);
         UpdateMusic();
+        UpdateMusicFiles(dt, jukeboxOpen ? 0.0f : musicMuff);
+        PlayV20Later();
     }
     // v0.10: ambience follows where the kid is standing. The audio thread glides to these
     {
         gMusicVol = settings.music / 10.0f; gSfxVol = settings.sfx / 10.0f;
         float wind = 0, bright = 1, hum = 0, stove = 0, momHum = 0;
+        float dadHum = 0, momMuff = 0, dadMuff = 0;   // v0.20 sound
         if (screen == Screen::Title) { wind = 0.2f; bright = 0.55f; }
         else if (screen == Screen::Game && !hushMusic && !pauseOpen && !journalOpen && !miniOpen && !recapOpen) {
             int px = TX(player.pos.x), py = TX(player.pos.y);
             Room r = story.world.RoomAt(px, py);
             bool storm = story.Storm() || story.collection;
-            if (story.inBasement || r == Room::Basement) hum = 1;
+            if (story.inBasement || r == Room::Basement) hum = story.PowerOut() ? 0.0f : 1.0f;   // v0.20 sound: the hum dies with the power
             else if (IsYard(r) || r == Room::Vidda) wind = storm ? 1.0f : 0.32f;
             else {
                 wind = storm ? 0.42f : 0.07f; bright = 0.3f;   // through the walls
@@ -2475,11 +2533,18 @@ static void UpdateDrawFrame() {
                 if (r == Room::LivingRoom && dsv < 6) stove = 1 - dsv / 6;
                 if (story.MomHums() && mom.visible) {
                     float dm = std::hypot(mom.pos.x - player.pos.x, mom.pos.y - player.pos.y) / TS;
-                    if (dm < 9) momHum = (1 - dm / 9) * (story.world.RoomAt(TX(mom.pos.x), TX(mom.pos.y)) == r ? 1.0f : 0.45f);
+                    if (dm < 9) momHum = (1 - dm / 9) * VoiceThrough(mom.pos, r, momMuff);   // v0.20 sound: muffled through walls and doors
                 }
+            }
+            // v0.20 sound (T-148): Dad hums at his work, in the shed and at the woodpile. You hear him from the yard too
+            if (story.DadHums() && dad.visible) {
+                float dd = std::hypot(dad.pos.x - player.pos.x, dad.pos.y - player.pos.y) / TS;
+                if (dd < 8) dadHum = (1 - dd / 8) * VoiceThrough(dad.pos, r, dadMuff);
             }
         }
         aWindT = wind; aBrightT = bright; aHumT = hum; aStoveT = stove; aMomT = momHum;
+        aDadT = dadHum; aMomMuffT = momMuff; aDadMuffT = dadMuff; aMusicMuffT = musicMuff;   // v0.20 sound
+        if (screen != Screen::Game) aVhsT = 0;
         if (screen != Screen::Game) aHumSolo = false;
     }
 
@@ -2811,9 +2876,14 @@ static void UpdateDrawFrame() {
         auto visitorStep = [&](int tx, int ty, float sp, float stop) -> bool {
             if (vDoorT > 0) {
                 vDoorT -= dt;
-                if (std::fmod(vDoorT, 0.5f) < dt) { Play("thud"); if (vDoorBar) AddRing(TileCenter(vDoorX, vDoorY), 0); }
+                // v0.20 sound (T-034): his boot on the door, from where the door is. Furniture shifts between kicks
+                if (std::fmod(vDoorT, 0.5f) < dt) {
+                    bool alt = vDoorBar && std::fmod(vDoorT, 1.0f) < 0.5f;
+                    PlayAt(alt ? "scrape" : "kick", TileCenter(vDoorX, vDoorY));
+                    if (vDoorBar) AddRing(TileCenter(vDoorX, vDoorY), 0);
+                }
                 if (vDoorT <= 0) {
-                    Play("crack");
+                    PlayAt("door_break", TileCenter(vDoorX, vDoorY));
                     if (vDoorBar) {
                         // v0.19: through the furniture. Near enough and you hear what he says
                         Room br = Story::BarricadeRoom(vDoorX, vDoorY);
@@ -2848,7 +2918,7 @@ static void UpdateDrawFrame() {
                 std::hypot(st.x - visitor.pos.x, st.y - visitor.pos.y) < TS + 3) {
                 if (story.DoorLocked(sx, sy)) {
                     vDoorBar = story.Barricaded(sx, sy);
-                    vDoorT = vDoorBar ? 7.0f : 1.6f; vDoorX = sx; vDoorY = sy; Play("thud");   // v0.19: furniture takes him a while
+                    vDoorT = vDoorBar ? 7.0f : 1.6f; vDoorX = sx; vDoorY = sy; PlayAt("kick", TileCenter(sx, sy));   // v0.19: furniture takes him a while. v0.20 sound: a kick
                     if (vDoorBar) { story.OnBarricadeHit(sx, sy); StartNextBeat(); }
                     else AddBubble("The visitor", GetRandomValue(0, 1) ? "Locked? Really?" : "Knock knock, 06.", 1.6f);
                     gMover = 0;
@@ -3305,6 +3375,12 @@ static void UpdateDrawFrame() {
             momHumT -= dt;
             if (momHumT <= 0) { AddBubble("Mom", "hm hm hmm, hm hmm...", 2.4f); momHumT = (float)GetRandomValue(10, 16); }
         }
+        // v0.20 sound (T-148): and Dad at his work, lower and slower
+        static float dadHumT = 7;
+        if (story.DadHums() && dad.visible && !beatActive && std::hypot(dad.pos.x - player.pos.x, dad.pos.y - player.pos.y) < TS * 7) {
+            dadHumT -= dt;
+            if (dadHumT <= 0) { AddBubble("Dad", "mm... mm-hm, mmm...", 2.6f); dadHumT = (float)GetRandomValue(13, 19); }
+        }
     }
 
     // v0.10: footsteps by surface. His carry through walls, duller and quieter, so you can hear where he is
@@ -3474,6 +3550,7 @@ int main() {
     }
     InitSounds();
     LoadSettings();
+    InitMusicFiles();   // v0.20 sound (T-100): before the stream starts
     InitMusic();
     if (FileExists("assets/logo.png")) {
         logoTex = LoadTexture("assets/logo.png");
