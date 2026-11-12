@@ -12,7 +12,7 @@ namespace sixhundred {
 // ============================================================ memory log
 const std::vector<std::string>& AllTopics() {
     static const std::vector<std::string> t = {
-        "The hour", "The house", "Mom", "Dad", "Doggo", "The visitor", "The basement", "The program", "The dark"};
+        "The hour", "The house", "Mom", "Dad", "Doggo", "The visitor", "The basement", "The program", "The watch", "The dark"};   // v0.20 story: The watch
     return t;
 }
 
@@ -149,6 +149,10 @@ const std::vector<AchievementEntry>& AllAchievements() {
         {"Breadcrumbs", "Leave him a trail out the back. Late enough that the storm doesn't eat it."},
         {"House Rules", "Not every trap goes on the front step."},
         {"Stage Manager", "Use all fifty minutes. Furniture, keys, tracks and an inside trap."},
+        // v0.20 story
+        {"Family Portrait", "Some days there's somebody else in the photos."},
+        {"Next in Line", "Some days you have a different number."},
+        {"Fortune Teller", "Tell them what happens before it does. The phone, the flagpole, the storm and the knock."},
     };
     return a;
 }
@@ -428,6 +432,55 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"his_knot", "Dad", "Dad's knot",
          "I tied the tripwire across the living room doorway with the knot Dad taught me. He went down, and lay there looking at it. He said Dad taught him that knot too.",
          "Not every trap goes on the front step."},
+        // v0.20 story: every ending teaches something (T-062)
+        {"confirmed", "The program", "Confirmed",
+         "After, his radio asked for one word. \"Collector, confirm.\" Finse doesn't need to see a face. Only to hear the word.",
+         "Somebody has to stop him. Then listen to his radio."},
+        {"finse_gate", "The program", "0612",
+         "It took nine loops to learn the road to Finse. The gate code was 0612. Week 612. They used my week.",
+         "Get all the way to the machine."},
+        {"under_well", "The visitor", "Under the well",
+         "He let me bring my Fliptendo. At the third dungeon he leaned over without looking and said \"under the well.\" Nobody knows that. You only know that if you played it a hundred times.",
+         "Just one more game. All the way to the car."},
+        {"his_dog", "Doggo", "He had one too",
+         "After Doggo, the man looked back at the door too. Just once. He said he had one like him. Same spot by the door.",
+         "Doggo would do anything for you. Watch the man when he does."},
+        {"just_like_us", "The dark", "Just like us",
+         "I stayed hidden while he made them pay. He said I'm not different. I'm just like them. Not like Mom and Dad. Like him.",
+         "Stay hidden. No matter what you hear."},
+        {"three_plates", "Mom", "Four chairs, three plates",
+         "We sat down and he came in. Four chairs, three plates. He took two potatoes. He held his fork the way Dad does. Mom said sit down or get out, and he sat.",
+         "Don't run. Sit down."},
+        {"two_remember", "The visitor", "Two of us",
+         "I didn't finish it. He snapped his dose in half. The next hour his car was at the gate at four with the engine off, and he never knocked. Two of us remembered.",
+         "Five doors. Then don't."},
+        // v0.20 story: the watch (T-064)
+        {"w_beep", "The watch", "Two short, one long",
+         "My watch beeps at 16:00. Two short, one long. I never set an alarm. There's no button for one. ORIGIN, model 06. I've never seen one in a shop.",
+         "Lie down and look at your watch."},
+        {"w_screen", "The watch", "It counts down",
+         "The little screen in the basement shows a watch. Not mine. Grey, scratched, a strap that doesn't match. It isn't telling the time. It's counting down to ten to five.",
+         "Look at the screens again. The small one in the corner."},
+        {"w_drift", "The watch", "Drift",
+         "When I opened the door for him his watch beeped. Two short, one long. He called it drift. Mine does that every day at 16:00. Maybe it's been saying drift my whole life.",
+         "Be there when his watch beeps."},
+        {"w_grow", "The watch", "The next size up",
+         "Dad says I got a new watch every time the strap got too small. Same face. Same number on the back. You don't take them off. You grow into the next one.",
+         "Show Dad the tiny watch."},
+        {"w_wrist", "The watch", "Twice round",
+         "I finished it and took his watch. The strap went round my wrist twice. ANCHOR 06, crooked. My thumb found the letters by itself, like it already knew the way.",
+         "Same house. Take everything he has."},
+        // v0.20 story: the program, 04 and 05
+        {"unit_04", "The program", "Zero-four had a dog",
+         "Under the static on the console: unit 04, Geilo, collected 13:10. Dog destroyed. The dog hair in his trunk wasn't Doggo's colour.",
+         "Listen to the console once you've seen his trunk."},
+        {"same_number", "The program", "Same number",
+         "The cross out back says 05. His clipboard says 05, ticked, today. Two kids. One number. They hand the numbers down.",
+         "A number out back. The same number on his clipboard."},
+        // v0.20 story: early lessons (T-084)
+        {"small_hands", "The dark", "Small hands",
+         "I hit Dad as hard as I could. It was like hitting the generator. I pushed Mom and she moved one step. I'm twelve. Hitting doesn't work. Not on them. Not on him.",
+         "Hit somebody bigger than you."},
     };
     return m;
 }
@@ -472,7 +525,8 @@ void SeedShifts(unsigned seed) { shiftRng.seed(seed); }
 static int ShiftRoll100() { return (int)(shiftRng() % 100); }
 
 const char* ShiftName(Shift s) {
-    return s == Shift::Toilet45 ? "45 minute toilet" : s == Shift::NoDoggo ? "no Doggo" : s == Shift::EarlyStorm ? "early storm" : s == Shift::Sister ? "the bathroom" : "normal";
+    return s == Shift::Toilet45 ? "45 minute toilet" : s == Shift::NoDoggo ? "no Doggo" : s == Shift::EarlyStorm ? "early storm" : s == Shift::Sister ? "the bathroom" :
+           s == Shift::Fourth ? "the photos" : s == Shift::NextUnit ? "oh-seven" : "normal";   // v0.20 story: the last two
 }
 
 std::string ShiftConfig::Save() const {
@@ -508,6 +562,8 @@ Shift Story::RollShift() {
     if (c.noDoggo) others.push_back(Shift::NoDoggo);
     if (c.earlyStorm) others.push_back(Shift::EarlyStorm);
     if (c.sister) others.push_back(Shift::Sister);
+    if (c.fourth) others.push_back(Shift::Fourth);       // v0.20 story
+    if (c.nextUnit) others.push_back(Shift::NextUnit);   // v0.20 story
     if (others.empty()) return Shift::Toilet45;
     Shift other = others[ShiftRoll100() % others.size()];
     if (!c.toilet) return other;
@@ -1161,6 +1217,8 @@ void Story::BeginLoop() {
     dropItem.clear(); dropX = dropY = -1;
     barricades.clear(); innerTraps.clear(); carKey.clear();
     falseTracksAt = 0; falseTracks = falseTrailWalked = false;
+    // v0.20 story: the TV wants to know how the last one ended
+    prevEnd = lastEnd; predMom = predDad = 0; fourthNoticed = unitNoticed = false;
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
@@ -1199,6 +1257,7 @@ void Story::BeginLoop() {
         closedDoors.insert(9 * World::W + 13); lockedDoors.insert(9 * World::W + 13);
         Say("You", "(Somebody is singing in the bathroom. Nobody in this house sings.)");
     }
+    ShiftOpener();   // v0.20 story: the photos, oh-seven
     if (loop >= 4 && dryLoops >= 3 && !FullMemory()) Nudge();
 }
 
@@ -1764,6 +1823,7 @@ void Story::HingeDoor() {
     Sound("beep");
     Say("", "(His watch beeps. Two short, one long. He looks at it like a dog that just bit him.)");
     Say("The visitor", "Drift.");
+    if (!Knows("w_drift")) { Say("You", "(Two short, one long. Mine does that every day at 16:00.)"); AddClue("w_drift"); }   // v0.20 story
     Say("", "(He takes a small pen out of his coat. A needle at the end. He holds it over his wrist. Then he puts it back.)");
     Say("The visitor", "After. They want it after. Always after.");
     Say("You", "What does it do?");
@@ -2151,7 +2211,7 @@ void Story::DinnerEnding() {
     Black("\"Has he been good?\"");
     Black("\"He's the best thing we ever did,\" Mom says. \"Sit down or get out.\"");
     Black("He looks at his watch. Then he pulls out the fourth chair and sits. He keeps his coat on.");
-    Black("Nobody talks. Dad passes him the potatoes. He takes two.");
+    Black("Nobody talks. Dad passes him the potatoes. He takes two. He holds his fork the way Dad does.");   // v0.20 story: the last sentence
     if (DoggoExists()) Black("Doggo lies on your feet under the table. He growls the whole time, very quietly, and nobody tells him to stop.");
     Sound("hum_on");
     Black(Knows("the_tape") ? "Mom hums. You let her. Just this once." : "Mom hums. The carol she always hums.");
@@ -2166,6 +2226,7 @@ void Story::DinnerEnding() {
     Black("BEEP BEEP.");
     Narrate("It didn't save anyone. It wasn't for that.");
     Narrate("Out of all those hours, that is the one I would keep.");
+    AddClue("three_plates");   // v0.20 story
     endings.insert("bells");
     Achieve("One Good Hour");
     lastEnd = "ending:bells";
@@ -2267,7 +2328,11 @@ void Story::MonsterEnding() {
             Black("You look at it for a long time. Then you press the button.");
             Black("\"Confirmed.\" Your voice doesn't shake at all.");
             Narrate("I survived. They had a job waiting for the one who did.");
-        } else Narrate("I survived. That's all I did.");
+        } else {
+            Black("His car is still at the gate. On the seat, his radio crackles. \"Collector, confirm.\" You don't touch it. It asks all night.");   // v0.20 story
+            Narrate("I survived. That's all I did.");
+        }
+        AddClue("confirmed");   // v0.20 story: the ending teaches the word
         endings.insert("monster");
         lastEnd = "ending:monster";
         Achieve("Monster");
@@ -2279,6 +2344,11 @@ void Story::MonsterEnding() {
     Black("His keys. His radio. The files said Finse.");
     Black("You can't drive. You learn. It takes nine loops.");
     Black("Loop after loop. The gate code. The guard rota. The hallway that creaks.");
+    // v0.20 story: what the nine loops taught
+    Black("The radio on the seat asks for one word. \"Collector, confirm.\" You learn to say it. After that every gate opens.");
+    Black("The gate code is 0612. Week 612. They used your week.");
+    AddClue("confirmed");
+    AddClue("finse_gate");
     Black("You find the machine. It hums like the basement.");
     Sound("glass");
     Black("You break it. You keep breaking it after it stops humming.");
@@ -2319,6 +2389,8 @@ void Story::ScreenTimeEnding() {
     Black("\"Can I bring my Fliptendo?\"");
     Black("He shrugs. \"Sure.\"");
     Black("You play the whole drive. You never look up. You never find out where you went.");
+    Black("At the third dungeon he leans over without looking. \"Under the well.\" He's right. Nobody knows that.");   // v0.20 story
+    AddClue("under_well");
     Narrate("The longest loop I ever had was the one where I didn't notice.");
     endings.insert("screen");
     lastEnd = "ending:screen";
@@ -2386,6 +2458,7 @@ void Story::PaidEnding() {
     if (MomHere() || momOnFloor) Black("Mom is still crying. She doesn't look up.");
     if (dadOnFloor) Black("Dad isn't moving.");
     Black("You don't cry. You notice that you don't cry.");
+    AddClue("just_like_us");   // v0.20 story
     DarkAct(2, "", true);
     endings.insert("paid");
     lastEnd = "ending:paid";
@@ -2501,6 +2574,8 @@ void Story::DoggoSacrifice() {
     Achieve("Good Boy");
     FadeFor(0, "");
     Black("You don't fight when he picks you up. You can't stop looking back.");
+    Black("He looks back too. Just once. \"I had one like him,\" he says. \"Same spot by the door.\"");   // v0.20 story
+    AddClue("his_dog");
     Narrate("He was the only one in that house who never lied to me.");
     endings.insert("doggo");
     Beat e; e.type = BeatType::Ending; e.id = "doggo"; e.speaker = "REALLY BAD ENDING";
@@ -2899,6 +2974,7 @@ void Story::SameHouseEnding() {
     else if (dadOnFloor || dadDown) Black("Dad is still on the floor. He's breathing. He'll wake up to this.");
     Black("You take his coat. It comes down to your ankles. It smells like this house.");
     Black("You take his watch. The strap goes round your wrist twice. ANCHOR 06, crooked. Your thumb finds it by itself.");
+    AddClue("w_wrist");   // v0.20 story
     Black("You take his radio. It clicks before you've worked out the button.");
     Black("\"Collector, confirm.\"");
     Black("\"Confirmed.\"");
@@ -2993,6 +3069,7 @@ void Story::AfterEnding() {
             : tainted ? "I'm still what I turned into. He sits out there anyway."
                       : "Nobody won. Nobody had to.");
     Narrate("Every hour after that, the car was at the gate at four. He never knocked. There were two of us now who remembered.");
+    AddClue("two_remember");   // v0.20 story
     solemn = false;
     endings.insert("after");
     lastEnd = "ending:after";
@@ -3040,6 +3117,7 @@ std::vector<ChoiceOpt> Story::MomQuestions() const {
     if (Knows("leash")) o.push_back({"m_scar", "What's that behind your ear?", true});
     if (Knows("handlers")) o.push_back({"m_real", "Are you even my mom?", true});
     if (shift == Shift::Sister && sisterNoticed) o.push_back({"m_sister", "Who's in the bathroom?"});
+    MoreMomQuestions(o);   // v0.20 story
     return o;
 }
 std::vector<ChoiceOpt> Story::DadQuestions() const {
@@ -3058,6 +3136,7 @@ std::vector<ChoiceOpt> Story::DadQuestions() const {
     if (Knows("small_prints")) o.push_back({"d_prints", "Who made the small footprints out back?", true});
     if (Knows("collector")) o.push_back({"d_man", "The man at the door wears a watch like mine.", true});
     if (shift == Shift::Sister && sisterNoticed) o.push_back({"d_sister", "Who's in the bathroom?"});
+    MoreDadQuestions(o);   // v0.20 story
     return o;
 }
 
@@ -3089,6 +3168,7 @@ void Story::Choose(const std::string& id, int px, int py) {
     (void)px; (void)py;
     if (Nag(id)) return;   // v0.16: you asked that already
     if (id.rfind("ft_", 0) != 0 && id != "none") playStreak = 0;   // anything else breaks the gaming streak
+    if (MoreChoose(id, px, py)) return;   // v0.20 story
     // ---- v0.7 doors
     if (id.rfind("dr_", 0) == 0) {
         size_t c = id.find(':');
@@ -3655,6 +3735,10 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("Dad", "Give me that.");
         Say("You", "(I don't.)");
         Say("Dad", "(he looks at it in your hand for a long time) ...Fine. It's yours anyway. Always was.");
+        // v0.20 story: the watch topic
+        Say("Dad", "(quieter) You got a new one every time the strap got too small. Same face. Same number on the back.");
+        Say("Dad", "You don't take them off, buddy. You grow into the next one.");
+        AddClue("w_grow");
         if (dadAtt == Attitude::Normal) dadAtt = Attitude::Cold;
     }
     // ---- bed
@@ -3914,6 +3998,7 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("", "(A thermos. A paper bag from the bakery in Geilo. He stopped for a bun on his way to do this.)");
         Say("You", Knows("handlers") ? "(Collect one. That's me. Clean two. That's them. They have no idea.)" : "(Collect one. Clean two. There are three of us in the house. Four with Doggo.)");
         AddClue("his_car");
+        SameNumber();   // v0.20 story
     } else if (id == "car_trunk") {
         Say("", "(It isn't locked. Oil. Wet dog. A grey blanket.)");
         Say("", "(Two juice boxes, empty, the straws chewed flat. A small mitten. Dog hair on the blanket. Not Doggo's colour.)");
@@ -4253,6 +4338,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         Say("You", "(Not today. Maybe some other time.)");
         return;
     }
+    if (MoreInteract(id, px, py)) return;   // v0.20 story: the TV, the watch, the stranger shifts, the bed
     bool dadInShed = world.RoomAt(Dad().x, Dad().y) == Room::Shed && DadFree();
     bool dadAtShed = world.RoomAt(Dad().x, Dad().y) == Room::Shed && !dadDown;
 
@@ -4679,6 +4765,7 @@ void Story::Interact(const std::string& id, int px, int py) {
     } else if (id == "console") {
         std::vector<ChoiceOpt> o = {{"r_listen", "Listen."}};
         if (Knows("phone_answer")) o.push_back({"r_cancel", "\"This is handler two. Cancel the pickup.\"", true});
+        if (Knows("confirmed")) o.push_back({"r_confirm", "Hold down PICKUP CONFIRM. \"Confirmed.\"", true});   // v0.20 story: what Monster taught
         o.push_back({"none", "Leave it."});
         Choice("The program's radio. A red button: PICKUP CONFIRM.", o);
     } else if (id == "medfridge") {
@@ -4729,6 +4816,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         if (Knows("the_tape") && !momRemorse) o.push_back({"m_hum", "(Hum her song back to her.)", true});
         if (held == Item::BabyWatch) o.push_back({"m_watch", "Show her the tiny watch."});
         if (hasKnife) o.push_back({"m_knife", "Show her the knife.", false, true});
+        if (!Tutorial()) o.push_back({"m_shove", "[Shove her] Out of my way.", false, true});   // v0.20 story: early lessons
         o.push_back({"none", "Never mind."});
         o.insert(o.begin() + 1, {"m_nisse", "Is Julenissen really coming?"});
         if (Mom().facingWall) {
@@ -4769,6 +4857,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         if (hasKnife && dadAtShed && darkPoints >= DARK_INTERROGATE && !Knows("dad_key"))
             o.push_back({"d_talk", "Make him tell you where the basement key is.", false, true});
         else if (hasKnife) o.push_back({"d_knife", "Show him the knife.", false, true});
+        if (!Tutorial()) o.push_back({"d_hit", "[Hit him] As hard as I can.", false, true});   // v0.20 story: early lessons
         o.push_back({"none", "Never mind."});
         if (tainted && Once("dad_distrust")) Say("Dad", "(he keeps the workbench between you) Hey, buddy. ...You okay?");
         if (Knows("the_tape") && Once("tape_dad")) Say("You", "(\"Subject is resisting.\" He sounded bored. He sounds bored now too.)");
@@ -4795,6 +4884,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         if (held == Item::BabyWatch && !Knows("collector")) o.push_back({"v_watch", "(Hold up the tiny watch.)"});
         if ((Knows("hiding") || Knows("he_runs_fast")) && !Knows("echo")) o.push_back({"v_every", "\"We do this every time.\" What does that mean?", true});
         if (hasKnife) o.push_back({"v_stab", "Go for him. Now.", false, true});
+        if (size_t n = VisitorQuestions().size()) o.push_back({"v_ask", "Say something I remember. (" + std::to_string(n) + ")", true});   // v0.20 story
         o.push_back({"v_leave", "(Back away.)"});
         Choice("A big man in a black coat.", o);
     } else if (id == "beast") {
@@ -4831,6 +4921,7 @@ void Story::Interact(const std::string& id, int px, int py) {
         else Say("You", "(Zero-five. A number, not a name.)");
         AddClue("grave_05");
         if (tainted) Say("You", "(There's room next to it.)");
+        SameNumber();   // v0.20 story
     } else if (id == "icehole") {
         Egg("icehole");
         Say("You", "(A hole in the ice. Round and neat. Somebody cut it. It's already freezing over at the edges.)");
@@ -4977,5 +5068,8 @@ void Story::OnHusky() {
     See("husky");
     Achieve("Not a Dog");
 }
+
+// v0.20 story: endings that teach, the watch, more questions, the TV, stranger shifts, early lessons, predictions
+#include "StoryMore.inc"
 
 } // namespace sixhundred

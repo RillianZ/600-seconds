@@ -32,6 +32,9 @@
 //   tracks              your fake trail out the back held (set before "hunt")
 //   goto X Y            send him to look at a tile (he walks there, kicking doors on the way)
 //   blind               he can't see you (to watch him from close by)
+//   shift NAME          this loop's reality: fourth, unit, sister or none (v0.20)
+//   prevend X           how the last loop ended, as the TV sees it: cold, vidda, doggo, trunk (v0.20)
+//   journal N           open the memory log on tab N (0 timeline, then the topics), -1 closes it (v0.20)
 //   quit
 #include <fstream>
 #include <sstream>
@@ -103,6 +106,10 @@ static void ShotsStep() {
         else if (c == "tracks") { story.falseTracks = true; }
         else if (c == "goto") { int x, y; ss >> x >> y; vmode = VMode::Investigate; vNoise = TileCenter(x, y); vNoiseWait = 1.5f; vNoiseT = -30; vPause = 0; vHunchSearch = true; }
         else if (c == "blind") { visitorBlind = true; }
+        // v0.20 story: shift fourth|unit|sister|none (this loop's reality), prevend X (how the last loop ended, for the TV)
+        else if (c == "shift") { std::string w; ss >> w; story.shift = w == "fourth" ? Shift::Fourth : w == "unit" ? Shift::NextUnit : w == "sister" ? Shift::Sister : Shift::None; }
+        else if (c == "prevend") { ss >> story.prevEnd; }
+        else if (c == "journal") { ss >> journalTopic; journalOpen = journalTopic >= 0; journalScroll = 0; }   // tab number, -1 closes
         else if (c == "chase") { vmode = VMode::Chase; vLostT = 0; vLastSeen = player.pos; }
         else if (c == "skip") { story.beats.clear(); beatActive = false; }
         else if (c == "hold" || c == "press") { std::string k; int n = 1; ss >> k >> n; shotHoldKey = ShotKey(k); shotHoldN = c == "press" ? 1 : n; return; }
