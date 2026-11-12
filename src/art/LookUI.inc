@@ -104,7 +104,7 @@ static void LkBustDraw(const LkPaint& p, int style, LkExpr e, bool talking, bool
     // cheeks: only the kid, only while he's still a kid
     if (style == 0 && !story.tainted && (e == LX_SMILE || e == LX_NORMAL)) { P(6, 10, 1, 1, Color{ 240, 160, 150, 255 }); P(12, 10, 1, 1, Color{ 240, 160, 150, 255 }); }
     // mouth
-    float my = style == 2 ? 11 : 11;
+    const float my = 11;
     Color mc = style == 2 ? Mix(hair, kInk, 0.5f) : style == 3 ? Mix(skin, kInk, 0.55f) : lip;
     bool open = talking && std::fmod(globalT, 0.24f) < 0.12f;
     if (open && style == 3) P(8, my, 3, 1, kInk);
@@ -163,6 +163,7 @@ static Color LookLcd() {
     return c;
 }
 static void LookWatchFace(float bx, float by, float w, float bh, float lx, float ly, float lw, float lh) {
+    (void)w; (void)bh;
     int d = story.darkPoints;
     // the red dot in the Origin mark beats. Faster the darker you are
     if (d >= 1) {
@@ -190,8 +191,6 @@ static void LookWatchFace(float bx, float by, float w, float bh, float lx, float
 // The chores live on the fridge: a list you see in the kitchen.
 static void LkChoreList(float x, float y, float alpha) {
     const float w = 92, h = 64;
-    float tilt = -0.0f;
-    (void)tilt;
     DrawRectangle((int)((x + 1.5f) * US), (int)((y + 2) * US), (int)(w * US), (int)(h * US), Fade(BLACK, 0.3f * alpha));
     DrawRectangle((int)(x * US), (int)(y * US), (int)(w * US), (int)(h * US), Fade(Color{ 252, 238, 150, 255 }, alpha));
     DrawRectangle((int)(x * US), (int)(y * US), (int)(w * US), (int)(5 * US), Fade(Color{ 244, 222, 118, 255 }, alpha));
