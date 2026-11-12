@@ -58,6 +58,7 @@ static void Drain() {
                 s.OnClimbed(w->id, out, false);
             }
             else if (b.id == "dad_runs") s.SceneDone("dad_runs");
+            else if (b.id == "slip") s.OnCaught();   // v0.20.1 story-knife: Small hands got you out once. He grabs you again
             else if (b.id == "minigame") s.MinigameDone(4);
             else if (b.id == "chase") {
                 if (chasePlan == "caught") s.OnCaught();
@@ -1310,6 +1311,93 @@ int main(int argc, char** argv) {
         }
         for (auto& l : AllRumorLinks()) assert(nodes.count(l.a) && nodes.count(l.b));
         std::printf("  %zu cards, %zu lines\n", AllRumorNodes().size(), AllRumorLinks().size());
+    }
+
+    // v0.20.1 story-knife: oh-seven says 07, the two new realities end on a beat, hunt payoffs, Screen Time brakes,
+    // the door frame at DARK_REVEL, and Mom when the knife is for a clean job
+    Header("v0.20.1 story-knife: oh-seven, the realities' last beat, hunt payoffs, knife polish");
+    {
+        auto has = [](Story& st, const char* bit) { for (auto& b : st.beats) if (b.text.find(bit) != std::string::npos) return true; return false; };
+        auto clean = [](Story& st, int lp) { st.loop = lp; st.BeginLoop(); st.beats.clear(); while (st.shift != Shift::None) { st.EndLoop(); st.BeginLoop(); st.beats.clear(); } };
+        // oh-seven: what people say out loud. Not papers, not your own thoughts, not ANCHOR 06, not Dad's "zero-six was before you"
+        Story u; u.memory = {"loop"}; u.loop = 6; gShiftCfg.forceNext = Shift::NextUnit; u.BeginLoop(); u.beats.clear();
+        assert(u.OhSeven());
+        assert(u.UnitLine("The visitor", "Zero-six. Let's not drag it out.") == "Zero-seven. Let's not drag it out.");
+        assert(u.UnitLine("The visitor", "Come out, 06.") == "Come out, 07.");
+        assert(u.UnitLine("The visitor", "ANCHOR 06. Crooked.") == "ANCHOR 06. Crooked.");
+        assert(u.UnitLine("Voice", "(static) ...unit 04 collected... unit 05 collected... unit 06, 16:50...").find("unit 07, 16:50") != std::string::npos);
+        assert(u.UnitLine("Dad", "Zero-six was before you. Good kid. You've got his room.") == "Zero-six was before you. Good kid. You've got his room.");
+        assert(u.UnitLine("You", "(Oh-seven? I'm zero-six. I've always been zero-six.)").find("zero-six") != std::string::npos);
+        assert(u.UnitLine("", "SUBJECT 06. Loop-aware candidate.") == "SUBJECT 06. Loop-aware candidate.");
+        assert(u.UnitLine("", "Then a gate. A voice: \"Subject 06, delivered.\"") == "Then a gate. A voice: \"Subject 07, delivered.\"");
+        assert(u.UnitLine("", "You take his watch. ANCHOR 06, crooked.") == "You take his watch. ANCHOR 06, crooked.");
+        { Story n; n.memory = {"loop"}; clean(n, 6); assert(n.UnitLine("The visitor", "Zero-six.") == "Zero-six."); }
+        // the 16:10 radio, for real
+        u.t = 9 * 60 + 50; u.Tick(4.0f, false, 35, 6); u.Tick(4.0f, false, 35, 6);
+        assert(has(u, "Unit 07 is stable") && !has(u, "Unit 06")); u.beats.clear();
+        u.NobodyHome(); assert(has(u, "Zero-seven. I know you're in there")); u.beats.clear();
+        // he's hunting 07. He doesn't know 07's spots, and finding 07 teaches him nothing about 06
+        u.caughtSpots["wardrobe"] = 2; assert(u.CaughtIn("wardrobe") == 0);
+        u.collection = u.chase = true; u.hideSpot = "wardrobe"; u.OnFound();
+        assert(u.caughtSpots["wardrobe"] == 2 && has(u, "You hide like somebody") && !has(u, "Every time")); u.beats.clear();
+        u.ShiftTrunk(); assert(has(u, "Over it, in Mom's handwriting: 07") && has(u, "They told me six") && !has(u, "week two"));
+        u.beats.clear(); u.unitNoticed = true; u.ShiftTrunk(); assert(has(u, "week two"));
+        { Story f; f.memory = {"loop"}; f.loop = 6; gShiftCfg.forceNext = Shift::Fourth; f.BeginLoop(); f.beats.clear(); f.fourthNoticed = true;
+          f.ShiftTrunk(); assert(has(f, "A red sweater") && has(f, "grew into the coat")); }
+        { Story n; n.memory = {"loop"}; clean(n, 6); n.ShiftTrunk(); assert(n.beats.empty()); }
+        std::puts("  oh-seven: the radio, the visitor and quotes say 07. Papers, memories and ANCHOR 06 don't. No known spots");
+        // the watch: out of marbles, throw that. Once a loop, and he always goes to look
+        Story w; w.memory = {"loop"}; clean(w, 4); w.collection = w.chase = true; w.t = 51 * 60;
+        assert(!w.CanThrowWatch()); w.memory.insert("w_beep"); assert(w.CanThrowWatch());
+        w.decoys = 5; assert(w.OnWatchLure() && has(w, "Drift?") && !w.CanThrowWatch() && !w.OnWatchLure() && w.decoys == 5);
+        // Small hands: the first grab, you go heavy and come out of the sweater. The second one holds
+        Story h; h.memory = {"loop", "small_hands"}; clean(h, 4); h.collection = h.chase = true; h.t = 51 * 60;
+        h.OnCaught(); assert(h.chase && h.slipped && h.visitorStun > 0 && has(h, "I used to do that"));
+        bool slipScene = false; for (auto& b : h.beats) if (b.type == BeatType::Scene && b.id == "slip") slipScene = true;
+        assert(slipScene); h.beats.clear(); h.OnCaught(); assert(!h.chase && has(h, "Gotcha"));
+        { Story n; n.memory = {"loop"}; clean(n, 4); n.collection = n.chase = true; n.OnCaught(); assert(!n.chase); }
+        std::puts("  the watch is a lure that always works once. Small hands slips one grab");
+        // you told Dad about the knock: he's in the doorway, and the hunt starts with him counting rooms on the step
+        for (int told = 0; told < 2; ++told) {
+            Story p; p.memory = {"loop", "phone_mom", "dad_key", "visitor_time"}; p.seenEvents = {"storm"}; clean(p, 5);
+            p.t = 60; if (told) { p.Choose("dp_knock", 24, 17); p.beats.clear(); }
+            p.t = 49 * 60 + 59; p.Tick(1.0f, false, 21, 17);
+            assert(has(p, "Somebody told you I was coming") == (told == 1) && p.dadReady == (told == 1));
+            assert(has(p, "Go with him, buddy") == (told == 0));
+            if (told) assert(p.huntStart == "door");
+        }
+        std::puts("  Dad, told about the knock, stands in the door");
+        // Screen Time with the brake line cut: same ending, the car doesn't make it
+        { Story b; b.memory = {"loop"}; clean(b, 6); b.brakesCut = true; b.t = 46 * 60;
+          for (int i = 0; i < 3; ++i) { b.Choose("ft_flappy", 8, 7); b.beats.clear(); b.MinigameDone(4); }
+          bool card = false; for (auto& e : b.beats) if (e.type == BeatType::Ending && e.id == "screen" && e.text.find("last bend") != std::string::npos) card = true;
+          assert(card && b.Knows("brake_line") && b.Knows("under_well") && has(b, "GAME OVER")); }
+        // Mom and the knife: worried after a clean job (or at the tree), still scolding on the dark path
+        { Story m; m.memory = {"loop"}; clean(m, 3); m.Hold(Item::Knife, true); int mood = m.mood; m.Interact("mom", 8, 15);
+          assert(has(m, "Put. It. Down.") && m.mood < mood); }
+        { Story m; m.memory = {"loop"}; clean(m, 3); m.Hold(Item::Knife, true); m.knifeCleanLoop = true; int mood = m.mood; m.Interact("mom", 8, 15);
+          assert(has(m, "Careful with that. What are you cutting?") && !has(m, "Put. It. Down.") && m.mood == mood); }
+        { Story m; m.memory = {"loop"}; clean(m, 3); m.Hold(Item::Knife, true); m.Interact("mom", 25, 15);
+          assert(has(m, "They're for after")); }
+        { Story m; m.memory = {"loop"}; clean(m, 3); m.Hold(Item::Knife, true); m.knifeCleanLoop = true; m.darkThisLoop = 1; m.Interact("mom", 8, 15);
+          assert(has(m, "Put. It. Down.")); }
+        { Story m; m.memory = {"loop"}; clean(m, 3); m.Hold(Item::Knife, true); m.t = 13 * 60; m.Choose("wp_stack", 29, 23); m.beats.clear();
+          assert(m.knifeCleanLoop); m.Interact("mom", 8, 15); assert(has(m, "Careful with that")); }
+        std::puts("  Screen Time crashes with the brakes cut. Mom worries instead of scolding after a clean job");
+        // the door frame: only at DARK_REVEL, with the knife. Otherwise it's just a door
+        { Story d; d.memory = {"loop"}; d.darkPoints = DARK_REVEL - 1; d.tainted = true; clean(d, 6); d.Hold(Item::Knife, true);
+          d.Interact("door_kid", 6, 10); for (auto& b : d.beats) for (auto& c : b.choices) assert(c.id != "kn_carve");
+          d.beats.clear(); d.darkPoints = DARK_REVEL; d.Interact("door_kid", 6, 10);
+          assert(d.beats.size() == 1 && d.beats[0].choices[0].id == "kn_carve" && d.beats[0].choices[0].dark);
+          bool was = d.DoorClosed(6, 9); d.beats.clear(); d.Choose("kn_doorplain", 6, 10); assert(!d.frameCarved && d.DoorClosed(6, 9) != was); }
+        CleanLoop();
+        At(12, 15); Use("knives", {"k_take", "k_take"});
+        int dk = s.darkThisLoop;
+        At(6, 10); Use("door_kid", {"kn_carve"});
+        assert(s.Knows("under_paint") && s.frameCarved && s.darkThisLoop > dk);
+        At(6, 10); Use("door_kid"); assert(s.frameCarved);   // once is enough: the door works as a door again
+        { bool q = qteWin; qteWin = false; FinishLoop("caught"); qteWin = q; }   // the secret ending still waits for LOOP 10
+        std::puts("  the door frame at DARK_REVEL: 06 carved, older lines under the paint");
     }
 
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");

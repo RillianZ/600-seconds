@@ -21,6 +21,7 @@ int Story::MemoryTotal() const {
     return n;
 }
 void Story::BladeCheck() {
+    knifeCleanLoop = true;   // v0.20.1 story-knife: Mom saw nothing wrong with it this loop
     int n = 0;
     for (const char* e : {"kn_tape", "kn_twine", "kn_ribbon", "kn_gap", "kn_window"}) n += SawEvent(e) ? 1 : 0;
     if (n >= 3) Achieve("Blade Down");
@@ -48,6 +49,7 @@ void Story::KnifeEvents(float prev, float now, int px, int py) {
 
 // ---------------------------------------------------------------- objects
 bool Story::KnifeInteract(const std::string& id, int px, int py) {
+    if (PolishInteract(id, px, py)) return true;   // v0.20.1 story-knife: the door frame
     if (chase) {
         // the hunt: the block is right there. Two quick ones, or none if you had it earlier this loop
         if (id == "knives") {
@@ -131,6 +133,7 @@ bool Story::KnifeInteract(const std::string& id, int px, int py) {
 
 // ---------------------------------------------------------------- choices
 bool Story::KnifeChoose(const std::string& id) {
+    if (PolishChoose(id, kidX, kidY)) return true;   // v0.20.1 story-knife
     // ---- clean
     if (id == "wp_stack" && hasKnife) {
         FadeFor(Dur(12), "Stacking firewood. One cut per bundle.");

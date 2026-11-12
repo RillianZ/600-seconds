@@ -48,6 +48,7 @@ src/game/World.h     map, rooms, objects, windows (plain C++). Rows go from Worl
 src/game/Story.h/.cpp all rules: clock, events, choices, memory log, saves (plain C++)
 src/game/StoryMore.inc v0.20 story lines: endings that teach, the watch, questions, TV, shifts, predictions (included by Story.cpp)
 src/game/Knife.inc   the kitchen knife: clean jobs, darker jobs, the mirror (included at the end of Story.cpp)
+src/game/PolishStoryKnife.inc v0.20.1: oh-seven says 07, hunt payoffs, the door frame, Mom and the clean knife (included by Story.cpp)
 src/game/Schedule.h  where Mom and Dad are hour by hour, and when he comes early (data)
 src/game/Links.h     the rumor map in the memory log: which memories belong together (data)
 src/audio/Soundtrack.h/.cpp every song, written as code (plain C++)

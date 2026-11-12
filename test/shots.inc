@@ -49,6 +49,7 @@
 //   luse ID | lchoose ID   use / choose with the close-up hook
 //   ending ID | att mom|dad cold|scared|broken | say WHO TEXT   (WHO with _ for spaces, e.g. The_visitor)
 //   sayt WHO TEXT | bubble WHO TEXT | calm 0|1 | blips 0|1 | pause ROW   v0.20.1 sound-look: a typed line (blips), a bubble, calm flashes, voice blips, the pause menu on a row
+//   trunkshift | cleanjob | screenbrakes   v0.20.1 story-knife
 //   quit
 #include <fstream>
 #include <sstream>
@@ -173,6 +174,10 @@ static void ShotsStep() {
         else if (c == "calm") { int v = 1; ss >> v; settings.calmFlashes = v != 0; }
         else if (c == "blips") { int v = 1; ss >> v; settings.blips = v != 0; }
         else if (c == "pause") { int row = 0; ss >> row; pauseOpen = true; pauseSel = row; }
+        // v0.20.1 story-knife: trunkshift (the photos / oh-seven beat on the way to the bells), cleanjob (a clean knife job this loop), screenbrakes
+        else if (c == "trunkshift") { story.beats.clear(); beatActive = false; story.ShiftTrunk(); StartNextBeat(); }
+        else if (c == "cleanjob") { story.knifeCleanLoop = true; }
+        else if (c == "screenbrakes") { story.beats.clear(); beatActive = false; story.brakesCut = true; story.ScreenTimeBrakes(); StartNextBeat(); }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }
