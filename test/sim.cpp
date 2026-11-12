@@ -3,6 +3,7 @@
 // Build: g++ -std=c++17 -Isrc test/sim.cpp src/game/Story.cpp -o sim && ./sim
 #include "game/Story.h"
 #include "game/Schedule.h"   // v0.20 systems: gEarlyKnock
+#include "game/Links.h"      // v0.20 systems: the rumor map
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -1051,6 +1052,17 @@ int main(int argc, char** argv) {
         assert(said && h.Knows("he_hears"));
         h.beats.clear(); h.OnHeard("slam"); for (auto& b : h.beats) assert(b.type != BeatType::Bubble);   // once is enough
         std::puts("  a slammed door: he turns, and says so once");
+    }
+    Header("v0.20 systems: the rumor map only links memories that exist, one card per spot");
+    {
+        std::set<std::string> ids; for (auto& m : AllMemories()) ids.insert(m.id);
+        std::set<std::string> nodes; std::set<int> spots;
+        for (auto& r : AllRumorNodes()) {
+            assert(ids.count(r.id) && r.col >= 0 && r.col < 5 && r.row >= 0);
+            assert(nodes.insert(r.id).second && spots.insert(r.row * 5 + r.col).second);
+        }
+        for (auto& l : AllRumorLinks()) assert(nodes.count(l.a) && nodes.count(l.b));
+        std::printf("  %zu cards, %zu lines\n", AllRumorNodes().size(), AllRumorLinks().size());
     }
 
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");

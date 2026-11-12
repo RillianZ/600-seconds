@@ -32,6 +32,10 @@
 //   tracks              your fake trail out the back held (set before "hunt")
 //   goto X Y            send him to look at a tile (he walks there, kicking doors on the way)
 //   blind               he can't see you (to watch him from close by)
+//   journal PAGE | jscroll N | unjournal   open the memory log on a page (a number, or rumors), pan it (v0.20 systems)
+//   allmem | forget ID  know every memory | forget one
+//   lockfront           the front door is locked
+//   state               print the clock, the front door and where the parents are to stderr
 //   quit
 #include <fstream>
 #include <sstream>
@@ -113,6 +117,14 @@ static void ShotsStep() {
         }
         else if (c == "wait") { ss >> shotWait; return; }
         else if (c == "shot") { std::string f; ss >> f; TakeScreenshot(f.c_str()); }
+        // v0.20 systems: journal PAGE (a number, or rumors), jscroll N, allmem, forget ID, lockfront
+        else if (c == "journal") { std::string pg; ss >> pg; journalOpen = true; journalScroll = 0; journalTopic = pg == "rumors" ? JournalTabs() - 1 : std::atoi(pg.c_str()); }
+        else if (c == "jscroll") { ss >> journalScroll; }
+        else if (c == "unjournal") { journalOpen = false; }
+        else if (c == "allmem") { story.DebugAllMemories(); }
+        else if (c == "forget") { std::string id; ss >> id; story.memory.erase(id); }
+        else if (c == "lockfront") { story.frontLocked = true; story.frontLockedAt = story.t; story.closedDoors.insert(20 * World::W + 20); }
+        else if (c == "state") { fprintf(stderr, "STATE t=%.0f front=%d mom=%d dad=%d nobody=%d coll=%d\n", story.t, story.frontLocked, story.momLocked, story.dadLocked, story.nobodyHome, story.collection); }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

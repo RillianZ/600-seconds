@@ -1285,7 +1285,7 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
     // v0.20 systems: T-083. Whoever is in the house. The third time they watch the door, and it gets you grounded
     if (frontLocked && !collection) {
         auto inHouse = [&](NpcState n) { Room r = world.RoomAt(n.x, n.y); return !IsYard(r) && r != Room::Shed && r != Room::Basement && r != Room::Vidda; };
-        bool momCan = MomHere() && inHouse(Mom());
+        bool momCan = MomHere() && !MomInBath() && inHouse(Mom());
         bool dadCan = DadFree() && inHouse(Dad());
         if ((momCan || dadCan) && t - frontLockedAt > (fortressFights >= 2 ? 30 : 90)) {
             frontLocked = false;
