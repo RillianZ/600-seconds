@@ -1,5 +1,6 @@
 // 600 Seconds - Story logic. Engine-free.
 #include "Story.h"
+#include "Schedule.h"   // v0.20 systems: parents' day, darkness constants
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -70,6 +71,9 @@ const std::vector<TimelineEntry>& AllTimeline() {
         {50, 0, "knock", "The power dies. Three slow knocks.", "visitor_time"},
         {57, 30, "threat", "If he can't find me he starts on them.", "they_paid"},
         {60, 0, "bells", "Bells, far away. The watch beeps. 16:00 again.", "loop"},
+        // v0.20 systems
+        {15, 0, "tv15", "Mom and Dad sit down for Kaptein Fjord's Christmas special.", ""},
+        {40, 40, "snack40", "Lefse in the kitchen. One each.", ""},
     };
     return t;
 }
@@ -149,6 +153,8 @@ const std::vector<AchievementEntry>& AllAchievements() {
         {"Breadcrumbs", "Leave him a trail out the back. Late enough that the storm doesn't eat it."},
         {"House Rules", "Not every trap goes on the front step."},
         {"Stage Manager", "Use all fifty minutes. Furniture, keys, tracks and an inside trap."},
+        // v0.20 systems
+        {"Nobody Home", "Lock him out, with nobody left inside to open the door."},
     };
     return a;
 }
@@ -428,6 +434,10 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"his_knot", "Dad", "Dad's knot",
          "I tied the tripwire across the living room doorway with the knot Dad taught me. He went down, and lay there looking at it. He said Dad taught him that knot too.",
          "Not every trap goes on the front step."},
+        // v0.20 systems
+        {"nobody_home", "The visitor", "The back way",
+         "I locked the front door and got everyone out of the way, so nobody could open it. He talked to me through the door. He locked it once too, and thought it wouldn't count if nobody opened it. Then he went round the back and hit my window once, low on the frame. Exactly where I always hit it.",
+         "Lock the front door, with nobody left in the house to open it."},
     };
     return m;
 }
@@ -928,10 +938,12 @@ NpcState Story::Mom() const {
     if (t >= phone * 60 - 30 && t < (phone + 2) * 60) { n.x = 4; n.y = 15; return n; }
     if (t >= 28 * 60 && t < 30 * 60) { n.x = 27; n.y = 10; return n; }
     if (t >= 30 * 60 && t < 33 * 60) { n.x = 8; n.y = 40; n.visible = inBasement; return n; }
-    if (Stage() >= 2 && ((m >= 12 && m < 18) || (m >= 36 && m < 40))) {
+    // v0.20 systems: the corner moved to 16:11 so she can sit down for Kaptein Fjord at 16:15
+    if (Stage() >= 2 && ((m >= 11 && t < 14 * 60 + 30) || (m >= 36 && m < 40))) {
         n.x = 3; n.y = 19; n.facingWall = true; return n; // standing in the corner
     }
-    n.x = 8; n.y = 16;
+    // v0.20 systems: the rest of her day (Schedule.h)
+    { int k; const DaySpot* md = MomDay(k); const DaySpot* sp = DaySpotAt(md, k, t); n.x = sp->x; n.y = sp->y; n.face = sp->face; }
     return n;
 }
 
@@ -941,12 +953,11 @@ NpcState Story::Dad() const {
     if (dadDown) { n.visible = false; n.x = 20; n.y = 26; return n; }
     if (dadLocked) { n.x = 35; n.y = 8; return n; }
     if (collection) { n.x = 18; n.y = 17; return n; }
-    if (t < 8 * 60) { n.x = 24; n.y = 16; return n; }
     if (t >= 36 * 60 && t < 38 * 60) { n.x = 28; n.y = 25; return n; }   // v0.16: an armful of firewood before the storm
-    if (t < 40 * 60) { n.x = 35; n.y = 8; return n; }
     // v0.10: every Christmas Eve at 16:44 he checks that the key is still under the flagpole
     if (t >= 43 * 60 + 30 && t < 45 * 60 + 30 && dadAtt != Attitude::Broken && dadAtt != Attitude::Scared) { n.x = 11; n.y = 26; return n; }
-    n.x = 10; n.y = 17;
+    // v0.20 systems: the rest of his day (Schedule.h): paper, shed, Kaptein Fjord at 16:15, shovelling, the 16:40 snack, the stove
+    { int k; const DaySpot* dd = DadDay(k); const DaySpot* sp = DaySpotAt(dd, k, t); n.x = sp->x; n.y = sp->y; n.face = sp->face; }
     return n;
 }
 
@@ -954,7 +965,8 @@ NpcState Story::Visitor() const {
     NpcState n;
     n.visible = CarHere();
     if (collection) {
-        if (frontLocked) { n.x = 25; n.y = 18; }
+        if (frontLocked && nobodyHome) { n.x = 20; n.y = 21; }   // v0.20 systems: on the step, talking through the door
+        else if (frontLocked) { n.x = 25; n.y = 18; }
         else if (doorGreeted) { n.x = 20; n.y = 21; }   // v0.14: hinge D. On the step, you in the doorway
         else { n.x = 20; n.y = 19; }
         return n;
@@ -1001,6 +1013,7 @@ bool Story::MomHums() const {
     if (t >= phone * 60 - 30 && t < (phone + 2) * 60) return false;
     if (t >= 28 * 60 && t < 33 * 60) return false;
     if (MomInBath()) return false;
+    if (world.RoomAt(Mom().x, Mom().y) != Room::Kitchen) return false;   // v0.20 systems: not on the couch, not at the tree
     return !Mom().facingWall;
 }
 
@@ -1161,6 +1174,7 @@ void Story::BeginLoop() {
     dropItem.clear(); dropX = dropY = -1;
     barricades.clear(); innerTraps.clear(); carKey.clear();
     falseTracksAt = 0; falseTracks = falseTrailWalked = false;
+    fortressFights = 0; nobodyHome = false;   // v0.20 systems
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
@@ -1268,12 +1282,18 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
     }
 
     // Somebody unlocks the front door again
+    // v0.20 systems: T-083. Whoever is in the house. The third time they watch the door, and it gets you grounded
     if (frontLocked && !collection) {
-        bool momCan = MomHere() && !(t >= 28 * 60 && t < 33 * 60);
-        bool dadCan = DadFree() && (t < 8 * 60 || t >= 40 * 60);
-        if ((momCan || dadCan) && t - frontLockedAt > 90) {
+        auto inHouse = [&](NpcState n) { Room r = world.RoomAt(n.x, n.y); return !IsYard(r) && r != Room::Shed && r != Room::Basement && r != Room::Vidda; };
+        bool momCan = MomHere() && inHouse(Mom());
+        bool dadCan = DadFree() && inHouse(Dad());
+        if ((momCan || dadCan) && t - frontLockedAt > (fortressFights >= 2 ? 30 : 90)) {
             frontLocked = false;
-            Say(momCan ? "Mom" : "Dad", "(click) Why is the front door locked? We're not expecting anyone.");
+            const char* who = momCan ? "Mom" : "Dad";
+            ++fortressFights;
+            if (fortressFights == 1) Say(who, "(click) Why is the front door locked? We're not expecting anyone.");
+            else if (fortressFights == 2) { Say(who, "(click) Again? Leave the door alone, kiddo. It's Christmas."); ChangeMood(-1); }
+            else { Say(who, momCan ? "(click) I'm watching that door now, mister. Lock it once more and see what happens." : "(click) Buddy. I mean it. That door stays open tonight."); ChangeMood(-1); }
         }
     }
 
@@ -1397,7 +1417,7 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
         bool nearDad = DadFree() && d.visible && std::abs(d.x - px) + std::abs(d.y - py) <= 9;
         if (nearDad && Crossed(prev, now, 4) && Once("dad_paper") && fresh(4))
             Bubble("Dad", Tutorial() ? "Minus twenty-five, it says. Your nose'll fall off, buddy." : "(behind the paper) Minus twenty-five. Road closes at five. Same as always.");
-        if (nearDad && Crossed(prev, now, 15) && Once("dad_gen") && fresh(15))
+        if (nearDad && Crossed(prev, now, 12) && Once("dad_gen") && fresh(12))   // v0.20 systems: was 16:15, he watches TV then
             Bubble("Dad", "(to the generator) Come on, old girl. Don't do this to me tonight.");
         if (nearDad && Crossed(prev, now, 25) && Once("dad_whistle") && fresh(25))
             Bubble("Dad", Stage() >= 2 ? "(he whistles. It's her song. He stops halfway.)" : "(whistling something off-key)");
@@ -1409,6 +1429,29 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
             Bubble("Dad", tainted ? "(to Mom, low) Has he said anything to you? ...He keeps looking at the door." : "(to Mom) Smells good, love. Ribbe again?");
         if (nearDad && Crossed(prev, now, 47) && Once("dad_storm") && fresh(47))
             Bubble("Dad", "There it is. Storm's here. Everybody inside, and nobody opens that door.");
+    }
+    // v0.20 systems: T-087 Mom and Dad's idle lines (Schedule.h), only when you're close enough to see it.
+    // T-086 past the darkness line he doesn't wait for ten to five any more. The car comes early too
+    {
+        auto idle = [&](const char* who, const DaySpot* d, int n, NpcState st, bool ok) {
+            for (int i = 0; i < n; ++i) {
+                if (!d[i].line || !ok || !Crossed(prev, now, d[i].lineAt / 60, d[i].lineAt % 60) || now - d[i].lineAt >= 90) continue;
+                if (st.x != d[i].x || st.y != d[i].y) continue;   // a fixed beat (phone, corner, flagpole...) won
+                if (std::abs(st.x - px) + std::abs(st.y - py) > 9) continue;
+                if (Once(std::string("idle_") + who + std::to_string(i))) Bubble(who, d[i].line);
+            }
+        };
+        int nm, nd;
+        const DaySpot* md = MomDay(nm); const DaySpot* dd = DadDay(nd);
+        idle("Mom", md, nm, Mom(), MomHere() && momAtt == Attitude::Normal && !momRemorse && !inBasement);
+        idle("Dad", dd, nd, Dad(), DadFree() && dadAtt == Attitude::Normal && !inBasement);
+        if (Crossed(prev, now, 15) && fresh(15) && here == Room::LivingRoom && (MomHere() || DadFree())) See("tv15");
+        if (Crossed(prev, now, 40, 40) && fresh(40) && inKitchen && MomHere()) See("snack40");
+        if (Once("dark_early") && DarkEarly()) visitorTime = std::min(visitorTime, 50 * 60 - EARLY_KNOCK);
+        if (DarkEarly() && now >= visitorTime - VISIT_ARRIVE && !SawEvent("dark_early") && !collection) {
+            See("dark_early");
+            Narrate("He came early that night. Two minutes. After what I'd done, I don't think they wanted to give me two more minutes in that house.");
+        }
     }
     if (Crossed(prev, now, 45) && Once("nisse_soon") && fresh(45) && DadFree() && !tainted)
         Bubble("Dad", "Julenissen comes at ten to five, buddy. Better be good.");
@@ -1537,6 +1580,7 @@ void Story::StartCollection(const std::string& how) {
     else Say("", "(The power dies. Then: three slow knocks.)");
     if (frontLocked) {
         if (downstairs) Say("", "(Above you, glass explodes. Heavy boots on the living room floor.)");
+        else if (NobodyToOpen()) NobodyHome();   // v0.20 systems: T-083
         else {
             Say("", "(Nobody opens. The handle turns. Locked.)");
             Sound("glass");
@@ -1580,7 +1624,7 @@ void Story::StartCollection(const std::string& how) {
         return;
     }
 
-    Say("The visitor", visitorDowned ? "(from the floor, still calm) ...Evening." : "Evening.");
+    if (!nobodyHome) Say("The visitor", visitorDowned ? "(from the floor, still calm) ...Evening." : "Evening.");   // v0.20 systems: he said his piece through the door
     // v0.19: he got back to a dead car
     if (!carKey.empty() && !visitorDowned) {
         Say("The visitor", "(he holds up one empty glove) Somebody turned my engine off.");
@@ -1611,7 +1655,7 @@ void Story::StartCollection(const std::string& how) {
 
     // v0.13: hinges A and B. He goes to the parent you shut away, and talks through the door
     if (momBathLocked && !visitorDowned) HingeBath();
-    if (dadLocked && !visitorDowned) HingeShed();
+    if (dadLocked && !visitorDowned && !nobodyHome) HingeShed();   // v0.20 systems: on the way round he already passed the shed
 
     // v0.7: they believe you, and they know what clean-up means now
     if (parentsAllied && stance == Stance::Befriended && MomHere() && DadFree() && !visitorDowned) {
@@ -1711,10 +1755,13 @@ void Story::HingeBath() {
 void Story::HingeShed() {
     // B: Dad is barred in the shed. The man goes out to him first, with his torch
     Say("The visitor", "Where's the father?");
+    if (nobodyHome) Say("", "(Nobody answers him. His steps go off the step and round the corner of the house, to the shed. The wind carries every word.)");   // v0.20 systems
+    else {
     if (MomHere()) Say("Mom", stance == Stance::Dark ? "(she points at the yard) The shed. The kid put a plank on the door. Like an animal." : "(she looks at the yard) The shed. He... the door's barred.");
     else Say("The visitor", "(he looks through the house, out at the shed, at the plank across its door) Huh.");
     Say("", frontLocked ? "(He climbs back out through the broken window. The storm comes in, and with it every word.)"
                         : "(He walks back out into the storm and leaves the front door wide open. The wind carries every word.)");
+    }   // v0.20 systems
     { Beat f; f.type = BeatType::Fade; f.id = "hinge_shed"; beats.push_back(f); }
     Say("", "(His torch finds the shed. A beam like a lighthouse. He doesn't lift the plank.)");
     Say("Dad", "(shouting, from inside) Let me out and I'll find him for you! I know every spot! Twelve years on the screens!");
@@ -1730,6 +1777,36 @@ void Story::HingeShed() {
     else Say("You", "(I turn my watch over. Nothing on the back. Just scratches where something used to be.)");
     AddClue("piece_dad");
     PieceCheck();
+}
+
+// v0.20 systems: T-083. The front door is locked and nobody is left in the house to open it.
+// He talks to you through the wood, then goes round the back and comes in through YOUR window
+bool Story::NobodyToOpen() const { return frontLocked && !MomHere() && !DadFree() && !Tutorial(); }
+bool Story::DarkEarly() const { return gEarlyKnock && tainted && darkPoints >= DARK_EARLY && !Tutorial(); }   // T-086
+void Story::NobodyHome() {
+    nobodyHome = true;
+    bool close = std::abs(kidX - 20) + std::abs(kidY - 19) <= 3;
+    Say("", "(Nobody opens. Nobody can. The handle turns. Locked.)");
+    Say("", close ? "(Then nothing. Then his voice, right on the other side of the wood. Like he's leaning his forehead on the door.)"
+                  : "(Then nothing. Then his voice through the front door, all the way through the house. Not loud. He doesn't need loud.)");
+    Say("The visitor", "Zero-six. I know you're in there. I can hear your watch.");
+    Say("The visitor", "I locked this door once. Got everybody out of the way first. Same as you.");
+    Say("The visitor", "I thought if nobody opened it, it didn't count.");
+    if (Knows("collector")) Say("You", "(He wears one too. Under the glove. He isn't guessing.)");
+    Say("The visitor", "It counts. It just means I come in the back.");
+    Say("You", "(We don't have a back door.)");
+    Say("The visitor", "(as if he heard that) You've got a window that sticks, though.");
+    if (dadLocked && !visitorDowned) HingeShed();   // the shed is on the way round
+    Say("", "(Steps in the snow, all the way along the wall. They stop under your window.)");
+    Sound("thud");
+    Say("", "(One bang. Low on the frame, with the heel of his hand. Exactly where you always hit it. The window gives.)");
+    windowBanged = true;
+    { Beat f; f.type = BeatType::Fade; f.id = "nobody_home"; beats.push_back(f); }   // the presentation puts him in your room
+    Say("", "(He climbs in through your window. Into your room. Snow on the floor, on your bed, on your Fliptendo.)");
+    Say("You", "(Exactly where I hit it. Exactly there.)");
+    AddClue("nobody_home");
+    Achieve("Nobody Home");
+    huntStart = momBathLocked ? "bath" : "back";
 }
 
 void Story::HingeBasement() {
@@ -1983,6 +2060,10 @@ void Story::OnHeard(const std::string& how) {
     if (!chase) return;
     if (how == "run") {
         if (Once("heard_run")) Bubble("The visitor", "Little feet. Fast ones.");
+        AddClue("he_hears");
+    } else if (how == "door_open" || how == "door_shut" || how == "slam") {
+        // v0.20 systems: T-088. Doors carry through the house like feet
+        if (Once("heard_" + how)) Bubble("The visitor", how == "slam" ? "(he turns toward the bang) Temper, temper." : how == "door_shut" ? "Shutting doors on me, 06?" : "(a hinge, somewhere) ...Hello, door.");
         AddClue("he_hears");
     } else if (how == "gasp") {
         Bubble("The visitor", "There it is.");
