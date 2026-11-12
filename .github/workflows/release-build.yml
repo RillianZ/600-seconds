@@ -1,0 +1,37 @@
+# Release builds for 600 Seconds (PUBLIC=1, no debug panel).
+# Runs on pushes to release-build-* branches. Outputs: site files, the one-file html and the play zip.
+name: Release build
+on:
+  push:
+    branches: ['release-build-*']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.58
+      - name: Tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q mingw-w64 zip
+      - name: raylib for web and Windows
+        run: |
+          git clone --depth 1 --branch 5.5 https://github.com/raysan5/raylib.git ../raylib
+          cp -r ../raylib ../raylib-win
+          make -C ../raylib/src PLATFORM=PLATFORM_WEB -j4
+          make -C ../raylib-win/src PLATFORM=PLATFORM_DESKTOP OS=Windows_NT CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar -j4
+      - name: Story test
+        run: g++ -std=c++17 -Wall -Isrc test/sim.cpp src/game/Story.cpp -o sim && ./sim | tail -n 3
+      - name: Build
+        run: |
+          PUBLIC=1 RAYLIB_SRC=../raylib/src ./build_all.sh
+          PUBLIC=1 RAYLIB_WIN=../raylib-win/src ./package_play.sh
+          (cd build/web && zip -qr ../600Seconds-web.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 600seconds-release
+          path: |
+            build/site/
+            build/single/600Seconds.html
+            build/play/*.zip
+            build/600Seconds-web.zip
