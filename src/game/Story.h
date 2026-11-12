@@ -151,6 +151,8 @@ public:
     std::set<std::string> seenEvents;   // things you watched happen: they fill in the timeline
     int dryLoops = 0;                   // loops in a row without a new memory (the narrator nudges at 3)
     std::string lastEnd;                // how the last loop ended, so the next one can mention it
+    // v0.12 persistent: the spots he has pulled you out of. He checks those first, every loop after
+    std::map<std::string, int> caughtSpots;
     // ---- darkness. Survives even a New Game. You can't undo it.
     int darkPoints = 0;
     bool tainted = false;
@@ -218,6 +220,10 @@ public:
     bool momRemorse = false;                   // you hummed it back to her
     bool sisterNoticed = false;
     bool echoAsked = false;
+    // v0.12 per loop: the hunt
+    std::string hideSpot;                      // set by the presentation: the object the kid is hiding in
+    int pebbles = 0;                           // marbles in your pocket, to throw
+    int decoys = 0;                            // how many he has fallen for this loop
     std::string pendingKnifeAct;
     int knifeChecks = 0;
 
@@ -249,6 +255,12 @@ public:
     void OnLeftPremises();     // ran past the fence during the chase (v0.4)
     void QTEResult(bool stayedAwake);
     bool ShouldHide(const std::string& id) const;
+    // v0.12: the hunt
+    static bool IsHideSpot(const std::string& id);
+    int CaughtIn(const std::string& id) const { auto it = caughtSpots.find(id); return it == caughtSpots.end() ? 0 : it->second; }
+    void OnHeard(const std::string& how);   // run = running feet, breath = you breathed with him next to you, gasp = you ran out of air
+    void OnTracked();                       // he followed wet prints indoors
+    bool OnDecoy();                         // a thrown marble landed where he could hear it. True if he goes to look
     bool VisitorEntersWindow() const { return frontLocked; }
 
     // queries

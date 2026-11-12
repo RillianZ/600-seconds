@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.11.0";
+static const char* kVersion = "v0.12.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -128,11 +128,27 @@ struct SpeechBubble { std::string who, text; float t, life; };
 static std::vector<SpeechBubble> bubbles;
 
 // v0.4: the visitor searches the house instead of homing in on you
-enum class VMode { Grace, Search, Chase, Lost, CheckSpot, GoToHide };
+enum class VMode { Grace, Search, Chase, Lost, CheckSpot, GoToHide, Investigate };
 static VMode vmode = VMode::Grace;
 static float vPause = 0, vLostT = 0, vBarkT = 0, vSpotCooldown = 0;
 static std::vector<Vector2> vPath;     // waypoints in the current room
 static size_t vPathI = 0;
+// v0.12: the hunt. He hears, he follows wet prints, he falls for a marble (twice). You run out of breath
+static Vector2 vNoise{};               // where the sound came from
+static float vNoiseWait = 0, vNoiseT = 0, vHearCD = 0;
+static bool vSure = false;             // the next room plan checks every spot
+static float vShowT = 0;               // you only see him while you could really see him
+static float stamina = 1, breath = 1, breathHeardT = 0, wetT = 0, wetCD = 0, vStepAcc = 0;
+static bool winded = false, holdingBreath = false, gasped = false;
+struct Marble { Vector2 from, to; float t, dur; bool landed; };
+static std::vector<Marble> marbles;
+struct Ring { Vector2 p; float t; int kind; };   // kind 0: his steps, heard not seen. 1: a noise you made
+static std::vector<Ring> rings;
+static void AddRing(Vector2 p, int kind) { rings.push_back({ p, 0, kind }); if (rings.size() > 40) rings.erase(rings.begin()); }
+static void ResetHunt() {
+    stamina = breath = 1; breathHeardT = wetT = wetCD = vStepAcc = 0; winded = holdingBreath = gasped = false;
+    marbles.clear(); rings.clear(); vSure = false; vShowT = 0.4f; vHearCD = 0;
+}
 static std::vector<int> vSpots;        // hiding spots (obj index) still to check in this room
 static int vRoom = -1, vSweep = 0, vSpotObj = -1;
 static bool vRoomDone[16] = {};
@@ -566,8 +582,12 @@ static bool VisitorSeesKid() {
     }
     return LineOfSight(visitor.pos, player.pos);
 }
-static bool IsHideObj(const std::string& id) {
-    return id == "wardrobe" || id == "bed" || id == "pbed" || id == "toolbox" || id == "couch";
+static bool IsHideObj(const std::string& id) { return Story::IsHideSpot(id); }
+// v0.12: he is only drawn while you have a line to him, or he is right on top of you
+static bool VisitorShown() {
+    if (!visitor.visible) return false;
+    if (scene != SceneMode::Chase || !story.chase) return true;
+    return vShowT > 0;
 }
 // A walkable tile next to an object, the closest one to `from`
 static Vector2 SpotNextTo(const Obj& o, Vector2 from) {
@@ -604,12 +624,19 @@ static void PlanRoom(int ri) {
         if (tiles.size() > 12) vPath.push_back(tiles[GetRandomValue(0, (int)tiles.size() - 1)]);
     }
     // the hiding spots in here: he doesn't always check every one, and not always first
-    float chance = vSweep == 0 ? 0.5f : vSweep == 1 ? 0.8f : 1.0f;
+    // v0.12: a spot he has found you in before is always checked, and first
+    float chance = vSure ? 1.0f : vSweep == 0 ? 0.7f : 1.0f;
+    bool known = false;
     for (int i = 0; i < (int)story.world.objs.size(); ++i) {
         const Obj& o = story.world.objs[i];
-        if (IsHideObj(o.id) && story.world.RoomAt(o.x, o.y) == r && GetRandomValue(0, 999) < chance * 1000) vSpots.push_back(i);
+        if (!IsHideObj(o.id) || story.world.RoomAt(o.x, o.y) != r) continue;
+        if (story.CaughtIn(o.id) > 0) { known = true; vSpots.push_back(i); }
+        else if (GetRandomValue(0, 999) < chance * 1000) vSpots.push_back(i);
     }
     if (vSpots.size() > 1 && GetRandomValue(0, 1)) std::swap(vSpots[0], vSpots[1]);
+    std::stable_sort(vSpots.begin(), vSpots.end(), [](int a, int b) { return story.CaughtIn(story.world.objs[a].id) > story.CaughtIn(story.world.objs[b].id); });
+    if (known && !vSure) { vPath.clear(); vPathI = 0; }   // no looking around first. He walks straight to it
+    vSure = false;
 }
 static void PickNextRoom() {
     int best = -1; float bd = 1e9f;
@@ -625,6 +652,8 @@ static void PickNextRoom() {
             float d = std::hypot(sx / n * TS - visitor.pos.x, sy / n * TS - visitor.pos.y);
             if (r == Room::Outside || r == Room::Shed) d += 260;
             d += GetRandomValue(0, 60);
+            if (vSweep == 0) for (auto& o : story.world.objs)   // v0.12: the rooms he has found you in come first
+                if (IsHideObj(o.id) && story.world.RoomAt(o.x, o.y) == r) d -= 3000.0f * story.CaughtIn(o.id);
             if (d < bd) { bd = d; best = i; }
         }
         if (best < 0) { ++vSweep; for (bool& b : vRoomDone) b = false; }
@@ -636,6 +665,7 @@ static void PickNextRoom() {
 static void StartSearch(bool dadRan) {
     for (bool& b : vRoomDone) b = false;
     vSweep = 0; vPause = 0; vLostT = 0; vBarkT = 5; vSpotCooldown = 0; vSpotObj = -1;
+    ResetHunt();
     vPath.clear(); vSpots.clear(); vRoom = -1;
     if (dadRan) {
         vmode = VMode::Grace;               // he walks back in from the yard. Panic time
@@ -835,7 +865,7 @@ static void UpdateBeat(float dt) {
             // v0.6: Outer Wilds style recap of what you learned this loop
             recapList = story.lastLoopNew;
             if (!recapList.empty()) { recapOpen = true; recapT = 0; recapShown = 0; }
-            prints.clear();
+            prints.clear(); ResetHunt();
             Snap(player, 5, 5); player.dir = 0;
             Snap(mom, 8, 16); Snap(dad, 24, 16); Snap(doggo, 6, 6); Snap(visitor, 20, 29);
             momDoor = HeldDoor(); dadDoor = HeldDoor(); lastThreats = 0; vDoorT = 0; struggleT = 0;
@@ -1169,8 +1199,20 @@ static void DrawBubbles(float dt) {
         for (size_t k = 0; k < lines.size(); ++k) UIText(lines[k].c_str(), bx + 5, by + 3 + k * lh, size, Fade(fg, alpha));
     }
     // the visitor's mood, over his head
-    if (scene == SceneMode::Chase && visitor.visible && !beatActive && downedT <= 0) {
-        const char* mark = vmode == VMode::Chase ? "!" : vmode == VMode::Lost ? "?" : nullptr;
+    // v0.12: sounds. His steps when you can't see him, and the noise you make yourself
+    for (size_t i = 0; i < rings.size();) {
+        Ring& r = rings[i];
+        r.t += dt;
+        if (r.t > 0.8f) { rings.erase(rings.begin() + i); continue; }
+        ++i;
+        Vector2 c = WorldToUI({ r.p.x, r.p.y + 5 });
+        float k = r.t / 0.8f;
+        Color col = r.kind == 0 ? Color{ 235, 120, 120, 255 } : Color{ 245, 220, 130, 255 };
+        DrawEllipseLines((int)(c.x * US), (int)(c.y * US), (3 + k * 13) * US, (1.6f + k * 7) * US, Fade(col, 0.7f * (1 - k)));
+        DrawEllipseLines((int)(c.x * US), (int)(c.y * US), (2 + k * 9) * US, (1.0f + k * 5) * US, Fade(col, 0.4f * (1 - k)));
+    }
+    if (scene == SceneMode::Chase && VisitorShown() && !beatActive && downedT <= 0) {
+        const char* mark = vmode == VMode::Chase ? "!" : vmode == VMode::Lost || vmode == VMode::Investigate ? "?" : nullptr;
         if (mark) {
             Vector2 h = WorldToUI(visitor.pos);
             UIText(mark, h.x - UIMeasure(mark, 12) / 2, h.y - HeadHeight(&visitor) - 12, 12, vmode == VMode::Chase ? Color{ 240, 60, 60, 255 } : Color{ 240, 200, 90, 255 });
@@ -1182,6 +1224,7 @@ static void DrawBubbles(float dt) {
         if (!tg.id.empty()) {
             Vector2 h = WorldToUI(player.pos);
             const float size = 6.5f;
+            if (story.ShouldHide(tg.id)) tg.name = "Hide: " + tg.name;
             float w = UIMeasure(tg.name.c_str(), size);
             float bw = w + 18, bx = std::max(4.0f, std::min(VW - 4 - bw, h.x - bw / 2)), by = h.y - 36;
             DrawRectangleRounded({ bx * US, by * US, bw * US, 11 * US }, 0.5f, 8, Fade(BLACK, 0.72f));
@@ -1194,7 +1237,7 @@ static void DrawBubbles(float dt) {
 
 static void DrawChaseBanner() {
     if (scene == SceneMode::None) return;
-    const char* t = scene == SceneMode::DadRuns ? "DAD IS FIGHTING HIM. RUN." : hidden ? "HIDING... (E to come out)" :
+    const char* t = scene == SceneMode::DadRuns ? "DAD IS FIGHTING HIM. RUN." : hidden ? (touchMode ? "HIDING  (E: out, RUN: hold breath)" : "HIDING  (E: out, Shift: hold breath)") :
                     story.threats >= 3 ? "HE'S DONE WAITING" : story.threats > 0 ? "HE'S HURTING THEM" : "THE LAST 600 SECONDS";
     float p = 0.5f + 0.5f * std::sin(globalT * 5);
     UIText(t, VW / 2.0f - UIMeasure(t, 10) / 2, 40, 10, Fade(Color{ 240, 70, 70, 255 }, 0.6f + 0.4f * p));
@@ -1204,16 +1247,32 @@ static void DrawChaseBanner() {
         else if (hidden) {
             bool near = vmode == VMode::GoToHide || (vmode == VMode::CheckSpot && vSpotObj >= 0 &&
                         story.world.RoomAt(story.world.objs[vSpotObj].x, story.world.objs[vSpotObj].y) == story.world.RoomAt(TX(hidePos.x), TX(hidePos.y)));
-            h = near ? "Don't. Breathe." : "Stay still. Listen.";
+            h = gasped ? "You gasped." : holdingBreath ? "Holding it." : near || breathHeardT > 0 ? "He's close. HOLD YOUR BREATH." : "Stay still. Listen.";
         }
+        else if (vmode == VMode::Investigate) h = "He heard something. He's going to look.";
+        else if (winded) h = "Out of breath. You can't run yet.";
         else if (vmode == VMode::Grace) h = "He's coming back in. Get out of sight.";
         else if (vmode == VMode::Chase) h = "HE SEES YOU. Run (Shift). Break line of sight.";
         else if (vmode == VMode::Lost) h = "He lost you. Keep moving.";
         else if (story.threats > 0) h = "Come out and face him (E). Or don't.";
-        else h = "He's searching room by room. Hide (E), sneak past, or face him (E).";
+        else h = story.pebbles > 0 ? (touchMode ? "He's searching. Walk, don't run. THROW a marble to move him." : "He's searching. Walk, don't run. Q throws a marble.")
+                                   : "He's searching. Walk, don't run. He hears running. Hide (E) or face him (E).";
         if (story.cold > 0.3f) h = story.hasCoat ? "It's getting into your jacket. Get inside." : "You're freezing. Get inside.";
         else if (story.doggoWithKid && story.Knows("doggo_stay") && !hidden) h = "Doggo is right next to you. Tell him to stay (E on Doggo).";
         UIText(h, VW / 2.0f - UIMeasure(h, 6) / 2, 54, 6, Fade(WHITE, 0.65f));
+        // v0.12: air and legs
+        auto bar = [&](float y, float v, const char* label, Color c) {
+            float w = 60, x = VW / 2.0f - w / 2;
+            DrawRectangleRounded({ (x - 1) * US, (y - 1) * US, (w + 2) * US, 5 * US }, 0.6f, 6, Fade(BLACK, 0.6f));
+            DrawRectangleRounded({ x * US, y * US, std::max(0.0f, v) * w * US, 3 * US }, 0.6f, 6, Fade(c, 0.9f));
+            UIText(label, x - UIMeasure(label, 5) - 4, y - 1, 5, Fade(WHITE, 0.6f));
+        };
+        if (hidden) bar(64, breath, "AIR", breath < 0.3f ? Color{ 240, 80, 80, 255 } : Color{ 150, 200, 255, 255 });
+        else if (stamina < 0.995f) bar(64, stamina, "LEGS", winded ? Color{ 240, 80, 80, 255 } : Color{ 240, 210, 110, 255 });
+        if (story.pebbles > 0 && !hidden) {
+            std::string m = std::string(touchMode ? "THROW" : "Q") + ": marble x" + std::to_string(story.pebbles);
+            UIText(m.c_str(), VW / 2.0f - UIMeasure(m.c_str(), 5) / 2, 71, 5, Fade(Color{ 245, 220, 130, 255 }, 0.8f));
+        }
     }
 }
 
@@ -1258,6 +1317,10 @@ static void DrawHUD() {
     if (story.tainted) { std::string dk = "DARK " + std::to_string(story.darkPoints); UIText(dk.c_str(), 8, 33, 6, Color{ 200, 40, 40, 220 }); }
     if (debugMode) {
         std::string rs = std::string("DEBUG  reality: ") + ShiftName(story.shift) + "  streak " + std::to_string(story.cleanStreak) + "  [O]";
+        if (scene == SceneMode::Chase) {
+            static const char* vm[] = { "grace", "search", "chase", "lost", "check spot", "go to your spot", "investigate" };
+            rs += std::string("  hunt: ") + vm[(int)vmode] + "  sweep " + std::to_string(vSweep) + "  wet " + std::to_string((int)wetT);
+        }
         if (visitorBlind) rs += "  VISITOR BLIND";
         UIText(rs.c_str(), 8, VH - 22, 6, Color{ 120, 220, 140, 200 });
     }
@@ -1977,7 +2040,7 @@ static void DrawTouchControls() {
     }
     TouchButton(l.e, l.er, "E", vDown[KEY_E], 12);
     TouchButton(l.run, l.sr, "RUN", vDown[KEY_LEFT_SHIFT], 6);
-    TouchButton(l.wait, l.sr, "WAIT", vDown[KEY_T], 6);
+    TouchButton(l.wait, l.sr, story.chase ? "THROW" : "WAIT", vDown[KEY_T], 6);
     if (SkipShown()) TouchButton(l.skip, l.sr, "SKIP", false, 6);
     if (!journalOpen && !beatActive) UIText("tap here: memory", 8, 33 + (story.tainted ? 8 : 0), 5, Fade(WHITE, 0.4f));
 }
@@ -2138,7 +2201,16 @@ static void UpdateDrawFrame() {
         if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) mv.y += 1;
         if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) mv.y -= 1;
         bool running = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        // v0.12: in the hunt you can't sprint forever
+        if (story.chase) {
+            if (winded && stamina > 0.35f) winded = false;
+            if (winded) running = false;
+        } else { stamina = 1; winded = false; }
         kidRunning = running && !story.kidShot && (mv.x != 0 || mv.y != 0) && !hidden;
+        if (story.chase) {
+            if (kidRunning) { stamina -= dt / 3.5f; if (stamina <= 0) { stamina = 0; winded = true; } }
+            else stamina = std::min(1.0f, stamina + dt / ((mv.x != 0 || mv.y != 0) ? 9.0f : 5.0f));
+        }
         float speed = story.kidShot ? 26 : running ? 128 : 84;
         if (IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6)))) speed *= 0.88f;   // v0.8: snow to your shins
         if (hidden) mv = { 0, 0 };
@@ -2151,15 +2223,27 @@ static void UpdateDrawFrame() {
             player.anim += dt * (running && !story.kidShot ? 15 : 10);
         } else player.anim = 0;
 
+        // v0.12: throw a marble the way you are facing
+        if (story.chase && scene == SceneMode::Chase && !hidden && story.pebbles > 0 && (IsKeyPressed(KEY_Q) || (touchMode && vPress[KEY_T]))) {
+            const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
+            Vector2 at = player.pos, land = player.pos;
+            for (int i = 0; i < 26; ++i) {
+                at.x += fx[player.dir] * 4; at.y += fy[player.dir] * 4;
+                if (BlocksSight(TX(at.x), TX(at.y))) break;
+                if (story.world.Walkable(TX(at.x), TX(at.y), false)) land = at;
+            }
+            float d = std::hypot(land.x - player.pos.x, land.y - player.pos.y);
+            if (d > 10) { marbles.push_back({ player.pos, land, 0, d / 230.0f, false }); story.pebbles--; }
+        }
         if (interactCooldown > 0) interactCooldown -= dt;
         else if (IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE)) {
             if (hidden) {
-                hidden = false;
+                hidden = false; breathHeardT = 0; gasped = false;
             } else {
                 Target tg = FindTarget();
                 if (!tg.id.empty()) {
                     if (story.ShouldHide(tg.id)) {
-                        hidden = true; hideT = 0;
+                        hidden = true; hideT = 0; story.hideSpot = tg.id; breathHeardT = 0; gasped = false;
                         const Obj* o = nullptr;
                         for (auto& ob : story.world.objs) if (ob.id == tg.id) o = &ob;
                         hidePos = o ? TileCenter(o->x, o->y) : player.pos;
@@ -2359,6 +2443,67 @@ static void UpdateDrawFrame() {
                         if (vmode != VMode::Chase && vSpotCooldown <= 0) { VisitorBark(kSpotLines, 3); vSpotCooldown = 6; }
                         vmode = VMode::Chase; vLostT = 0; vLastSeen = player.pos;
                     }
+                    // ---- v0.12: what he hears
+                    bool busy = vmode == VMode::Grace || vmode == VMode::GoToHide || (vmode == VMode::Chase && (sees || vLostT < 0.3f));
+                    float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
+                    auto hear = [&](Vector2 at, float wait) { vmode = VMode::Investigate; vNoise = at; vNoiseWait = wait; vNoiseT = 0; vPause = 0; };
+                    vHearCD -= dt;
+                    if (!busy && !hidden && !visitorBlind) {
+                        bool loudOut = IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6))) && story.Storm();
+                        if (kidRunning && dk < TS * (loudOut ? 5.0f : 10.0f)) {
+                            // running feet carry through walls. In the storm, less
+                            if (vHearCD <= 0) { vHearCD = 0.45f; AddRing(player.pos, 1); }
+                            bool first = vmode != VMode::Investigate;
+                            hear(player.pos, 1.2f);
+                            if (first) { story.OnHeard("run"); StartNextBeat(); }
+                        } else if (player.anim > 0 && dk < TS * 2.6f) {
+                            // a walking kid he only hears when he is close. He turns around
+                            float dx = player.pos.x - visitor.pos.x, dy = player.pos.y - visitor.pos.y;
+                            visitor.dir = std::fabs(dx) > std::fabs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
+                            if (!LineOfSight(visitor.pos, player.pos) && vmode != VMode::Investigate) hear(player.pos, 1.0f);
+                        }
+                    }
+                    // ---- holding your breath in a hiding spot
+                    if (hidden) {
+                        float dh = std::hypot(visitor.pos.x - hidePos.x, visitor.pos.y - hidePos.y);
+                        bool close = dh < TS * 3.2f && LineOfSight(visitor.pos, hidePos);
+                        bool want = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+                        if (!want) gasped = false;
+                        holdingBreath = want && !gasped && breath > 0;
+                        if (holdingBreath) {
+                            breath -= dt / 6.0f;
+                            if (breath <= 0) {
+                                breath = 0; gasped = true; holdingBreath = false; AddRing(hidePos, 1);
+                                if (!busy && dh < TS * 9 && !visitorBlind) { story.OnHeard("gasp"); StartNextBeat(); vmode = VMode::GoToHide; }
+                            }
+                        } else breath = std::min(1.0f, breath + dt / 7.0f);
+                        if (close && !holdingBreath && !busy && !visitorBlind) {
+                            breathHeardT += dt;
+                            if (breathHeardT > 0.9f) { story.OnHeard("breath"); StartNextBeat(); vmode = VMode::GoToHide; breathHeardT = 0; }
+                        } else breathHeardT = std::max(0.0f, breathHeardT - dt * 0.5f);
+                    } else { holdingBreath = false; breath = std::min(1.0f, breath + dt / 7.0f); }
+                    // ---- marbles in the air
+                    for (auto& m : marbles) {
+                        if (m.landed) continue;
+                        m.t += dt;
+                        if (m.t < m.dur) continue;
+                        m.landed = true; Play("point"); AddRing(m.to, 1);
+                        bool deaf = vmode == VMode::Grace || vmode == VMode::GoToHide || (vmode == VMode::Chase && sees) || visitorBlind;
+                        if (!deaf && std::hypot(visitor.pos.x - m.to.x, visitor.pos.y - m.to.y) < TS * 12) {
+                            if (story.OnDecoy()) hear(m.to, 2.4f);
+                            StartNextBeat();
+                        }
+                    }
+                    // ---- you only see him when you could. Otherwise you hear where he walks
+                    {
+                        Vector2 eye = hidden ? hidePos : player.pos;
+                        float de = std::hypot(visitor.pos.x - eye.x, visitor.pos.y - eye.y);
+                        if (de < TS * 2.2f || LineOfSight(eye, visitor.pos)) vShowT = 0.3f; else vShowT -= dt;
+                        static Vector2 lastStep = visitor.pos;
+                        vStepAcc += std::min(12.0f, std::hypot(visitor.pos.x - lastStep.x, visitor.pos.y - lastStep.y));
+                        lastStep = visitor.pos;
+                        if (vStepAcc > 30) { vStepAcc = 0; if (vShowT <= 0 && de < TS * 11) AddRing(visitor.pos, 0); }
+                    }
                     switch (vmode) {
                     case VMode::Grace:
                         if (goTo(vGraceGoal, 34, 0)) {
@@ -2398,7 +2543,38 @@ static void UpdateDrawFrame() {
                             if (ri >= 0) PlanRoom(ri); else PickNextRoom();
                         }
                         break;
+                    case VMode::Investigate:
+                        // v0.12: he goes to the sound, listens, then turns that room inside out
+                        vNoiseT += dt;
+                        if (vPause > 0) {
+                            vPause -= dt;
+                            if (std::fmod(vPause, 0.4f) < dt) visitor.dir = (visitor.dir + 1 + GetRandomValue(0, 2)) % 4;
+                            if (vPause <= 0) {
+                                Room r = story.world.RoomAt(TX(vNoise.x), TX(vNoise.y));
+                                int ri = -1;
+                                for (int k = 0; k < kRoomCount; ++k) if (kSearchRooms[k] == r) ri = k;
+                                vmode = VMode::Search;
+                                if (ri >= 0) { vSure = true; PlanRoom(ri); } else PickNextRoom();
+                            }
+                        } else if (goTo(vNoise, searchSp * 1.7f, 4) || vNoiseT > 8) vPause = vNoiseWait;
+                        break;
                     case VMode::Search:
+                        // v0.12: indoors he reads the wet prints you bring in from the snow
+                        if (vPrintCD <= 0.05f) {
+                            Vector2 newest{}; bool any = false, near = false;
+                            for (auto it = prints.rbegin(); it != prints.rend(); ++it) {
+                                if (it->who != 3 || it->t > 40) continue;
+                                if (!any) { newest = it->p; any = true; }
+                                if (std::hypot(it->p.x - visitor.pos.x, it->p.y - visitor.pos.y) < 52 && LineOfSight(visitor.pos, it->p)) { near = true; break; }
+                            }
+                            if (near && std::hypot(newest.x - visitor.pos.x, newest.y - visitor.pos.y) > 14) {
+                                story.OnTracked(); StartNextBeat();
+                                vPrintCD = 3;
+                                if (hidden && std::hypot(newest.x - hidePos.x, newest.y - hidePos.y) < TS * 2.6f) { vmode = VMode::GoToHide; break; }
+                                vmode = VMode::Investigate; vNoise = newest; vNoiseWait = 0.8f; vNoiseT = 0; vPause = 0;
+                                break;
+                            }
+                        }
                         // v0.8: outside he reads your tracks
                         vPrintCD -= dt;
                         if (vPrintCD <= 0 && story.world.RoomAt(TX(visitor.pos.x), TX(visitor.pos.y)) == Room::Outside) {
@@ -2462,6 +2638,12 @@ static void UpdateDrawFrame() {
         story.kidHidden = hidden;
         UpdatePrints(dt);
         if (!hidden) AddPrint(player, 0, dt, 0.2f);
+        // v0.12: snow on your boots. It comes off on the floor for a while
+        if (IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6)))) wetT = 14;
+        else if (wetT > 0 && player.anim > 0 && !hidden && player.pos.y < 34 * TS) {
+            wetT -= dt; wetCD -= dt;
+            if (wetCD <= 0) { wetCD = 0.17f; printSide = 1 - printSide; prints.push_back({ { player.pos.x, player.pos.y + 6 }, 0, 3, printSide }); if (prints.size() > 500) prints.erase(prints.begin()); }
+        }
         if (visitor.visible) AddPrint(visitor, 1, dt, 0.28f);
         if (doggo.visible && (story.DoggoExists() || (story.doggoOut && !doggoRanOff))) AddPrint(doggo, 2, dt, 0.12f);
 

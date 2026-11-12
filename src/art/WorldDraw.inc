@@ -174,7 +174,7 @@ static void AddPrint(const Actor& a, int who, float dt, float every) {
 static void UpdatePrints(float dt) {
     float life = story.Storm() ? 16.0f : 150.0f;
     for (auto& p : prints) p.t += dt;
-    prints.erase(std::remove_if(prints.begin(), prints.end(), [&](const Print& p) { return p.t > life; }), prints.end());
+    prints.erase(std::remove_if(prints.begin(), prints.end(), [&](const Print& p) { return p.t > (p.who == 3 ? 45.0f : life); }), prints.end());
 }
 static void DrawPrints() {
     float life = story.Storm() ? 16.0f : 150.0f;
@@ -182,7 +182,11 @@ static void DrawPrints() {
     for (auto& p : prints) {
         float a = 0.9f * (1 - p.t / life);
         int ox = p.side ? 2 : -2, x = (int)p.p.x, y = (int)p.p.y;
-        if (p.who == 1) { DrawRectangle(x + ox - 1, y, 4, 2, Fade(c, a)); DrawRectangle(x + ox - 1, y + 2, 4, 1, Fade(lip, a * 0.7f)); DrawRectangle(x + ox - 1, y - 2, 3, 1, Fade(c, a * 0.8f)); }
+        if (p.who == 3) {   // v0.12: wet boots on the floor, drying
+            float w = 0.5f * (1 - p.t / 45.0f);
+            DrawRectangle(x + ox - 1, y, 3, 2, Fade(Color{ 20, 30, 52, 255 }, w)); DrawRectangle(x + ox, y, 1, 1, Fade(Color{ 190, 215, 245, 255 }, w * 0.8f));
+        }
+        else if (p.who == 1) { DrawRectangle(x + ox - 1, y, 4, 2, Fade(c, a)); DrawRectangle(x + ox - 1, y + 2, 4, 1, Fade(lip, a * 0.7f)); DrawRectangle(x + ox - 1, y - 2, 3, 1, Fade(c, a * 0.8f)); }
         else if (p.who == 2) DrawRectangle(x + ox / 2, y, 1, 1, Fade(c, a));
         else { DrawRectangle(x + ox, y, 2, 1, Fade(c, a)); DrawRectangle(x + ox, y + 1, 2, 1, Fade(lip, a * 0.6f)); }
     }
@@ -431,6 +435,13 @@ static void DrawWorld(Camera2D cam) {
     for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) if (below == (y >= 34)) DrawTileFx(x, y);
 
     DrawPrints();
+    // v0.12: marbles, in the air and where they stopped
+    for (auto& m : marbles) {
+        float k = m.dur > 0 ? std::min(1.0f, m.t / m.dur) : 1;
+        float x = m.from.x + (m.to.x - m.from.x) * k, y = m.from.y + (m.to.y - m.from.y) * k + 5 - std::sin(k * 3.14159f) * 9;
+        if (below != (y >= 34 * TS)) continue;
+        DrawRectangle((int)x - 1, (int)y - 1, 3, 3, Color{ 30, 60, 90, 255 }); DrawRectangle((int)x, (int)y - 1, 1, 1, Color{ 200, 240, 255, 255 });
+    }
     bool flux = story.Act() >= 2;
     // objects and people, sorted by y
     struct D { float y; int kind; const Obj* o; const Actor* a; };
@@ -440,7 +451,7 @@ static void DrawWorld(Camera2D cam) {
     if (mom.visible) ds.push_back({ mom.pos.y, 2, nullptr, &mom });
     if (dad.visible) ds.push_back({ dad.pos.y, 3, nullptr, &dad });
     if (story.DoggoExists() || story.doggoDead || (story.doggoOut && !doggoRanOff)) ds.push_back({ doggo.pos.y, 4, nullptr, &doggo });
-    if (visitor.visible) ds.push_back({ visitor.pos.y, 5, nullptr, &visitor });
+    if (VisitorShown()) ds.push_back({ visitor.pos.y, 5, nullptr, &visitor });
     if (story.CarHere() && !below) ds.push_back({ 31 * TS + 20.0f, 6, nullptr, nullptr });
     std::sort(ds.begin(), ds.end(), [](const D& a, const D& b) { return a.y < b.y; });
     for (auto& d : ds) {

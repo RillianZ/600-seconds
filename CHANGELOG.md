@@ -2,6 +2,36 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.12.0
+Built on the branch `claude-batch-v0.12-hunt`, on top of v0.11.0 (`fable-visuals-20261112`). Not merged. The first of four expansions: the hunt. The story test now has 62 memories and the same 8 endings.
+
+**He learns**
+- He remembers every hiding spot he has pulled you out of, across loops and saves. Next time he goes to that room first and checks that spot first, with no looking around.
+- "You always pick that one" is no longer said the first time. He says it the second time. After that he says he doesn't know how he knows. He just walks there.
+
+**He hears**
+- Running is loud. He hears it through walls, from about ten tiles away (less out in the storm). He goes to the sound and turns that room inside out.
+- Walking he only hears when he is close. He turns around.
+- In a hiding spot he hears you breathe when he stands right outside. Hold Shift (RUN on a phone) to hold your breath. The AIR bar runs out in about six seconds, and then you gasp.
+
+**He tracks**
+- Snow on your boots. Come in from the yard and you leave wet prints on the floor for about fifteen seconds of walking. They dry in about 45. He follows them, all the way to your hiding spot.
+
+**You can**
+- Take a handful of marbles from the jar in your room (once you know he comes at 16:50). Q throws one the way you face. He goes to where it lands. Twice. The third time he just smiles.
+- Hide in five new places: the pantry, behind the Christmas tree, the woodpile, Doggo's house and the trash bins. The yard ones are cold, but slower to freeze in than standing out in the open.
+- Sprint for about three and a half seconds. Then your legs give out and you walk until they come back (the LEGS bar).
+
+**You see less**
+- During the hunt you only see him when you could really see him. Otherwise you see where his steps land, as red rings, and your own noise as yellow rings.
+
+**New memories (6)**: He remembers where he caught me, Running is loud, Hold my breath, Snow on my boots, He looks where it lands, Hiding doesn't end it (make it to 17:00 without being found).
+**New achievements (2)**: Creature of Habit, Lost Your Marbles.
+
+**Under the hood**
+- The save has one more field (the spots he found you in). Older saves load fine.
+- The debug line shows the hunt state while the hunt runs.
+
 ## What's in v0.11.0
 Built on the branch `fable-visuals-20261112`, on top of the v0.10.0 audit branch. Not merged. A visual overhaul. No story changes, the story test is the same 56 memories and 8 endings.
 

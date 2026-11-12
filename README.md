@@ -26,12 +26,14 @@ Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains off scr
 | Enter | Continue / pick a choice |
 | Hold T | Wait (time runs much faster) |
 | J | Memory log |
+| Q | During the hunt: throw a marble the way you face (take some from the jar in your room first) |
+| Hold Shift while hiding | Hold your breath (he hears you breathe when he is right outside) |
 | Tab | Skip talking (from loop 2) and any line you've already read |
 | P or Esc | Pause: music, sound, text speed, flashes |
 
 Debug: add `?debug` to the URL, or press Shift+D on the title screen. `M` opens the jukebox (every song), `3` hops to the gate, `4` goes to the basement with the tape, `5` hops to the living room, `6` marks all five chores done, `7` opens the Fliptendo (Flappy Plane), `8` jumps 5 minutes, `9` jumps to 16:49, `0` jumps straight to the knock at the door. On the title screen, `Shift+R` twice is a true hard reset (memories, darkness, endings, achievements, save). `O` opens the debug panel (title or in game): reality shift frequency, force the next loop's reality, restart the loop, set dark points, give or clear all memories, make the visitor blind. Panel settings are saved in the browser and only apply in debug mode.
 
-Phone: touch the screen and phone mode turns on. D-pad bottom left, E / RUN / WAIT bottom right, SKIP during talk, tap anywhere to use or continue, tap the top left for the memory log, tap a choice to pick it. The first tap goes fullscreen and asks for landscape.
+Phone: touch the screen and phone mode turns on. D-pad bottom left, E / RUN / WAIT bottom right (in the hunt WAIT becomes THROW, and RUN holds your breath while hiding), SKIP during talk, tap anywhere to use or continue, tap the top left for the memory log, tap a choice to pick it. The first tap goes fullscreen and asks for landscape.
 
 In the Fliptendo mini game: E / Space / tap to flap, Esc to put it down. Memory log: left/right for pages (Timeline first, then the topics, Endings and Awards), up/down or the mouse wheel to scroll.
 

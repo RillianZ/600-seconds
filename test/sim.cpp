@@ -50,10 +50,17 @@ static void Drain() {
             else if (b.id == "minigame") s.MinigameDone(4);
             else if (b.id == "chase") {
                 if (chasePlan == "caught") s.OnCaught();
-                else if (chasePlan == "hide") s.kidHidden = true;        // stay hidden until 17:00
+                else if (chasePlan == "hide") { At(9, 5); s.kidHidden = true; }   // in the wardrobe until 17:00 (v0.12: a yard spot would freeze you)
                 else if (chasePlan == "run") s.kidHidden = false;        // keep running until 17:00
                 else if (chasePlan == "doggo") { s.doggoWithKid = true; s.OnCaught(); }
                 else if (chasePlan == "found") s.OnFound();
+                else if (chasePlan == "hunt") {
+                    // v0.12: everything the hunt can teach in one go, then he finds the wardrobe
+                    s.OnHeard("run"); s.OnHeard("breath"); s.OnTracked();
+                    bool a = s.OnDecoy(), b2 = s.OnDecoy(), c = s.OnDecoy();
+                    assert(a && b2 && !c);
+                    s.hideSpot = "wardrobe"; s.OnFound();
+                }
                 else if (chasePlan == "cold") { At(25, 25); s.kidHidden = false; }   // stand out in the storm, no jacket
                 else if (chasePlan == "outside") s.OnLeftPremises();
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
@@ -402,6 +409,22 @@ int main(int argc, char** argv) {
     FinishLoop("run");
 
     // ------------------------------------------------------------ v0.10
+    CleanLoop();
+    Header("LOOP 12a: the hunt. Marbles, running feet, wet boots, breathing. Found in the wardrobe");
+    assert(Story::IsHideSpot("pantry") && Story::IsHideSpot("doghouse") && !Story::IsHideSpot("fridge"));
+    At(3, 6); Use("marbles", {"m_pocket"});
+    assert(s.pebbles == 3 && s.CaughtIn("wardrobe") == 0);
+    FinishLoop("hunt");
+    assert(s.Knows("he_hears") && s.Knows("breath") && s.Knows("wet_prints") && s.Knows("decoy") && s.achievements.count("Lost Your Marbles"));
+    assert(s.CaughtIn("wardrobe") == 1 && !s.Knows("he_learns") && s.pebbles == 0);
+
+    CleanLoop();
+    Header("LOOP 12b: the wardrobe again. He walks straight to it");
+    FinishLoop("hunt");
+    assert(s.CaughtIn("wardrobe") == 2 && s.Knows("he_learns") && s.achievements.count("Creature of Habit"));
+    assert(s.Knows("outlasted"));   // from They Paid and Tired Out above
+    { Story r; r.LoadSave(s.SaveString()); assert(r.CaughtIn("wardrobe") == 2 && r.CaughtIn("bed") == 0); }
+
     CleanLoop();
     Header("LOOP 11a: Doggo wants out at 16:35. Let him");
     At(20, 18); WaitUntil(36);

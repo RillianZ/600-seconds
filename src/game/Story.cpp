@@ -86,6 +86,8 @@ const std::vector<AchievementEntry>& AllAchievements() {
         {"Not Alone", "Make them believe you."},
         {"Ten Seconds", "Be worth fighting for."},
         {"Hide and Seek", "Get found."},
+        {"Creature of Habit", "Get found in the same spot twice."},
+        {"Lost Your Marbles", "Make him look the wrong way."},
         {"Nowhere to Run", "Leave through the gate."},
         {"Tired Out", "Keep running until the bells."},
         {"Snow Angel", "Stay out in the storm."},
@@ -200,6 +202,24 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"hiding", "The visitor", "He checks the hiding spots",
          "He checks the hiding spots room by room. Not always the same one first. If he sees me hide, it's over.",
          "Hide when he comes."},
+        {"he_learns", "The visitor", "He remembers where he caught me",
+         "He pulled me out of the same spot twice. The second time he didn't search. He walked straight to it. A spot he has found me in is burned. A spot he hasn't is still mine.",
+         "Get found in the same spot twice."},
+        {"he_hears", "The visitor", "Running is loud",
+         "I ran and he turned around two rooms away. He hears running through walls. Walking he only hears when he is close.",
+         "Run while he can't see you."},
+        {"breath", "The visitor", "Hold my breath",
+         "He stood right outside my hiding spot and heard me breathe. When he is that close I have to hold it. I can't hold it for long.",
+         "Hide. Let him come close."},
+        {"wet_prints", "The visitor", "Snow on my boots",
+         "I came in from the yard and hid. He followed the wet prints across the floor right to me. The floor dries. It takes a while.",
+         "Come in from the snow and hide."},
+        {"decoy", "The visitor", "He looks where it lands",
+         "I threw a marble. He went to the sound, not to me. It worked twice. The third time he just smiled.",
+         "The marble jar in my room."},
+        {"outlasted", "The visitor", "Hiding doesn't end it",
+         "I made it to 17:00 without being found. The bells rang and he came anyway. Not being found is not the same as getting out.",
+         "Don't get found. All the way to the bells."},
         {"visitor_armed", "The visitor", "He has a gun",
          "I tried to fight him. He shot me in the leg without blinking.",
          "Resist."},
@@ -321,6 +341,7 @@ void Story::NewGame() {
     seenToilet45 = false;
     prototypeEndShown = false;
     cleanStreak = 0;
+    caughtSpots.clear();
 }
 
 // ============================================================ reality shift config
@@ -411,6 +432,9 @@ std::string Story::SaveString() const {
     o << "|";
     for (auto& e : seenEvents) o << e << ",";
     o << "|" << dryLoops << "|" << lastEnd;
+    // v0.12: field 14, the spots he has found you in (id:count)
+    o << "|";
+    for (auto& c : caughtSpots) o << c.first << ":" << c.second << ",";
     return o.str();
 }
 
@@ -452,6 +476,11 @@ void Story::LoadSave(const std::string& s) {
         if (parts.size() >= 12) split(parts[11], seenEvents);
         if (parts.size() >= 13) dryLoops = std::atoi(parts[12].c_str());
         if (parts.size() >= 14) lastEnd = parts[13];
+        caughtSpots.clear();
+        if (parts.size() >= 15) {
+            std::set<std::string> cs; split(parts[14], cs);
+            for (auto& c : cs) { size_t k = c.find(':'); if (k != std::string::npos) caughtSpots[c.substr(0, k)] = std::max(1, std::atoi(c.c_str() + k + 1)); }
+        }
     }
 }
 
@@ -654,9 +683,14 @@ bool Story::TutorialLocked(const std::string& id) const {
     return open.count(id) == 0;
 }
 
+bool Story::IsHideSpot(const std::string& id) {
+    // v0.12: five more. The yard ones are cold
+    return id == "wardrobe" || id == "bed" || id == "pbed" || id == "toolbox" || id == "couch" ||
+           id == "pantry" || id == "tree" || id == "woodpile" || id == "doghouse" || id == "bins";
+}
 bool Story::ShouldHide(const std::string& id) const {
     if (!chase) return false;
-    return id == "wardrobe" || id == "bed" || id == "pbed" || id == "toolbox" || id == "couch";
+    return IsHideSpot(id);
 }
 
 // ============================================================ npcs
@@ -832,6 +866,7 @@ void Story::BeginLoop() {
     dadOnFloor = momOnFloor = kidHidden = doggoWithKid = false;
     momAtt = dadAtt = Attitude::Normal;
     pendingKnifeAct.clear(); knifeChecks = 0;
+    hideSpot.clear(); pebbles = 0; decoys = 0;
     phoneUnplugged = momRemorse = sisterNoticed = echoAsked = false;
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
@@ -899,7 +934,8 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
             for (int n = 1; n <= 3; ++n) if (t >= (56 + n) * 60 && threats < n && !visitorChasing) { Threat(n); break; }
             // v0.8: the storm gets you if you stay out in it. A jacket buys time. Indoors you warm up again
             Room here = world.RoomAt(px, py);
-            if (here == Room::Outside && !kidHidden) cold = std::min(1.0f, cold + realDt / (hasCoat ? 70.0f : 25.0f));
+            // v0.12: the yard has hiding spots now. Out of the wind is slower, not safe
+            if (here == Room::Outside) cold = std::min(1.0f, cold + realDt / ((hasCoat ? 70.0f : 25.0f) * (kidHidden ? 1.8f : 1.0f)));
             else cold = std::max(0.0f, cold - realDt / 12.0f);
             if (cold >= 1.0f && Once("cold")) { ColdOut(); return; }
             if (t >= HOUR && Once("tired")) { if (kidHidden) PaidEnding(); else TiredOut(); }
@@ -1291,11 +1327,46 @@ void Story::OnFound() {
     if (!chase) return;
     if (doggoWithKid && DoggoExists() && !Tutorial()) { DoggoSacrifice(); return; }
     chase = false;
-    Say("", "(Light. A big hand.)");
-    Say("The visitor", "Found you. You always pick that one.");
+    // v0.12: he only says it once it is true. A spot he has found you in is a spot he checks first
+    int before = CaughtIn(hideSpot);
+    Say("", before > 0 ? "(No searching. The footsteps come straight here. Light. A big hand.)" : "(Light. A big hand.)");
+    if (before == 0) Say("The visitor", "Found you.");
+    else if (before == 1) Say("The visitor", "Found you. You always pick that one.");
+    else Say("The visitor", "This one. Every time, 06. I don't know how I know. I just walk here.");
+    if (!hideSpot.empty()) caughtSpots[hideSpot] = before + 1;
     AddClue("hiding");
     Achieve("Hide and Seek");
+    if (before > 0) { AddClue("he_learns"); Achieve("Creature of Habit"); }
     CollectionScript();
+}
+
+// v0.12: the hunt. The presentation decides when these happen, the story decides what they mean
+void Story::OnHeard(const std::string& how) {
+    if (!chase) return;
+    if (how == "run") {
+        if (Once("heard_run")) Bubble("The visitor", "Little feet. Fast ones.");
+        AddClue("he_hears");
+    } else if (how == "gasp") {
+        Bubble("The visitor", "There it is.");
+        AddClue("breath");
+    } else {
+        Bubble("The visitor", "I can hear you breathing.");
+        AddClue("breath");
+    }
+}
+void Story::OnTracked() {
+    if (!chase) return;
+    if (Once("tracked_in")) Bubble("The visitor", "Wet boots, 06.");
+    AddClue("wet_prints");
+}
+bool Story::OnDecoy() {
+    if (!chase) return false;
+    ++decoys;
+    if (decoys > 2) { Bubble("The visitor", decoys == 3 ? "(he smiles) Marbles. That's three." : "No."); return false; }
+    Bubble("The visitor", decoys == 1 ? "...What was that?" : "...Again?");
+    AddClue("decoy");
+    Achieve("Lost Your Marbles");
+    return true;
 }
 
 void Story::OnLeftPremises() {
@@ -1617,6 +1688,7 @@ void Story::TiredOut() {
     Say("", "(17:00. Far away, bells. You've run. You've hidden. You've run again.)");
     Say("", "(Your legs just stop. You curl up in the snow behind the woodpile for one second.)");
     Say("The visitor", "(much later, gently) There you are. Long day, huh?");
+    AddClue("outlasted");
     Achieve("Tired Out");
     CollectionScript();
 }
@@ -1656,6 +1728,7 @@ void Story::PaidEnding() {
     Sound("bells");
     Say("", "(17:00. Far away, the bells start. The house is completely quiet.)");
     Say("", "(Footsteps. Slow. He doesn't search anymore. He walks straight to your hiding spot. He always knew.)");
+    AddClue("outlasted");
     Say("The visitor", "(crouching down) You let them pay for you. Huh.");
     Say("The visitor", "They said you were different. You're not. You're just like us.");
     FadeFor(0, "");
@@ -1874,6 +1947,12 @@ void Story::Choose(const std::string& id, int px, int py) {
         return;
     }
     if (id == "e_run") { EscapeEnding(); return; }
+    if (id == "m_pocket") {
+        pebbles = 3;
+        Say("You", "(Three marbles. They click in my pocket.)");
+        if (!Knows("decoy")) Say("You", "(Something to throw. If it lands far away, he looks far away.)");
+        return;
+    }
     if (id == "e_dinner") { DinnerEnding(); return; }
     if (id == "c_wrist") { ShowWrist(true); return; }
     if (id == "e_stay") {
@@ -2975,10 +3054,18 @@ void Story::Interact(const std::string& id, int px, int py) {
         knifeChecks = 0;
         KnifeCheck();
     } else if (id == "marbles") {
-        if (darkPoints >= DARK_ARSENAL && !Tutorial()) {
-            if (trapsSet.count("marbles")) { Say("You", "(The step is already covered.)"); return; }
-            Choice("A jar of marbles.", {{"a_marbles", "Pour them on the iced front step. (5 min)", false, true}, {"none", "Leave them."}});
-        } else Say("You", "(Marbles. I used to love these. I still kind of do.)");
+        // v0.12: a handful for your pocket. Something to throw when he is looking for you
+        bool trap = darkPoints >= DARK_ARSENAL && !Tutorial() && !trapsSet.count("marbles");
+        bool pocket = !Tutorial() && pebbles < 3 && Knows("visitor_time");
+        if (trap || pocket) {
+            std::vector<ChoiceOpt> o;
+            if (pocket) o.push_back({"m_pocket", "Put a handful in your pocket."});
+            if (trap) o.push_back({"a_marbles", "Pour them on the iced front step. (5 min)", false, true});
+            o.push_back({"none", "Leave them."});
+            Choice("A jar of marbles.", o);
+        } else if (pebbles >= 3) Say("You", "(My pocket is full of them already.)");
+        else if (trapsSet.count("marbles")) Say("You", "(The step is already covered.)");
+        else Say("You", "(Marbles. I used to love these. I still kind of do.)");
     } else if (id == "rope") {
         if (darkPoints >= DARK_ARSENAL) {
             if (trapsSet.count("tripwire")) { Say("You", "(The tripwire's already up.)"); return; }
