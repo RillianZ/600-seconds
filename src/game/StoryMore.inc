@@ -89,54 +89,63 @@ void Story::Predict(const std::string& who, const std::string& what) {
 }
 
 // ============================================================ the questions (T-068, T-062, T-085)
-void Story::MoreMomQuestions(std::vector<ChoiceOpt>& o) const {
-    int pm = Stage() >= 2 ? 21 : 22;
-    // predictions: only before it happens, once each
-    if ((Knows("phone_mom") || Knows("phone_answer")) && !phoneUnplugged && t < pm * 60 - 20 && !firedEvents.count("pm_phone"))
-        o.push_back({"mp_phone", "\"The phone's going to ring at 16:" + std::to_string(pm) + ".\"", true});
-    if ((Knows("dad_key") || SawEvent("flag44")) && t < 44 * 60 + 20 && !firedEvents.count("pm_flag"))
-        o.push_back({"mp_flag", "\"At 16:44 Dad checks the flagpole.\"", true});
-    if (KnowsEvent("storm") && !Storm() && !firedEvents.count("pm_storm"))
-        o.push_back({"mp_storm", "\"The storm hits at 16:47.\"", true});
-    if (Knows("visitor_time") && t < 46 * 60 && !firedEvents.count("pm_knock"))
-        o.push_back({"mp_knock", "\"At ten to five the power goes. Then three knocks.\"", true});
-    // the newer memories
-    if (Knows("new_hinges")) o.push_back({"m_hinges", "Why does my door have new hinges?", true});
-    if (Knows("hand_me_down")) o.push_back({"m_brother", "Did I ever have a big brother?", true});
-    if (Knows("thirty")) o.push_back({"m_thirty", "What's thirty kilometres from here?", true});
-    if (Knows("piece_mom")) o.push_back({"m_before", "Who did you hum to before me?", true});
-    if (Knows("piece_door")) o.push_back({"m_door", "Did anybody ever open the door before he knocked?", true});
-    if (Knows("he_remembers")) o.push_back({"m_lived", "If he didn't take his medicine, would he remember this house?", true});
-    // what the endings taught
-    if (Knows("three_plates")) o.push_back({"m_plate", "Can we set a fourth plate tonight?", true});
-    if (Knows("handlers_hunt")) o.push_back({"m_deliver", "If he's gone, don't drive me there. Handlers don't deliver.", true});
-    if (endings.count("secret")) o.push_back({"m_kids", "There are other kids at Finse. They all wear my watch.", true});
-    // the stranger shifts
-    if (shift == Shift::Fourth && fourthNoticed) o.push_back({"m_fourth", "Who's the man at the back of the photos?"});
-    if (shift == Shift::NextUnit) o.push_back({"m_unit", "Why does everybody call me oh-seven?"});
+// The ask menus were already near the bottom of the screen, so the new ones sit one more step down:
+// "Tell her what happens next" (predictions) and "Something newer" (everything else from v0.20)
+static std::vector<ChoiceOpt> TellList(const Story& s, bool mom) {
+    std::vector<ChoiceOpt> o;
+    int pm = s.Stage() >= 2 ? 21 : 22;
+    std::string p = mom ? "pm_" : "pd_", c = mom ? "mp_" : "dp_";
+    // only before it happens, once each
+    if ((s.Knows("phone_mom") || s.Knows("phone_answer")) && !s.phoneUnplugged && s.t < pm * 60 - 20 && !s.firedEvents.count(p + "phone"))
+        o.push_back({c + "phone", mom ? "\"The phone's going to ring at 16:" + std::to_string(pm) + ".\"" : "\"At 16:" + std::to_string(pm) + " Mom gets a phone call.\"", true});
+    if ((s.Knows("dad_key") || s.SawEvent("flag44")) && s.t < 44 * 60 + 20 && !s.firedEvents.count(p + "flag"))
+        o.push_back({c + "flag", mom ? "\"At 16:44 Dad checks the flagpole.\"" : "\"At 16:44 you'll go and check the flagpole.\"", true});
+    if (s.KnowsEvent("storm") && !s.Storm() && !s.firedEvents.count(p + "storm"))
+        o.push_back({c + "storm", mom ? "\"The storm hits at 16:47.\"" : "\"The storm comes at 16:47.\"", true});
+    if (s.Knows("visitor_time") && s.t < 46 * 60 && !s.firedEvents.count(p + "knock"))
+        o.push_back({c + "knock", mom ? "\"At ten to five the power goes. Then three knocks.\"" : "\"At ten to five a man knocks. You let him in.\"", true});
+    return o;
 }
-
+static std::vector<ChoiceOpt> MomMoreList(const Story& s) {
+    std::vector<ChoiceOpt> o;
+    // the newer memories
+    if (s.Knows("new_hinges")) o.push_back({"m_hinges", "Why does my door have new hinges?", true});
+    if (s.Knows("hand_me_down")) o.push_back({"m_brother", "Did I ever have a big brother?", true});
+    if (s.Knows("thirty")) o.push_back({"m_thirty", "What's thirty kilometres from here?", true});
+    if (s.Knows("piece_mom")) o.push_back({"m_before", "Who did you hum to before me?", true});
+    if (s.Knows("piece_door")) o.push_back({"m_door", "Did anybody ever open the door before he knocked?", true});
+    if (s.Knows("he_remembers")) o.push_back({"m_lived", "Would he remember this house without his medicine?", true});
+    // what the endings taught
+    if (s.Knows("three_plates")) o.push_back({"m_plate", "Can we set a fourth plate tonight?", true});
+    if (s.Knows("handlers_hunt")) o.push_back({"m_deliver", "If he's gone, don't drive me there.", true});
+    if (s.endings.count("secret")) o.push_back({"m_kids", "There are other kids at Finse.", true});
+    // the stranger shifts
+    if (s.shift == Shift::Fourth && s.fourthNoticed) o.push_back({"m_fourth", "Who's the man at the back of the photos?"});
+    if (s.shift == Shift::NextUnit) o.push_back({"m_unit", "Why does everybody call me oh-seven?"});
+    return o;
+}
+static std::vector<ChoiceOpt> DadMoreList(const Story& s) {
+    std::vector<ChoiceOpt> o;
+    if (s.Knows("his_knot")) o.push_back({"d_knot", "Who else did you teach your knot?", true});
+    if (s.Knows("new_hinges")) o.push_back({"d_hinges", "Why did you put new hinges on my door?", true});
+    if (s.Knows("piece_dad")) o.push_back({"d_nail", "Did you scratch my watch with a nail?", true});
+    if (s.Knows("piece_reissue")) o.push_back({"d_reissue", "What does reissue mean?", true});
+    if (s.Knows("hand_me_down")) o.push_back({"d_coat", "Whose coat did the man wear before him?", true});
+    if (s.SawEvent("egg_icehole")) o.push_back({"d_ice", "What's on the rope in the ice out back?", true});
+    if (s.Knows("finse_gate")) o.push_back({"d_0612", "What's 0612?", true});
+    if (s.Knows("just_like_us")) o.push_back({"d_hide", "If he can't find me, he starts on you.", true});
+    if (s.Knows("last_toll")) o.push_back({"d_almond", "Do you always get the almond?", true});
+    if (s.shift == Shift::Fourth && s.fourthNoticed) o.push_back({"d_fourth", "Who's the man at the back of the photos?"});
+    if (s.shift == Shift::NextUnit) o.push_back({"d_unit", "Why did you call me oh-seven?"});
+    return o;
+}
+void Story::MoreMomQuestions(std::vector<ChoiceOpt>& o) const {
+    if (size_t n = TellList(*this, true).size()) o.push_back({"m_tell", "Tell her what happens next. (" + std::to_string(n) + ")", true});
+    if (size_t n = MomMoreList(*this).size()) o.push_back({"m_more", "Something newer. (" + std::to_string(n) + ")", true});
+}
 void Story::MoreDadQuestions(std::vector<ChoiceOpt>& o) const {
-    int pm = Stage() >= 2 ? 21 : 22;
-    if ((Knows("phone_mom") || Knows("phone_answer")) && !phoneUnplugged && t < pm * 60 - 20 && !firedEvents.count("pd_phone"))
-        o.push_back({"dp_phone", "\"At 16:" + std::to_string(pm) + " Mom gets a phone call.\"", true});
-    if ((Knows("dad_key") || SawEvent("flag44")) && t < 44 * 60 + 20 && !firedEvents.count("pd_flag"))
-        o.push_back({"dp_flag", "\"At 16:44 you'll go and check the flagpole.\"", true});
-    if (KnowsEvent("storm") && !Storm() && !firedEvents.count("pd_storm"))
-        o.push_back({"dp_storm", "\"The storm comes at 16:47.\"", true});
-    if (Knows("visitor_time") && t < 46 * 60 && !firedEvents.count("pd_knock"))
-        o.push_back({"dp_knock", "\"At ten to five a man knocks. You let him in.\"", true});
-    if (Knows("his_knot")) o.push_back({"d_knot", "Who else did you teach your knot?", true});
-    if (Knows("new_hinges")) o.push_back({"d_hinges", "Why did you put new hinges on my door?", true});
-    if (Knows("piece_dad")) o.push_back({"d_nail", "Did you scratch my watch with a nail?", true});
-    if (Knows("piece_reissue")) o.push_back({"d_reissue", "What does reissue mean?", true});
-    if (Knows("hand_me_down")) o.push_back({"d_coat", "Whose coat did the man wear before him?", true});
-    if (SawEvent("egg_icehole")) o.push_back({"d_ice", "What's on the rope in the ice out back?", true});
-    if (Knows("finse_gate")) o.push_back({"d_0612", "What's 0612?", true});
-    if (Knows("just_like_us")) o.push_back({"d_hide", "If he can't find me, he starts on you.", true});
-    if (Knows("last_toll")) o.push_back({"d_almond", "Do you always get the almond?", true});
-    if (shift == Shift::Fourth && fourthNoticed) o.push_back({"d_fourth", "Who's the man at the back of the photos?"});
-    if (shift == Shift::NextUnit) o.push_back({"d_unit", "Why did you call me oh-seven?"});
+    if (size_t n = TellList(*this, false).size()) o.push_back({"d_tell", "Tell him what happens next. (" + std::to_string(n) + ")", true});
+    if (size_t n = DadMoreList(*this).size()) o.push_back({"d_more", "Something newer. (" + std::to_string(n) + ")", true});
 }
 
 std::vector<ChoiceOpt> Story::VisitorQuestions() const {
@@ -193,7 +202,7 @@ bool Story::MoreInteract(const std::string& id, int px, int py) {
             Say("", "(A magic show. The magician puts a boy in a box and closes the lid. He taps it twice. He opens it. Empty.)");
             Say("", "(Applause. The magician checks his watch. \"Same time tomorrow,\" he says. \"Same boy.\")");
         }
-        if (Once("tv_last")) Say("You", "(It's showing me what happened last time. Nobody else watches it like that.)");
+        if (!SawEvent("tv_last")) { See("tv_last"); Say("You", "(It's showing me what happened last time. Nobody else watches it like that.)"); }   // once, ever
         return true;
     }
     // ---- the watch (T-064): lie down and actually look at it
@@ -252,6 +261,14 @@ bool Story::MoreInteract(const std::string& id, int px, int py) {
 // ============================================================ choices
 bool Story::MoreChoose(const std::string& id, int px, int py) {
     (void)px; (void)py;
+    // ---- the two new menus under "Ask about something I remember"
+    if (id == "m_tell" || id == "d_tell" || id == "m_more" || id == "d_more") {
+        bool mom = id[0] == 'm', tell = id[2] == 't';
+        std::vector<ChoiceOpt> o = tell ? TellList(*this, mom) : mom ? MomMoreList(*this) : DadMoreList(*this);
+        o.push_back({"none", "Never mind."});
+        Choice(tell ? (mom ? "What do I tell her?" : "What do I tell him?") : (mom ? "What do I ask her?" : "What do I ask him?"), o);
+        return true;
+    }
     // ---- predictions
     if (id.size() > 3 && (id.rfind("mp_", 0) == 0 || id.rfind("dp_", 0) == 0)) { Predict(id[0] == 'm' ? "Mom" : "Dad", id.substr(3)); return true; }
     // ---- the watch

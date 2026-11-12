@@ -1883,7 +1883,7 @@ static void DbgChange(int row, int dir, bool enter) {
     case D_MAXGAP: step(c.maxGap, 0, 30, 1); break;
     case D_FIRST: step(c.firstLoop, 1, 30, 1); break;
     case D_SHARE: step(c.toiletShare, 0, 100, 10); break;
-    case D_FORCE: if (tog) { int f = ((int)c.forceNext + (dir < 0 ? 4 : 1)) % 5; c.forceNext = (Shift)f; } break;
+    case D_FORCE: if (tog) { int f = ((int)c.forceNext + (dir < 0 ? 6 : 1)) % 7; c.forceNext = (Shift)f; } break;   // v0.20 story: two more shifts
     case D_RESTART: if (enter && screen == Screen::Game) { dbgRestartLoop = true; dbgOpen = false; } break;
     case D_DARK: if (dir) { story.DebugSetDark(story.darkPoints + dir); SaveGame(); } break;
     case D_ALLMEM: if (enter) { story.DebugAllMemories(); SaveGame(); ToastFor("DEBUG", "Every memory unlocked.", Color{ 120, 220, 140, 255 }); } break;

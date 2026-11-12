@@ -1007,8 +1007,8 @@ int main(int argc, char** argv) {
         FinishLoop("caught");
         CleanLoop();
         Header("LOOP 20d: the newer memories, asked out loud");
-        for (const char* q : {"m_hinges", "m_brother", "m_thirty", "m_before", "m_door", "m_lived", "m_plate", "m_deliver"}) { assert(offers(s, "m_ask", q)); s.Choose(q, 8, 15); Drain(); }
-        for (const char* q : {"d_knot", "d_hinges", "d_nail", "d_reissue", "d_coat", "d_ice", "d_0612", "d_hide", "d_almond"}) { assert(offers(s, "d_ask", q)); s.Choose(q, 24, 17); Drain(); }
+        for (const char* q : {"m_hinges", "m_brother", "m_thirty", "m_before", "m_door", "m_lived", "m_plate", "m_deliver"}) { assert(offers(s, "m_ask", "m_more") && offers(s, "m_more", q)); s.Choose(q, 8, 15); Drain(); }
+        for (const char* q : {"d_knot", "d_hinges", "d_nail", "d_reissue", "d_coat", "d_ice", "d_0612", "d_hide", "d_almond"}) { assert(offers(s, "d_ask", "d_more") && offers(s, "d_more", q)); s.Choose(q, 24, 17); Drain(); }
         FinishLoop("caught");
         std::puts("  every new question offered and answered");
 
@@ -1017,15 +1017,15 @@ int main(int argc, char** argv) {
             Story p; p.memory = {"loop", "phone_mom", "dad_key", "visitor_time"}; p.seenEvents = {"storm"}; p.loop = 5;
             p.BeginLoop(); p.beats.clear(); while (p.shift != Shift::None) { p.EndLoop(); p.BeginLoop(); p.beats.clear(); }
             p.t = 60;
-            assert(offers(p, "m_ask", "mp_phone") && offers(p, "d_ask", "dp_knock"));
+            assert(offers(p, "m_ask", "m_tell") && offers(p, "m_tell", "mp_phone") && offers(p, "d_tell", "dp_knock"));
             p.Choose("mp_phone", 8, 15); assert(p.momAtt == Attitude::Normal && p.predMom == 1);
-            assert(!offers(p, "m_ask", "mp_phone"));                // once a loop
+            assert(!offers(p, "m_tell", "mp_phone"));               // once a loop
             p.Choose("mp_flag", 8, 15); assert(p.momAtt == Attitude::Cold);
             p.Choose("m_sorry", 8, 15); assert(p.momAtt == Attitude::Normal);
             p.Choose("mp_storm", 8, 15); assert(p.momAtt == Attitude::Scared);
             p.Choose("dp_knock", 24, 17); assert(p.dadAtt == Attitude::Normal && p.predDad == 1);
             assert(p.achievements.count("Fortune Teller") && p.CurrentStance() == Stance::Dark);
-            p.t = 47 * 60 + 5; assert(!offers(p, "d_ask", "dp_storm"));   // too late, it's here
+            p.t = 47 * 60 + 5; assert(!offers(p, "d_tell", "dp_storm"));  // too late, it's here
             std::puts("  phone, flagpole, storm and knock. Mom ends up scared of you");
         }
         Header("Two stranger realities: the photos, and oh-seven");
@@ -1034,7 +1034,7 @@ int main(int argc, char** argv) {
             gShiftCfg.forceNext = Shift::Fourth; f.BeginLoop();
             assert(f.shift == Shift::Fourth && said(f, "somebody else's coat")); f.beats.clear();
             f.Interact("album", 17, 17); assert(f.fourthNoticed && f.achievements.count("Family Portrait") && f.Knows("no_baby"));
-            assert(offers(f, "m_ask", "m_fourth") && offers(f, "d_ask", "d_fourth"));
+            assert(offers(f, "m_more", "m_fourth") && offers(f, "d_more", "d_fourth"));
             Story u; u.memory = {"loop"}; u.loop = 6;
             gShiftCfg.forceNext = Shift::NextUnit; u.BeginLoop();
             assert(u.shift == Shift::NextUnit && said(u, "Oh-seven")); u.beats.clear();
