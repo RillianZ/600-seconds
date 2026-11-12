@@ -13,7 +13,7 @@ This is a prototype and proof of concept from Sund Origin Studio. Placeholder ar
 | ![The house](docs/house.png) | ![The snow](docs/snow.png) |
 | ![The collection](docs/collection.png) | ![Memory log](docs/memory-log.png) |
 
-Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains off screen violence, implied child abuse and the death of a dog. Flashing lights, which can be calmed in the pause menu.
+Inspired by Twelve Minutes, Outer Wilds and The Forgotten City. Contains off screen violence, implied child abuse, the death of a dog and, on the darkest path, an off screen suicide. Flashing lights, which can be calmed in the pause menu.
 
 ## Controls
 

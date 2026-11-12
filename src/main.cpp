@@ -2085,7 +2085,7 @@ static void DrawTitle() {
         UIText(d1, 8, 8, 6, Color{ 120, 220, 140, 200 });
         UIText(d2, 8, 18, 6, hardResetArm > 0 ? Color{ 240, 80, 80, 255 } : Color{ 120, 220, 140, 200 });
     }
-    const char* c2 = "Contains off-screen violence, implied child abuse and the death of a dog. Flashing lights.";
+    const char* c2 = "Contains off-screen violence, implied child abuse, the death of a dog and an off-screen suicide. Flashing lights.";   // v0.20 (D10)
     UIText(c2, VW / 2.0f - UIMeasure(c2, 6) / 2, 236, 6, Fade(WHITE, 0.35f));
 }
 
