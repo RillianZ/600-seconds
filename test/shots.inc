@@ -48,6 +48,7 @@
 //   journal TAB | newmem ID   the log open on a tab | a memory found this loop
 //   luse ID | lchoose ID   use / choose with the close-up hook
 //   ending ID | att mom|dad cold|scared|broken | say WHO TEXT   (WHO with _ for spaces, e.g. The_visitor)
+//   trunkshift | cleanjob | screenbrakes   v0.20.1 story-knife
 //   quit
 #include <fstream>
 #include <sstream>
@@ -166,6 +167,10 @@ static void ShotsStep() {
         else if (c == "ending") { std::string id; ss >> id; Beat e; e.type = BeatType::Ending; e.id = id; e.speaker = "ENDING"; for (auto& en : AllEndings()) if (en.id == id) e.text = en.title + "\n\n" + en.hint; story.beats.clear(); beatActive = false; story.beats.push_back(e); StartNextBeat(); }
         else if (c == "att") { std::string w, v; ss >> w >> v; Attitude a = v == "cold" ? Attitude::Cold : v == "scared" ? Attitude::Scared : v == "broken" ? Attitude::Broken : Attitude::Normal; if (w == "mom") story.momAtt = a; else story.dadAtt = a; }
         else if (c == "say") { std::string who, rest; ss >> who; std::getline(ss, rest); for (auto& ch : who) if (ch == '_') ch = ' '; Beat b; b.type = BeatType::Say; b.speaker = who; b.text = rest; story.beats.clear(); beatActive = false; story.beats.push_back(b); StartNextBeat(); typed = 1e9f; }
+        // v0.20.1 story-knife: trunkshift (the photos / oh-seven beat on the way to the bells), cleanjob (a clean knife job this loop), screenbrakes
+        else if (c == "trunkshift") { story.beats.clear(); beatActive = false; story.ShiftTrunk(); StartNextBeat(); }
+        else if (c == "cleanjob") { story.knifeCleanLoop = true; }
+        else if (c == "screenbrakes") { story.beats.clear(); beatActive = false; story.brakesCut = true; story.ScreenTimeBrakes(); StartNextBeat(); }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

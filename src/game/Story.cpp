@@ -507,6 +507,10 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"nobody_home", "The visitor", "The back way",
          "I locked the front door and got everyone out of the way, so nobody could open it. He talked to me through the door. He locked it once too, and thought it wouldn't count if nobody opened it. Then he went round the back and hit my window once, low on the frame. Exactly where I always hit it.",
          "Lock the front door, with nobody left in the house to open it."},
+        // v0.20.1 story-knife: the one knife job that opens at DARK_REVEL
+        {"under_paint", "The visitor", "Under the paint",
+         "I carved 06 into my door frame, where Mom measures me. Under the paint the knife found older lines. They went on up past my head, all the way to a man's height. Next to the top one, somebody had scratched 06 already. Crooked.",
+         "Mom's pencil lines on your door frame have been painted over more than once. You'd have to be very dark to dig."},
     };
     return m;
 }
@@ -700,7 +704,7 @@ float Story::Rand() {
 }
 
 void Story::Say(const std::string& who, const std::string& text) {
-    Beat b; b.type = BeatType::Say; b.text = text;
+    Beat b; b.type = BeatType::Say; b.text = UnitLine(who, text);   // v0.20.1 story-knife: oh-seven
     b.speaker = who == "Mom" ? MomName() : who;   // v0.9: after the tape she isn't Mom any more
     beats.push_back(b);
     // Quantum instability: the extras don't know their lines. Never in the serious scenes
@@ -708,11 +712,11 @@ void Story::Say(const std::string& who, const std::string& text) {
         momAtt == Attitude::Normal && dadAtt == Attitude::Normal && Rand() < 0.12f) beats.push_back(b);
 }
 void Story::Bubble(const std::string& who, const std::string& text) {
-    Beat b; b.type = BeatType::Bubble; b.speaker = who; b.text = text;
+    Beat b; b.type = BeatType::Bubble; b.speaker = who; b.text = UnitLine(who, text);   // v0.20.1 story-knife: oh-seven
     beats.push_back(b);
 }
 void Story::Narrate(const std::string& text) { Beat b; b.type = BeatType::Narrate; b.text = text; beats.push_back(b); }
-void Story::Black(const std::string& text) { Beat b; b.type = BeatType::Black; b.text = text; beats.push_back(b); }
+void Story::Black(const std::string& text) { Beat b; b.type = BeatType::Black; b.text = UnitLine("", text); beats.push_back(b); }   // v0.20.1 story-knife: oh-seven
 void Story::FadeFor(int minutes, const std::string& label, int tx, int ty) {
     Beat b; b.type = BeatType::Fade; b.minutes = minutes; b.text = label; b.tx = tx; b.ty = ty;
     beats.push_back(b);
@@ -1262,6 +1266,7 @@ void Story::BeginLoop() {
     prevEnd = lastEnd; predMom = predDad = 0; fourthNoticed = unitNoticed = false;
     tapeCut = doggoTangled = gapCut = phoneCut = brakesCut = false;   // v0.20 knife
     fortressFights = 0; nobodyHome = false;   // v0.20 systems
+    knifeCleanLoop = frameCarved = carveSkip = watchThrown = slipped = dadReady = false;   // v0.20.1 story-knife
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
@@ -1750,6 +1755,7 @@ void Story::StartCollection(const std::string& how) {
         if (momRemorse && stance != Stance::Dark) Say("Mom", "(she isn't looking at him. She's looking at you. She's been crying.)");
     }
     }   // v0.14: end of the knock (hinge D skips it)
+    DadReadyAtDoor(how);   // v0.20.1 story-knife: you told him about the knock
 
     // v0.13: hinges A and B. He goes to the parent you shut away, and talks through the door
     if (momBathLocked && !visitorDowned) HingeBath();
@@ -1791,7 +1797,7 @@ void Story::StartCollection(const std::string& how) {
     } else if (DadFree() && stance == Stance::Dark) {
         Say("Dad", "(he looks at you, then at him) ...He's all yours.");
         if (!Tutorial() && !visitorDowned && !dadTurned) Say("Dad", "(to him) I'll take the door.");
-    } else if (DadFree()) {
+    } else if (DadFree() && !dadReady) {   // v0.20.1 story-knife: not if he's standing in the door for you
         // v0.7: normal day. They hand you over. They think they get to retire after
         Say("Dad", "(quietly, not looking at you) Go with him, buddy. It's okay. It's... it's okay.");
         if (MomHere()) Say("Mom", "(she's holding the door frame like it's the only thing keeping her up)");
@@ -2126,6 +2132,7 @@ void Story::VisitorChoice() {
 void Story::OnCaught() {
     if (!chase) return;
     if (doggoWithKid && DoggoExists() && !Tutorial()) { DoggoSacrifice(); return; }
+    if (SlipGrip()) return;   // v0.20.1 story-knife: Small hands
     chase = false;
     Say("", "(A hand like a vice closes on your collar.)");
     Say("The visitor", "Gotcha.");
@@ -2144,10 +2151,11 @@ void Story::OnFound() {
     if (before == 0 && hideSpot == "beast") { Say("", "(The zip. Slowly, all the way down. Cold air and torchlight.)"); Say("The visitor", "Cosy in there, 06?"); }
     else if (before == 0 && hideSpot == "oldcar") { Say("", "(The back door of the old car opens with a crunch of ice.)"); Say("The visitor", "This old thing. I used to hide in here too."); }
     else if (before == 0 && hideSpot == "spruce") { Say("", "(The branches lift. Snow comes down on your neck. Then a torch.)"); Say("The visitor", "Under the tree. Like a present."); }
+    else if (before == 0 && OhSeven()) Say("The visitor", "(he looks at the spot, then at you, a long time) Found you. ...You hide like somebody I used to know.");   // v0.20.1 story-knife
     else if (before == 0) Say("The visitor", "Found you.");
     else if (before == 1) Say("The visitor", "Found you. You always pick that one.");
     else Say("The visitor", "This one. Every time, 06. I don't know how I know. I just walk here.");
-    if (!hideSpot.empty()) caughtSpots[hideSpot] = before + 1;
+    if (!hideSpot.empty() && !OhSeven()) caughtSpots[hideSpot] = before + 1;   // v0.20.1 story-knife: finding 07 teaches him nothing about 06
     AddClue("hiding");
     Achieve("Hide and Seek");
     if (before > 0) { AddClue("he_learns"); Achieve("Creature of Habit"); }
@@ -2379,6 +2387,7 @@ void Story::TrunkScript(bool quiet) {
         Sound("trunk");   // v0.20 sound (was a thud)
         Black("The lid comes down. Something hits your head.");
     }
+    ShiftTrunk();   // v0.20.1 story-knife: the photos and oh-seven
     Sound("bells");
     Black("Far away, through the storm, church bells. Christmas is being rung in.");
     static const char* lines1[] = {
@@ -2518,6 +2527,7 @@ void Story::ScreenTimeEnding() {
     Black("You play the whole drive. You never look up. You never find out where you went.");
     Black("At the third dungeon he leans over without looking. \"Under the well.\" He's right. Nobody knows that.");   // v0.20 story
     AddClue("under_well");
+    if (brakesCut) { ScreenTimeBrakes(); return; }   // v0.20.1 story-knife
     Narrate("The longest loop I ever had was the one where I didn't notice.");
     endings.insert("screen");
     lastEnd = "ending:screen";
@@ -4952,10 +4962,7 @@ void Story::Interact(const std::string& id, int px, int py) {
             return;
         }
         if (Knows("the_tape") && Once("tape_mom")) Say("You", "(She smiles at me. I can hear her humming. I smile back. I learned that from her.)");
-        if (hasKnife && !tainted && Once("mom_sees_knife")) {
-            Say("Mom", "Why are you holding that? Put. It. Down.");
-            ChangeMood(-1);
-        }
+        if (hasKnife && !tainted && Once("mom_sees_knife")) MomSeesKnife(px, py);   // v0.20.1 story-knife: worried, not scolding, after a clean job
         if (tainted && Once("mom_distrust"))
             Say("Mom", "What's wrong with you lately? You look at us like we're strangers.");
         std::vector<ChoiceOpt> o = {
@@ -5225,5 +5232,6 @@ void Story::OnHusky() {
 // v0.20 story: endings that teach, the watch, more questions, the TV, stranger shifts, early lessons, predictions
 #include "StoryMore.inc"
 #include "Knife.inc"   // v0.20 knife
+#include "PolishStoryKnife.inc"   // v0.20.1 story-knife
 
 } // namespace sixhundred

@@ -295,6 +295,25 @@ public:
     bool NobodyToOpen() const;                 // front door locked, Mom and Dad both shut away somewhere
     bool DarkEarly() const;                    // T-086: dark enough that he comes at 16:48
     void NobodyHome();                         // T-083: the scene at the knock
+    // v0.20.1 story-knife: polish before the release. Code in PolishStoryKnife.inc
+    bool knifeCleanLoop = false;               // a clean job with the knife this loop (Mom worries instead of scolding)
+    bool frameCarved = false;                  // DARK_REVEL: 06 carved into your door frame, where Mom measures you
+    bool carveSkip = false;                    // the door menu asked for the plain door
+    bool watchThrown = false;                  // the hunt: you threw your watch. Two short, one long, over there
+    bool slipped = false;                      // the hunt: Small hands. You went limp once and came out of the sweater
+    bool dadReady = false;                     // you told Dad about the knock. He was in the doorway before the third one
+    std::string UnitLine(const std::string& who, const std::string& text) const;   // oh-seven: what people say to you says 07
+    bool OhSeven() const { return shift == Shift::NextUnit; }
+    void ShiftTrunk();                         // the photos and oh-seven: a last beat on the way to the bells
+    bool CanThrowWatch() const;
+    bool OnWatchLure();                        // the watch landed somewhere. He always goes to look
+    bool SlipGrip();                           // in OnCaught: true if you got away this once
+    bool DadReadyAtDoor(const std::string& how);   // at the knock
+    bool KnifeLooksClean(int px, int py) const;
+    void MomSeesKnife(int px, int py);
+    bool PolishInteract(const std::string& id, int px, int py);
+    bool PolishChoose(const std::string& id, int px, int py);
+    void ScreenTimeBrakes();
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -326,7 +345,7 @@ public:
     bool ShouldHide(const std::string& id) const;
     // v0.12: the hunt
     static bool IsHideSpot(const std::string& id);
-    int CaughtIn(const std::string& id) const { auto it = caughtSpots.find(id); return it == caughtSpots.end() ? 0 : it->second; }
+    int CaughtIn(const std::string& id) const { if (shift == Shift::NextUnit) return 0; auto it = caughtSpots.find(id); return it == caughtSpots.end() ? 0 : it->second; }   // v0.20.1 story-knife: he's looking for 07. He doesn't know 07's spots
     void OnHeard(const std::string& how);   // run = running feet, breath = you breathed with him next to you, gasp = you ran out of air
     void OnTracked();                       // he followed wet prints indoors
     bool OnDecoy();                         // a thrown marble landed where he could hear it. True if he goes to look

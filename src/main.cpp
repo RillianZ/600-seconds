@@ -148,6 +148,8 @@ static float stamina = 1, breath = 1, breathHeardT = 0, wetT = 0, wetCD = 0, vSt
 static bool winded = false, holdingBreath = false, gasped = false;
 struct Marble { Vector2 from, to; float t, dur; bool landed; };
 static std::vector<Marble> marbles;
+static Marble watchToss{};                // v0.20.1 story-knife: your watch, thrown like a marble (once a loop)
+static bool watchTossOn = false;
 struct Ring { Vector2 p; float t; int kind; };   // kind 0: his steps, heard not seen. 1: a noise you made
 static std::vector<Ring> rings;
 static void AddRing(Vector2 p, int kind) { rings.push_back({ p, 0, kind }); if (rings.size() > 40) rings.erase(rings.begin()); }
@@ -638,7 +640,8 @@ static Actor* ActorFor(const std::string& who) {
     if (who == "The visitor") return &visitor;
     return nullptr;
 }
-static void AddBubble(const std::string& who, const std::string& text, float life = -1) {
+static void AddBubble(const std::string& who, const std::string& text0, float life = -1) {
+    const std::string text = story.UnitLine(who, text0);   // v0.20.1 story-knife: oh-seven. His barks say 07 too
     for (size_t i = 0; i < bubbles.size(); ++i) if (bubbles[i].who == who) { bubbles.erase(bubbles.begin() + i); break; }
     if (life < 0) life = 2.4f + text.size() * 0.05f;
     bubbles.push_back({ who, text, 0, life });
@@ -860,6 +863,7 @@ static void StartNextBeat() {
         if (b.type == BeatType::Flash) { flashT = 0.9f; continue; }
         if (b.type == BeatType::Bubble) { AddBubble(b.speaker, b.text); if (b.speaker == "Doggo" && IsBark(b.text)) Play("bark"); continue; }
         if (b.type == BeatType::Scene) {
+            if (b.id == "slip") { scene = SceneMode::Chase; hidden = false; continue; }   // v0.20.1 story-knife: Small hands. Out of the sweater, back to the hunt
             bool keepHunt = (b.id == "doggo_dies" || b.id == "downed") && story.chase;   // v0.16: he put Doggo down mid-hunt. You stay where you are
             if (!keepHunt) { sceneT = 0; hidden = false; }
             if (b.id == "doggo_dies") {
@@ -1385,6 +1389,14 @@ static void DrawBubbles(float dt) {
         for (size_t k = 0; k < lines.size(); ++k) UIText(lines[k].c_str(), bx + 5, by + 3 + k * lh, size, Fade(fg, alpha));
     }
     // the visitor's mood, over his head
+    // v0.20.1 story-knife: your watch, in the air or on the floor. The little screen still glows
+    if (watchTossOn && story.chase) {
+        float k = watchToss.landed ? 1.0f : std::min(1.0f, watchToss.t / std::max(0.01f, watchToss.dur));
+        Vector2 wp = { watchToss.from.x + (watchToss.to.x - watchToss.from.x) * k, watchToss.from.y + (watchToss.to.y - watchToss.from.y) * k - std::sin(k * 3.14159f) * 10 };
+        Vector2 c = WorldToUI(wp);
+        DrawRectangle((int)((c.x - 3) * US), (int)((c.y - 1) * US), (int)(6 * US), (int)(4 * US), Color{ 40, 42, 50, 255 });
+        DrawRectangle((int)((c.x - 2) * US), (int)(c.y * US), (int)(4 * US), (int)(2 * US), Fade(Color{ 160, 220, 255, 255 }, 0.6f + 0.4f * std::sin(globalT * 6)));
+    }
     // v0.12: sounds. His steps when you can't see him, and the noise you make yourself
     for (size_t i = 0; i < rings.size();) {
         Ring& r = rings[i];
@@ -1473,6 +1485,10 @@ static void DrawChaseBanner() {
         if (story.cold > 0.02f) bar(78, 1 - story.cold, "WARM", story.cold > 0.6f ? Color{ 240, 80, 80, 255 } : Color{ 200, 230, 255, 255 });   // v0.15
         if (hidden) bar(64, breath, "AIR", breath < 0.3f ? Color{ 240, 80, 80, 255 } : Color{ 150, 200, 255, 255 });
         else if (stamina < 0.995f) bar(64, stamina, "LEGS", winded ? Color{ 240, 80, 80, 255 } : Color{ 240, 210, 110, 255 });
+        if (story.pebbles == 0 && !hidden && !watchTossOn && story.CanThrowWatch()) {   // v0.20.1 story-knife
+            std::string m = std::string(touchMode ? "THROW" : "Q") + ": your watch (it beeps)";
+            UIText(m.c_str(), VW / 2.0f - UIMeasure(m.c_str(), 5) / 2, 71, 5, Fade(Color{ 160, 220, 255, 255 }, 0.8f));
+        }
         if (story.pebbles > 0 && !hidden) {
             std::string m = std::string(touchMode ? "THROW" : "Q") + ": marble x" + std::to_string(story.pebbles);
             UIText(m.c_str(), VW / 2.0f - UIMeasure(m.c_str(), 5) / 2, 71, 5, Fade(Color{ 245, 220, 130, 255 }, 0.8f));
@@ -2769,6 +2785,19 @@ static void UpdateDrawFrame() {
             player.anim += dt * (running && !story.kidShot ? 15 : 10);
         } else player.anim = 0;
 
+        // v0.20.1 story-knife: out of marbles, and you know what your watch does. Throw that (it lands like a marble)
+        if (!story.chase) watchTossOn = false;
+        if (story.chase && scene == SceneMode::Chase && !hidden && story.pebbles == 0 && !watchTossOn && story.CanThrowWatch() && (IsKeyPressed(KEY_Q) || (touchMode && vPress[KEY_T]))) {
+            const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
+            Vector2 at = player.pos, land = player.pos;
+            for (int i = 0; i < 26; ++i) {
+                at.x += fx[player.dir] * 4; at.y += fy[player.dir] * 4;
+                if (BlocksSight(TX(at.x), TX(at.y))) break;
+                if (story.world.Walkable(TX(at.x), TX(at.y), false)) land = at;
+            }
+            float d = std::hypot(land.x - player.pos.x, land.y - player.pos.y);
+            if (d > 10) { watchToss = { player.pos, land, 0, d / 230.0f, false }; watchTossOn = true; }
+        }
         // v0.12: throw a marble the way you are facing
         if (story.chase && scene == SceneMode::Chase && !hidden && story.pebbles > 0 && (IsKeyPressed(KEY_Q) || (touchMode && vPress[KEY_T]))) {
             const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
@@ -3195,6 +3224,13 @@ static void UpdateDrawFrame() {
                             if (story.OnDecoy()) hear(m.to, 2.4f);
                             StartNextBeat();
                         }
+                    }
+                    // v0.20.1 story-knife: the watch lands. Two short, one long. He always comes to look, and stays a while
+                    if (watchTossOn && !watchToss.landed && (watchToss.t += dt) >= watchToss.dur) {
+                        watchToss.landed = true; Play("beep"); AddRing(watchToss.to, 1); AddRing(watchToss.to, 1);
+                        bool deaf = vmode == VMode::Chase && sees;
+                        if (story.OnWatchLure() && !deaf && !visitorBlind) hear(watchToss.to, 4.0f);
+                        StartNextBeat();
                     }
                     // ---- you only see him when you could. Otherwise you hear where he walks
                     {
