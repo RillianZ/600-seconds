@@ -682,6 +682,14 @@ int main(int argc, char** argv) {
         n.t = 46 * 60; n.Interact("vane", 32, 3); assert(n.achievements.count("Same Day Again"));
         n.tainted = true; assert(n.BoardSpells()); n.beats.clear(); n.Interact("lights", 34, 1); assert(n.achievements.count("Spelled Out"));
         std::puts("  tongue on the flagpole, the dog at the fence, the weathervane, the board that spells BELOW");
+        // v0.15.1 (Noah): in loop 1 nothing bad happens. Walking out of the gate or the back fence isn't running away
+        Story t1; t1.NewGame(); t1.BeginLoop(); t1.beats.clear();
+        assert(t1.Tutorial());
+        for (int i = 0; i < 4; ++i) { t1.Tick(1.0f, false, 20, 33); t1.Tick(1.0f, false, 29, World::TOP); }
+        assert(!t1.collection && !t1.Knows("run_fail") && t1.loop == 1);
+        t1.beats.clear(); t1.TooColdToLeave(); t1.TooColdToLeave();
+        assert(t1.beats.size() == 2 && t1.beats[0].text != t1.beats[1].text && t1.beats[0].text.find("Zulda") != std::string::npos);
+        std::puts("  loop 1: the vidda does nothing, the kid turns back (too cold, Zulda is waiting)");
     }
     // the main story: out your window, the six things out back, then his torch in the dark
     At(6, 3); Use("window", {"win_out:window"});

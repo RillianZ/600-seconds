@@ -2,6 +2,11 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.15.1
+Same branch, `claude-batch-v0.15-outside`. A fix from Noah's playtest.
+
+- In the first loop nothing bad is supposed to happen, but walking out of the gate still ended it as running away. Now in loop 1 you can't leave the yard: the kid turns around, steps back and says it's way too cold and Zulda is waiting inside. Three lines, in turn. Out the gate and through the gap in the back fence both.
+
 ## What's in v0.15.0
 Built on the branch `claude-batch-v0.15-outside`, on top of v0.14.0 (`claude-batch-v0.14-hinges-de`). Not merged. Expansion 5: the outside. The story test now has 71 memories and the same 8 endings.
 

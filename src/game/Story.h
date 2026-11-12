@@ -279,7 +279,8 @@ public:
     bool WindowSticks(const std::string& id) const { return id == "window" && !windowBanged; }
     void OnClimbed(const std::string& win, bool out, bool doggoLeft);   // the presentation finished the climb
     void OnLitUp();                           // his torch found you from far away, out in the dark
-    void OnHusky();                           // you walked up to the dog at the far fence. Nobody there
+    void OnHusky();
+    void TooColdToLeave();                    // v0.15.1: loop 1. You walk up to the edge of the yard and turn back                           // you walked up to the dog at the far fence. Nobody there
     bool BoardSpells() const { return (tainted || Act() >= 3) && t >= 45 * 60; }   // the lights behind the shed spell at you
     bool Warm() const { return chase && kidHidden && hideSpot == "beast"; }
     static int OutbackEggs(const std::set<std::string>& seen);

@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.15.0";
+static const char* kVersion = "v0.15.1";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -438,8 +438,11 @@ static void UpdateMusic() { /* the callback does the work now */ }
 static Vector2 TileCenter(int x, int y) { return { x * TS + TS / 2.0f, y * TS + TS / 2.0f }; }
 static int TX(float px) { return (int)std::floor(px / TS); }
 
+static bool tutorialEdge = false;   // v0.15.1: loop 1, you bumped into the edge of the yard
 static bool PlayerWalkable(int x, int y) {
     if (story.DoorClosed(x, y)) return false;
+    // v0.15.1 (Noah): nothing bad can happen in the first round, so you can't walk off onto the vidda
+    if (story.Tutorial() && !story.collection && story.world.RoomAt(x, y) == Room::Vidda) { tutorialEdge = true; return false; }
     // v0.10: his car is solid, so walking up to it doesn't send you running onto the vidda. The left side of the gate stays open
     if (story.CarHere() && (x == 20 || x == 21) && (y == 31 || y == 32)) return false;
     return story.world.Walkable(x, y, false);
@@ -2311,9 +2314,20 @@ static void UpdateDrawFrame() {
         if (mv.x != 0 || mv.y != 0) {
             float l = std::hypot(mv.x, mv.y); mv.x /= l; mv.y /= l;
             float nx = player.pos.x + mv.x * speed * dt, ny = player.pos.y + mv.y * speed * dt;
+            tutorialEdge = false;
             if (CanStand(nx, player.pos.y)) player.pos.x = nx;
             if (CanStand(player.pos.x, ny)) player.pos.y = ny;
             if (std::fabs(mv.x) > std::fabs(mv.y)) player.dir = mv.x > 0 ? 3 : 2; else player.dir = mv.y > 0 ? 0 : 1;
+            if (tutorialEdge) {
+                // turn around, take a step back into the yard and say why
+                static const int back[4] = { 1, 0, 3, 2 };
+                player.dir = back[player.dir];
+                const float bx[4] = { 0, 0, -1, 1 }, by[4] = { 1, -1, 0, 0 };
+                for (int k = 0; k < 6; ++k) { float tx = player.pos.x + bx[player.dir] * 2, ty = player.pos.y + by[player.dir] * 2; if (CanStand(tx, ty)) player.pos = { tx, ty }; }
+                story.TooColdToLeave();
+                StartNextBeat();
+                tutorialEdge = false;
+            }
             player.anim += dt * (running && !story.kidShot ? 15 : 10);
         } else player.anim = 0;
 

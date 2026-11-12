@@ -1088,8 +1088,8 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
         }
     }
 
-    // Running onto the vidda
-    if (!collection && world.RoomAt(px, py) == Room::Vidda && Once("vidda")) {
+    // Running onto the vidda. v0.15.1 (Noah): never in loop 1, nothing bad happens in the first round
+    if (!collection && !Tutorial() && world.RoomAt(px, py) == Room::Vidda && Once("vidda")) {
         Narrate("The nearest neighbour was 31 kilometres away. I knew that. I ran anyway.");
         FadeFor(0, "Running");
         Black("You run until your lungs burn. The snow comes up to your knees.");
@@ -3831,6 +3831,18 @@ void Story::OnLitUp() {
     if (!chase) return;
     if (Once("lit_up")) Bubble("The visitor", hasCoat ? "Stripes on your jacket, 06. You shine." : "Red as a postbox. There you are.");
     AddClue("lit_up");
+}
+void Story::TooColdToLeave() {
+    // v0.15.1 (Noah): in the first round the kid just turns around
+    static const char* lines[] = {
+        "(Brrr. NOPE. It's way too cold out there. Zulda: Flute of Time is waiting inside.)",
+        "(Minus twenty-five and Julenissen comes at ten to five. I'm not missing that for a walk in the snow.)",
+        "(My nose is already freezing. Back inside. Maybe Mom made cocoa.)",
+    };
+    int n = 0;
+    for (auto& e : firedEvents) if (e.rfind("tooCold", 0) == 0) ++n;
+    firedEvents.insert("tooCold" + std::to_string(n));
+    Say("You", lines[n % 3]);
 }
 void Story::OnHusky() {
     if (collection) return;
