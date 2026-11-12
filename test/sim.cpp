@@ -959,6 +959,111 @@ int main(int argc, char** argv) {
         std::puts("  early trail filled in, key in the pocket and the woodpile, inside traps placed");
     }
 
+    // v0.20 story: endings that teach, the watch, more questions, the TV, stranger shifts, early lessons, predictions
+    {
+        auto offers = [](Story& st, const char* menu, const char* opt) {
+            st.beats.clear(); st.Choose(menu, 8, 15);
+            bool f = false; for (auto& b : st.beats) if (b.type == BeatType::Choice) for (auto& c : b.choices) if (c.id == opt) f = true;
+            st.beats.clear(); return f;
+        };
+        auto said = [](Story& st, const char* bit) {
+            for (auto& b : st.beats) if (b.text.find(bit) != std::string::npos) return true;
+            return false;
+        };
+        qteWin = false;   // the secret ending waits for LOOP 10, as before
+        CleanLoop();
+        Header("LOOP 20a: three games in a row. Screen Time teaches you something about him");
+        At(8, 7); Use("fliptendo", {"ft_flappy"}); Use("fliptendo", {"ft_flappy"}); Use("fliptendo", {"ft_flappy"});
+        assert(s.Knows("under_well") && s.endings.count("screen"));
+        CleanLoop();
+        Header("LOOP 20b: the watch. Look at it in bed, show Dad the tiny one, listen to the console, say the word");
+        At(5, 6); Use("bed", {"bed_watch"});
+        assert(s.Knows("w_beep"));
+        At(10, 26); Use("flag", {"fl_key"});
+        At(27, 5); Use("drawer", {"cab_watch"});
+        At(24, 17); Use("dad", {"d_watch"});
+        assert(s.Knows("w_grow") && s.dadAtt == Attitude::Cold);
+        At(27, 5); Use("drawer", {"it_back"}); Use("drawer", {"cab_key"});
+        assert(s.hasKey);
+        At(28, 10); Use("basement", {"b_down"});
+        At(10, 38); Use("console", {"r_listen"});
+        assert(s.Knows("unit_04"));
+        s.beats.clear(); s.Interact("console", px, py);
+        { bool f = false; for (auto& c : s.beats.back().choices) if (c.id == "r_confirm") f = true; assert(f); }
+        s.beats.clear(); Use("console", {"r_confirm"});
+        At(20, 29); WaitUntil(45);
+        s.beats.clear(); s.Interact("visitor", px, py);
+        { bool f = false; for (auto& c : s.beats.back().choices) if (c.id == "v_ask") f = true; assert(f); }
+        s.beats.clear();
+        for (const char* v : {"v_well", "v_dog", "v_cameout", "v_twice", "v_after"}) assert(offers(s, "v_ask", v));
+        Use("visitor", {"v_ask", "v_after"});
+        FinishLoop("caught");
+        CleanLoop();
+        Header("LOOP 20c: early lessons. Hit Dad, shove Mom. It barely works");
+        At(24, 17); Use("dad", {"d_hit"});
+        assert(s.dadAtt != Attitude::Normal);
+        At(8, 15); Use("mom", {"m_shove"});
+        assert(s.momAtt != Attitude::Normal && s.Knows("small_hands"));
+        FinishLoop("caught");
+        CleanLoop();
+        Header("LOOP 20d: the newer memories, asked out loud");
+        for (const char* q : {"m_hinges", "m_brother", "m_thirty", "m_before", "m_door", "m_lived", "m_plate", "m_deliver"}) { assert(offers(s, "m_ask", q)); s.Choose(q, 8, 15); Drain(); }
+        for (const char* q : {"d_knot", "d_hinges", "d_nail", "d_reissue", "d_coat", "d_ice", "d_0612", "d_hide", "d_almond"}) { assert(offers(s, "d_ask", q)); s.Choose(q, 24, 17); Drain(); }
+        FinishLoop("caught");
+        std::puts("  every new question offered and answered");
+
+        Header("Predictions: say it before it happens. Uneasy, then cold, then scared");
+        {
+            Story p; p.memory = {"loop", "phone_mom", "dad_key", "visitor_time"}; p.seenEvents = {"storm"}; p.loop = 5;
+            p.BeginLoop(); p.beats.clear(); while (p.shift != Shift::None) { p.EndLoop(); p.BeginLoop(); p.beats.clear(); }
+            p.t = 60;
+            assert(offers(p, "m_ask", "mp_phone") && offers(p, "d_ask", "dp_knock"));
+            p.Choose("mp_phone", 8, 15); assert(p.momAtt == Attitude::Normal && p.predMom == 1);
+            assert(!offers(p, "m_ask", "mp_phone"));                // once a loop
+            p.Choose("mp_flag", 8, 15); assert(p.momAtt == Attitude::Cold);
+            p.Choose("m_sorry", 8, 15); assert(p.momAtt == Attitude::Normal);
+            p.Choose("mp_storm", 8, 15); assert(p.momAtt == Attitude::Scared);
+            p.Choose("dp_knock", 24, 17); assert(p.dadAtt == Attitude::Normal && p.predDad == 1);
+            assert(p.achievements.count("Fortune Teller") && p.CurrentStance() == Stance::Dark);
+            p.t = 47 * 60 + 5; assert(!offers(p, "d_ask", "dp_storm"));   // too late, it's here
+            std::puts("  phone, flagpole, storm and knock. Mom ends up scared of you");
+        }
+        Header("Two stranger realities: the photos, and oh-seven");
+        {
+            Story f; f.memory = {"loop"}; f.loop = 6;
+            gShiftCfg.forceNext = Shift::Fourth; f.BeginLoop();
+            assert(f.shift == Shift::Fourth && said(f, "somebody else's coat")); f.beats.clear();
+            f.Interact("album", 17, 17); assert(f.fourthNoticed && f.achievements.count("Family Portrait") && f.Knows("no_baby"));
+            assert(offers(f, "m_ask", "m_fourth") && offers(f, "d_ask", "d_fourth"));
+            Story u; u.memory = {"loop"}; u.loop = 6;
+            gShiftCfg.forceNext = Shift::NextUnit; u.BeginLoop();
+            assert(u.shift == Shift::NextUnit && said(u, "Oh-seven")); u.beats.clear();
+            u.Interact("desk", 27, 5); assert(u.Knows("reports") && said(u, "REISSUED"));
+            u.beats.clear(); u.Choose("d_unit", 24, 17); assert(u.achievements.count("Next in Line"));
+            std::puts("  a man grows up in the photos. Dad calls you oh-seven");
+        }
+        Header("The TV: what's on depends on how the last hour ended");
+        {
+            struct E { const char* end; const char* bit; };
+            for (E e : {E{"cold", "fox"}, E{"vidda", "31"}, E{"ending:doggo", "station"}, E{"trunk", "magician"}}) {
+                Story v; v.memory = {"loop", "handlers", "static_tv"}; v.loop = 6; v.lastEnd = e.end;
+                v.BeginLoop(); v.beats.clear(); while (v.shift != Shift::None) { v.lastEnd = e.end; v.loop += 1; v.BeginLoop(); v.beats.clear(); }
+                if (v.loop % 2) { v.lastEnd = e.end; v.BeginLoop(); v.beats.clear(); }
+                v.Interact("tv", 20, 16); assert(said(v, e.bit));
+            }
+            Story w; w.memory = {"loop", "handlers"}; w.loop = 6; w.lastEnd = "cold"; w.BeginLoop(); w.beats.clear();
+            w.shift = Shift::None; w.Interact("tv", 20, 16); assert(w.Knows("static_tv"));   // Previously On still comes first
+            std::puts("  a fox in the snow, a road sign, a dog at a station, a boy in a box");
+        }
+        Header("No Soul: tainted, they can tell");
+        {
+            Story n; n.memory = {"loop"}; n.loop = 5; n.darkPoints = 9; n.tainted = true;
+            n.BeginLoop(); n.beats.clear(); n.shift = Shift::None; n.loop = 6;
+            n.Interact("mom", 8, 15); assert(said(n, "Your eyes do the smile") || said(n, "laugh at the TV") || said(n, "gone out of him"));
+            n.beats.clear(); n.Interact("dad", 24, 17); assert(said(n, "buddy") || said(n, "They said"));
+        }
+    }
+
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {
         Story k; k.memory = {"loop"}; k.loop = 2;

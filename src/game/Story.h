@@ -68,7 +68,7 @@ struct NpcState {
     bool facingWall = false;
 };
 
-enum class Shift { None, Toilet45, NoDoggo, EarlyStorm, Sister };
+enum class Shift { None, Toilet45, NoDoggo, EarlyStorm, Sister, Fourth, NextUnit };   // v0.20 story: Fourth, NextUnit
 
 // v0.5: how a parent feels about you right now (per loop). Big choices lock them into a state,
 // so you can't chat about dinner with someone you just pulled a knife on.
@@ -106,6 +106,9 @@ struct ShiftConfig {
     bool noDoggo = true;         // the reality without Doggo
     bool earlyStorm = true;      // v0.9: the storm at 16:37, the power out at 16:40
     bool sister = true;          // v0.10: somebody is in the bathroom. Not saved, no panel row yet
+    // v0.20 story: two stranger ones. Not saved, no panel row
+    bool fourth = true;          // somebody else is in the photos. He grows up in them
+    bool nextUnit = true;        // everybody calls you oh-seven
     int chance = 20;             // % chance per loop once the cooldown is over
     int minGap = 4;              // normal loops needed after an anomaly before the next one can happen
     int maxGap = 9;              // after this many normal loops one is guaranteed (0 = never forced)
@@ -264,6 +267,10 @@ public:
     bool falseTracks = false;                  // the trail was still there at the knock
     bool falseTrailWalked = false;             // he followed it all the way out to the fence
     int kidX = 5, kidY = 5;                    // where you stood last tick (the knock wants to know)
+    // v0.20 story: endings that teach, the watch, predictions, early lessons, stranger shifts
+    std::string prevEnd;                       // how the last loop ended (lastEnd is cleared at 16:00). The TV reads it
+    int predMom = 0, predDad = 0;              // things you told them before they happened, this loop
+    bool fourthNoticed = false, unitNoticed = false;
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -458,6 +465,15 @@ private:
     void NoKeyEnding();        // you threw his car key in the snow. You wait for the plough together
     void Thirty();             // he followed your fake trail, and says what he did once, for real
     void StageCheck();         // all four things from section 4, once
+    // v0.20 story (src/game/StoryMore.inc, included at the end of Story.cpp)
+    bool MoreInteract(const std::string& id, int px, int py);   // true if it handled the object
+    bool MoreChoose(const std::string& id, int px, int py);     // true if it handled the choice
+    void MoreMomQuestions(std::vector<ChoiceOpt>& o) const;
+    void MoreDadQuestions(std::vector<ChoiceOpt>& o) const;
+    std::vector<ChoiceOpt> VisitorQuestions() const;            // what you can say to him at the gate because of what you remember
+    void ShiftOpener();                                         // the first line of a stranger reality
+    void Predict(const std::string& who, const std::string& what);
+    void SameNumber();                                          // 05 on the cross, 05 on his clipboard
     bool UntouchedParent() const { return (MomHere() && !momOnFloor && !momTurned) || (DadFree() && !dadOnFloor && !dadTurned); }
     bool TurnedStanding() const { return (momTurned && MomHere() && !momOnFloor) || (dadTurned && DadFree() && !dadOnFloor); }
     bool Nag(const std::string& id);   // v0.16: asked the same thing again. True if the parent answered with that instead
