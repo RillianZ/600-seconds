@@ -78,6 +78,20 @@ static void Drain() {
                 else if (chasePlan == "doggodoor") { assert(s.DoggoExists()); s.OnDoggoAtDoor(); s.OnDoggoPutDown(19, 19); assert(s.doggoDead && s.chase); s.OnCaught(); }   // v0.16
                 else if (chasePlan == "empty") { s.momLocked = s.dadLocked = true; s.doggoOut = true; At(9, 5); s.kidHidden = true; }   // v0.15.2: nobody he can reach
                 else if (chasePlan == "tie") { assert(s.visitorDowned); pickQueue = {"t_tie"}; s.Interact("visitor", px, py); }   // v0.17
+                else if (chasePlan == "grab") { assert(s.DadGuardsDoor()); s.OnParentSpots("Mom", Room::Kitchen); s.OnParentFinds("Mom"); assert(s.chase); s.OnParentGrabs("Dad"); assert(!s.chase); }   // v0.18
+                else if (chasePlan == "defend_mom" || chasePlan == "defend_dad") {
+                    // v0.18: the one parent who knows runs at him, loses, and leaves something on the floor
+                    std::string who = chasePlan == "defend_mom" ? "Mom" : "Dad";
+                    assert(s.Defender() == who);
+                    s.OnDefend(who); s.OnDefendDone(who, 21, 16);
+                    assert(s.Defender().empty() && s.dropItem == (who == "Mom" ? "box" : "taser"));
+                    s.Interact("drop", 21, 16); assert(s.dropItem.empty());
+                    if (who == "Mom") { assert(s.switchTaken && s.momOnFloor); s.OnCaught(); }
+                    else { assert(s.hasTaser && s.dadOnFloor); s.Interact("visitor", px, py);
+                           bool offered = false; for (auto& c : s.beats.back().choices) if (c.id == "c_tase") offered = true;
+                           assert(offered); s.beats.pop_back(); s.Choose("c_tase", px, py);
+                           assert(s.visitorDowned && !s.hasTaser && s.chase); pickQueue = {"c_go"}; s.Interact("visitor", px, py); }
+                }
                 else if (chasePlan == "true") { assert(s.visitorDowned); pickQueue = trueQueue; s.Interact("visitor", px, py); }                // v0.17: queue set by the loop
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
             }
@@ -446,6 +460,16 @@ int main(int argc, char** argv) {
     At(32, 8); Use("rope", {"a_tripwire"});
     At(12, 15); Use("knives", {"k_take", "k_take"});
     FinishLoop("c_finish");      // "Are you sure?" now offers c_switch first, then Do it.
+    // v0.18 (Noah's answer 7): they're standing right there and they were never on your side. They take over the hunt
+    assert(!endingsSeen.empty() && endingsSeen.back() == "handlers" && s.Knows("handlers_hunt"));
+
+    CleanLoop();
+    Header("LOOP 9b2: same again, but Mom bolted downstairs and Dad barred in the shed (End of the Program)");
+    At(3, 6); Use("marbles", {"a_marbles"});
+    At(32, 8); Use("rope", {"a_tripwire"});
+    At(12, 15); Use("knives", {"k_take", "k_take"});
+    s.momLocked = s.dadLocked = true;   // loop 7 shows the real way. Here it only has to be true at the knock
+    FinishLoop("c_finish");
     assert(!endingsSeen.empty() && endingsSeen.back() == "program");
 
     CleanLoop();
@@ -487,7 +511,9 @@ int main(int argc, char** argv) {
     Header("LOOP 9f: befriended, then tell Mom about the clean-up (False Hope)");
     chores();
     At(8, 15); Use("mom", {"m_ask", "m_loop"});
-    assert(s.parentsAllied && s.Knows("allies"));
+    assert(s.momTurned && !s.dadTurned && !s.parentsAllied && s.Knows("allies"));   // v0.18: one at a time
+    At(35, 7); Use("dad", {"d_ask", "d_loop"});
+    assert(s.parentsAllied);
     FinishLoop("caught");          // first choice at the door: run for his car
     assert(endingsSeen.back() == "escape");
 
@@ -587,6 +613,7 @@ int main(int argc, char** argv) {
     Header("LOOP 11g: befriended, allied, and you know about the leash. Sit down (One Good Hour)");
     chores();
     At(8, 15); Use("mom", {"m_ask", "m_loop"});
+    At(35, 7); Use("dad", {"d_ask", "d_loop"});
     assert(s.parentsAllied && s.Knows("leash"));
     pickQueue = {"e_dinner"};
     FinishLoop("caught");
@@ -842,6 +869,37 @@ int main(int argc, char** argv) {
     assert(s.endings.count("samehouse") && endingsSeen.back() == "samehouse" && s.tainted && s.darkPoints == DARK_MAX);
     TrueEndingTest();
 
+    // v0.18: whose side are they on (branches map, section 3, and Noah's answer 7)
+    CleanLoop();
+    Header("LOOP 18a: Dark. They help him look. Mom calls out where you are, Dad holds the door and grabs you");
+    s.Hold(Item::Knife); Use("mom", {"m_knife"});
+    assert(s.CurrentStance() == Stance::Dark);
+    FinishLoop("grab");
+    assert(s.Knows("they_hunt") && s.achievements.count("Search Party"));
+    CleanLoop();
+    Header("LOOP 18b: tell only Mom. She goes for his belt, and the box slides over to you");
+    chores();
+    At(8, 15); Use("mom", {"m_ask", "m_loop"});
+    assert(s.momTurned && !s.dadTurned);
+    FinishLoop("defend_mom");
+    assert(s.Knows("mom_fought") && s.achievements.count("Just Her"));
+    CleanLoop();
+    Header("LOOP 18c: tell only Dad. He tears the taser out of his hand. Use it on him");
+    chores();
+    At(35, 7); Use("dad", {"d_ask", "d_loop"});
+    assert(s.dadTurned && !s.momTurned);
+    FinishLoop("defend_dad");
+    assert(s.Knows("dad_fought") && s.Knows("tased_him") && s.achievements.count("His Own Medicine"));
+    CleanLoop();
+    Header("LOOP 18d: both of them on your side, and him on the floor at the door. Hold him down (Last Toll)");
+    chores();
+    At(8, 15); Use("mom", {"m_ask", "m_loop"});
+    At(35, 7); Use("dad", {"d_ask", "d_loop"});
+    assert(s.parentsAllied);
+    s.trapsSet = {"marbles", "tripwire"}; s.traps = 2;
+    FinishLoop("c_help");
+    assert(s.Knows("last_toll") && endingsSeen.back() == "lasttoll");
+
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {
         Story k; k.memory = {"loop"}; k.loop = 2;
@@ -883,6 +941,7 @@ int main(int argc, char** argv) {
         Story m; m.loop = 1; m.darkPoints = 10; m.tainted = true; m.memory = {"dead_switch"};
         m.BeginLoop(); m.beats.clear();
         m.trapsSet = {"marbles", "tripwire"}; m.traps = 2; m.Hold(Item::Knife);
+        m.momLocked = m.dadLocked = true;   // v0.18: with them standing there it's The Handlers instead
         m.t = 49 * 60 + 59; m.Tick(1.0f, false, 21, 17);
         bool chase = false, ending = false;
         for (int g = 0; g < 400 && !m.beats.empty(); ++g) {

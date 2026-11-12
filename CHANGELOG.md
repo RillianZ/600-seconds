@@ -2,6 +2,32 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.18.0
+New branch `claude-batch-v0.18-parents`, on top of v0.17.0 (`claude-batch-v0.17-true-ending`). Expansion 3 of the branches map: whose side are Mom and Dad on. Plus Noah's answer 7: beating him plays out differently depending on who was on your side. The story test now has 82 memories and 13 endings. Every new line is Claude's, for Noah to react to.
+
+**When they want him gone (the Dark stance)**
+- Mom helps him look. She walks the house room by room, checks every hiding spot (she knows all of them) and calls your name.
+- If she sees you, she shouts which room you're in and he comes. If she opens your hiding spot she stands there with the lid up until he gets there.
+- Dad takes the front door. He doesn't search. He waits, and if you come near him he grabs you and holds you for the man.
+- New memory: They looked too. Achievement Search Party.
+
+**Telling them one at a time**
+- Turning a parent is still five chores plus proof. But now each of them has to hear it from you. Tell Mom and she says not to tell Dad yet. Tell Dad and he says not to tell Mom.
+- Both of them: the old plan (his car, or sit down and eat).
+- Only one: that one stays close in the hunt. Mom stays near you. Dad stays near him. When he gets close to you, they run at him and fight him. They lose. It takes about three seconds, then he needs a moment to get his breath back.
+- Mom goes for his belt. The box slides across the floor to you. Pick it up and his heart is no longer tied to yours. New memory: She went for the box. Achievement Just Her.
+- Dad tears the taser out of his hand. No more taser for him this loop, and it skids across the floor to you. One shot: let him get close, face him (E) and use it. He goes down. New memories: He went for the taser, His own medicine. Achievements Just Him, His Own Medicine.
+
+**Beating him (Noah's answer 7)**
+- **The Handlers.** Finish him while Mom or Dad is standing there and still on his side. They pick up his radio. Finse tells them to deliver you themselves. Then they hunt you, Mom through the house, Dad with his big torch. If they catch you, or when the bells ring, they drive you there. At Finse they're walked round the back of the building. Handlers don't deliver. New memory: Handlers. Achievement Family Business.
+- **Last Toll.** Both of them on your side and him on the floor: "Mom! Dad! Help me hold him!" (or finish him in front of them). Dinner by candlelight, riskrem, Dad gets the almond. Mom counts the bells. On the last one, BEEP, 16:00. New memory: The last toll. Achievement Last Toll.
+- End of the Program and Monster now need Mom and Dad out of the room (locked away or on the floor). With them standing there it's The Handlers.
+
+**Smaller**
+- Normal stance: Mom stands in the living room and quietly asks you to come out now and then.
+- He's drawn lying down while he's on the floor (traps, taser, tied, dead). Before he stood up the whole time.
+- New lines under the hunt title for all of the above.
+
 ## What's in v0.17.0
 New branch `claude-batch-v0.17-true-ending`, on top of v0.16.0 (`claude-batch-v0.15-outside`). The true ending, woven into the dark path, and the other half of Noah's answer 10: tying him up. The story test now has 76 memories and 11 endings. Every line is new and Claude's, for Noah to react to.
 

@@ -466,6 +466,27 @@ static void DrawPersonDown(const Actor& a, Look l, bool sob) {
     }
 }
 
+// v0.18: the box Mom tore off his belt, or the taser Dad tore out of his hand. Lying on the floor, blinking
+static void DrawDrop(const std::string& what, Vector2 c) {
+    int x = (int)c.x, y = (int)c.y + 3;
+    float pulse = 0.5f + 0.5f * std::sin(globalT * 4);
+    DrawEllipse(x, y + 3, 6, 1.6f, Fade(BLACK, 0.3f));
+    if (what == "box") {
+        DrawRectangle(x - 4, y - 3, 8, 6, kInk);
+        DrawRectangle(x - 3, y - 2, 6, 4, Color{ 34, 34, 40, 255 });
+        DrawRectangle(x - 3, y - 2, 6, 1, Color{ 60, 60, 68, 255 });
+        DrawRectangle(x + 1, y - 1, 1, 1, Fade(Color{ 120, 255, 140, 255 }, 0.5f + 0.5f * pulse));
+        DrawLine(x - 4, y, x - 8, y + 2, Color{ 150, 40, 40, 255 });   // the torn wire
+    } else {
+        DrawRectangle(x - 5, y - 2, 10, 5, kInk);
+        DrawRectangle(x - 4, y - 1, 6, 3, Color{ 232, 196, 40, 255 });
+        DrawRectangle(x + 2, y - 1, 2, 3, Color{ 30, 30, 34, 255 });
+        DrawRectangle(x - 3, y, 1, 1, Fade(Color{ 120, 200, 255, 255 }, 0.4f + 0.6f * pulse));
+    }
+    // a small glint, so you can find it in the dark
+    DrawCircleV({ (float)x, (float)y - 1 }, 6 + 2 * pulse, Fade(Color{ 255, 240, 200, 255 }, 0.05f + 0.05f * pulse));
+}
+
 static void DrawDoggoDead(const Actor& a) {
     // fade to black, and this is what's left. He doesn't move. A thin line of red keeps running
     float x = a.pos.x, y = a.pos.y + 4;

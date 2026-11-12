@@ -500,6 +500,8 @@ static void DrawWorld(Camera2D cam) {
     if (!below) for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) if (story.world.tiles[y][x] == Tile::Bush) bushes.push_back({ x, y });
     for (size_t i = 0; i < bushes.size(); ++i) ds.push_back({ bushes[i].second * TS + 13.0f, 7, nullptr, nullptr, (int)i });
     if (!below && huskyA > 0.01f) ds.push_back({ (float)World::TOP * TS + 13.0f, 8, nullptr, nullptr });
+    // v0.18: what the fight left on the floor. Flat, under everybody
+    if (!below && story.chase && !story.dropItem.empty()) DrawDrop(story.dropItem, TileCenter(story.dropX, story.dropY));
     std::sort(ds.begin(), ds.end(), [](const D& a, const D& b) { return a.y < b.y; });
     for (auto& d : ds) {
         if (d.a && below != (d.a->pos.y >= 34 * TS)) continue;   // and nobody from the other floor
@@ -545,7 +547,7 @@ static void DrawWorld(Camera2D cam) {
             if (story.dadOnFloor && scene != SceneMode::DadRuns) DrawPersonDown(*d.a, dl, false); else DrawPerson(*d.a, dl);
         } break;
         case 4: if (story.doggoDead && doggoShownDead) DrawDoggoDead(*d.a); else DrawDoggo(*d.a); break;
-        case 5: DrawPerson(*d.a, LookVisitor()); break;
+        case 5: if (story.visitorDowned) DrawPersonDown(*d.a, LookVisitor(), false); else DrawPerson(*d.a, LookVisitor()); break;   // v0.18: on the floor means on the floor
         case 6: DrawCar(); break;
         case 7: DrawBush(bushes[d.i].first, bushes[d.i].second); break;
         case 8: DrawHusky(); break;

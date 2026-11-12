@@ -22,6 +22,10 @@
 //   shot FILE           save a screenshot next to the exe
 //   traps N             rig the first N traps (marbles, tripwire, paint) on the front step
 //   knife | lockparents hold the knife | Mom bolted in the basement and Dad barred in the shed
+//   chores              all five chores done (v0.18)
+//   turn mom|dad|both   that parent is on your side (v0.18)
+//   darkact             something dark this loop, so they meet him in the Dark stance (v0.18)
+//   chase               he sees you right now (v0.18)
 //   quit
 #include <fstream>
 #include <sstream>
@@ -84,6 +88,10 @@ static void ShotsStep() {
         else if (c == "knife") story.Hold(Item::Knife, true);
         else if (c == "lockparents") { story.momLocked = story.dadLocked = true; }
         else if (c == "nobodyleft") { story.momLocked = story.dadLocked = true; story.doggoOut = true; }
+        else if (c == "chores") { story.fed = story.trashDone = story.roomClean = story.dishesDone = story.firewoodDone = true; }   // v0.18
+        else if (c == "turn") { std::string w; ss >> w; if (w != "dad") story.momTurned = true; if (w != "mom") story.dadTurned = true; story.parentsAllied = story.momTurned && story.dadTurned; }
+        else if (c == "darkact") { story.darkThisLoop = 1; }
+        else if (c == "chase") { vmode = VMode::Chase; vLostT = 0; vLastSeen = player.pos; }
         else if (c == "skip") { story.beats.clear(); beatActive = false; }
         else if (c == "hold" || c == "press") { std::string k; int n = 1; ss >> k >> n; shotHoldKey = ShotKey(k); shotHoldN = c == "press" ? 1 : n; return; }
         else if (c == "visitor") { int x, y, d = 0; ss >> x >> y >> d; Snap(visitor, x, y); visitor.dir = d; }

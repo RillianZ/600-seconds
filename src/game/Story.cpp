@@ -44,6 +44,9 @@ const std::vector<EndingEntry>& AllEndings() {
         // v0.17: the true ending, two ways
         {"samehouse", "Same House", "Five doors. Him on the floor. Nobody else in the room. Then finish it."},
         {"after", "After", "Five doors. Him on the floor. Say all of it. Then don't."},
+        // v0.18: Noah's answer 7. Beat him, and it matters whose side they were on
+        {"handlers", "The Handlers", "Finish him in front of them, while they're still on his side."},
+        {"lasttoll", "Last Toll", "Get them both on your side. Then beat him."},
     };
     return e;
 }
@@ -133,6 +136,13 @@ const std::vector<AchievementEntry>& AllAchievements() {
         {"He Remembers", "Tell him all five things while he can't get up."},
         {"Same House", "An ending. Five doors, then finish it."},
         {"After", "An ending. Five doors, then don't."},
+        // v0.18: whose side are they on
+        {"Search Party", "Make them want him gone. Then hide from all three."},
+        {"Just Her", "Tell only Mom. Then let him get close."},
+        {"Just Him", "Tell only Dad. Then let him get close."},
+        {"His Own Medicine", "Use what Dad left on the floor."},
+        {"Family Business", "An ending. Finish him in front of them, while they're still on his side."},
+        {"Last Toll", "An ending. Both of them on your side, and him beaten."},
     };
     return a;
 }
@@ -184,6 +194,16 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"allies", "Mom", "They didn't know",
          "I told them about the clean-up. Mom sat down on the kitchen floor. They thought they were retiring. They were next.",
          "Be the kid they'd believe. Then tell them what you know."},
+        // v0.18: whose side are they on
+        {"they_hunt", "Mom", "They looked too",
+         "\"He's all yours.\" They meant it. Mom checked under the beds with him and called my name like it was dinner. Dad stood in front of the door and didn't move.",
+         "Make them want him gone. Then see who comes looking."},
+        {"mom_fought", "Mom", "She went for the box",
+         "I only told Mom. When he got close to me she came out of nowhere and went for his belt, not his face. She got the box off him before he put her down. It slid across the floor to me.",
+         "Turn only Mom. Then let him get close."},
+        {"handlers_hunt", "Mom", "Handlers",
+         "I finished him in front of them. Dad took the radio off his belt and said \"Copy.\" Then they looked for me. They know every hiding spot in the house. They put half of them there.",
+         "Finish him while they're still on his side."},
         {"told_mom", "Mom", "Telling Mom doesn't work",
          "I told Mom the day repeats. She sent me to my room for 20 minutes.",
          "What happens if I tell Mom?"},
@@ -203,6 +223,15 @@ const std::vector<MemoryEntry>& AllMemories() {
          "I hummed her song back at her. At the end she turned around in the kitchen door and said a name. Mine. The bang came before I could keep it.",
          "She hums so she won't hear. Make her hear."},
         // ---- Dad
+        {"dad_fought", "Dad", "He went for the taser",
+         "I only told Dad. When the man got close to me Dad hit him low, like he'd been trained to, and tore the taser out of his hand before he went down. It skidded under the couch. One shot left.",
+         "Turn only Dad. Then let him get close."},
+        {"tased_him", "Dad", "His own medicine",
+         "Dad left me the taser. I waited until the man was right on top of me. Every muscle he has locked at once, the way mine do. Then he was on the floor and I was standing.",
+         "Use what Dad left on the floor."},
+        {"last_toll", "Dad", "The last toll",
+         "They were both on my side. He was beaten. We ate riskrem and Dad found the almond and laughed. Mom counted the bells out loud like it was a game. On the last one, 16:00. Nobody else remembered.",
+         "Get them both on your side. Then beat him."},
         {"told_dad", "Dad", "Telling Dad makes it worse",
          "I told Dad. He said \"let me make a call.\" The man came at 16:40 instead.",
          "What happens if I tell Dad?"},
@@ -1011,6 +1040,8 @@ void Story::BeginLoop() {
     windowBanged = tongueStuck = backyardCold = false;
     asked.clear(); nagMom = nagDad = 0; dadJokes = 0;
     toldPieces.clear(); remembered = visitorTied = false; tiedTalk = 0;
+    momTurned = dadTurned = momFought = dadFought = hasTaser = visitorDead = handlers = false;
+    dropItem.clear(); dropX = dropY = -1;
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
@@ -1076,7 +1107,7 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
             (void)before;
             // v0.15.2 (Noah): more hunt before he starts on them, and more time between them
             static const int kThreatAt[3] = { 57 * 60 + 30, 58 * 60 + 40, 59 * 60 + 40 };
-            for (int n = 1; n <= 3; ++n) if (t >= kThreatAt[n - 1] && threats < n && !visitorChasing && !visitorDowned) { Threat(n); break; }
+            for (int n = 1; n <= 3; ++n) if (t >= kThreatAt[n - 1] && threats < n && !visitorChasing && !visitorDowned && !handlers) { Threat(n); break; }
             // v0.8: the storm gets you if you stay out in it. A jacket buys time. Indoors you warm up again
             Room here = world.RoomAt(px, py);
             // v0.15 (Noah): without the jacket you don't make it across the yard. With it you can stay out
@@ -1091,7 +1122,7 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
             } else if (IsYard(here)) cold = std::max(0.0f, cold - realDt / 30.0f);
             else cold = std::max(0.0f, cold - realDt / 12.0f);
             if (cold >= 1.0f && Once("cold")) { ColdOut(); return; }
-            if (t >= HOUR && Once("tired")) { if (HoldDown()) TiedBells(); else if (NobodyLeft()) EmptyHouseEnding(); else if (kidHidden) PaidEnding(); else TiredOut(); }
+            if (t >= HOUR && Once("tired")) { if (handlers) HandlersEnding(false); else if (HoldDown()) TiedBells(); else if (NobodyLeft()) EmptyHouseEnding(); else if (kidHidden) PaidEnding(); else TiredOut(); }
         }
         return;
     }
@@ -1443,18 +1474,43 @@ void Story::StartCollection(const std::string& how) {
         Choice("Mom is already pulling you toward the door.", o);
         return;
     }
+    // v0.18 (section 3): only one of them knows. That one stays close, and waits for him to get close to you
+    std::string def = Defender();
+    if (!def.empty() && !visitorDowned) {
+        if (def == "Mom") {
+            Say("Mom", "(behind her back, one hand finds your shoulder and squeezes. Once.)");
+            Say("Mom", "(barely moving her lips) Hide. I'm right behind you.");
+            if (DadFree()) Say("", "(Dad looks from you to Mom to the man. He doesn't understand what he's looking at.)");
+        } else {
+            Say("Dad", "(he puts himself between you and the door, very casually, like he's just standing there)");
+            Say("Dad", "(without turning round) Go hide, buddy. Let him come to me.");
+            if (MomHere()) Say("Mom", "(very quietly) ...Go with him, sweetie. It's okay.");
+        }
+        SceneBeat("chase");
+        return;
+    }
     if (DadFree() && dadAtt == Attitude::Broken) {
         Say("", "(Dad doesn't get up. He just looks at the floor.)");
     } else if (DadFree() && stance == Stance::Befriended && !visitorDowned) {
         Say("Dad", "(grabbing a lamp) Buddy. Run. RUN!");
         SceneBeat("dad_runs");   // v0.7: he doesn't run away. He runs AT him
         return;
+    } else if (DadFree() && parentsAllied && visitorDowned && !dadOnFloor) {
+        // v0.18: they're with you, and he's on the floor. Nobody planned for this part
+        Say("Dad", "(he looks at the man on the floor, then at you) ...Tell us what to do, buddy.");
     } else if (DadFree() && stance == Stance::Dark) {
         Say("Dad", "(he looks at you, then at him) ...He's all yours.");
+        if (!Tutorial() && !visitorDowned && !dadTurned) Say("Dad", "(to him) I'll take the door.");
     } else if (DadFree()) {
         // v0.7: normal day. They hand you over. They think they get to retire after
         Say("Dad", "(quietly, not looking at you) Go with him, buddy. It's okay. It's... it's okay.");
         if (MomHere()) Say("Mom", "(she's holding the door frame like it's the only thing keeping her up)");
+    }
+    // v0.18 (section 3): Dark. They want him gone, so they help him look
+    if (stance == Stance::Dark && !Tutorial() && !visitorDowned && ((MomHere() && !momTurned) || (DadFree() && !dadTurned))) {
+        if (MomHere() && !momTurned) Say("Mom", "(to him, not to you) Wardrobe. Under the beds. He likes small places. I'll show you.");
+        AddClue("they_hunt");
+        Achieve("Search Party");
     }
     if (!Knows("he_runs_fast") && !Knows("hiding") && !doorGreeted)
         Say("You", "(He doesn't know where I am yet. Hide. Sneak past him. Or walk up to him and press E.)");
@@ -1721,6 +1777,8 @@ void Story::VisitorChoice() {
         Choice("He's still on the floor. He's listening now.", o);
         return;
     }
+    // v0.18: answer 7. Both of them on your side and him on the floor: three of you, one of him
+    if (visitorDowned && parentsAllied && TurnedStanding()) o.push_back({"c_help", MomHere() && !momOnFloor && DadFree() && !dadOnFloor ? "\"Mom! Dad! Help me hold him!\"" : (MomHere() && !momOnFloor ? "\"Mom! Help me hold him!\"" : "\"Dad! Help me hold him!\""), true});
     if (visitorDowned && traps >= 3 && trapsSet.count("tripwire")) o.push_back({"t_tie", "Tie his hands with the tripwire."});
     if (visitorDowned && hasKnife && tainted) o.push_back({"c_finish", "Finish it.", false, true});
     if (visitorDowned && !hasKnife) o.push_back({"c_kick", "Kick him while he's down."});
@@ -1731,6 +1789,7 @@ void Story::VisitorChoice() {
         else if (hasStick) o.push_back({"c_stick", "Swing the stick at him.", false, true});
         else o.push_back({"c_fight", "Fight him."});
         if (hasLight && !lightUsed && PowerOut()) o.push_back({"c_light", "Shine the flashlight in his eyes."});
+        if (hasTaser) o.insert(o.begin(), {"c_tase", "His own taser. Right in the chest.", false, false});
     }
     if (Knows("visitor_time")) o.push_back({"c_know", "\"I know what you are.\"", true});
     if (Knows("handlers") && (MomHere() || DadFree())) o.push_back({"c_parents", "\"Mom. Dad. Did you know?\"", true});
@@ -2305,17 +2364,251 @@ void Story::ConvinceParents(const std::string& who) {
         Say("You", "We ran once. All three of us. We got 31 kilometres. Then all three of them beeped.");
     }
     Say(who, proofPhone || proofFiles ? "(very quietly) ...How do you know those words?" : "(very quietly) ...How do you know that?");
-    if (who == "Mom") Say("Mom", "(she sits down on the kitchen floor. Just sits.) ...Get your father.");
-    else Say("Dad", "(he puts the wrench down very carefully) ...Get your mother.");
+    // v0.18 (section 3): one at a time. Each of them has to hear it from you
+    bool other = who == "Mom" ? dadTurned : momTurned;
+    if (who == "Mom") momTurned = true; else dadTurned = true;
+    AddClue("allies");
+    if (!other) {
+        if (who == "Mom") {
+            Say("Mom", "(she sits down on the kitchen floor. Just sits.)");
+            Say("Mom", "...Don't tell your father. Not yet. I don't know which side he'd pick.");
+        } else {
+            Say("Dad", "(he puts the wrench down very carefully)");
+            Say("Dad", "...Not a word to your mother. Not yet. She'd tell them. She wouldn't mean to.");
+        }
+        Say("You", "(One of them. That's one more than I had this morning.)");
+        solemn = false;
+        return;
+    }
+    if (who == "Mom") { Say("Mom", "(she sits down on the kitchen floor. Just sits.) ...Does your father know?"); Say("You", "I told him first."); Say("Mom", "...Get him."); }
+    else { Say("Dad", "(he puts the wrench down very carefully) ...Does your mother know?"); Say("You", "I told her first."); Say("Dad", "...Get her."); }
     FadeFor(5, "At the kitchen table. All three of you.");
     Say("Dad", "His car. He always leaves the keys in it.");
     Say("Mom", "When he knocks, we go. All three of us. We don't stop for anything.");
     if (Knows("the_tape")) Say("You", "(I'm not doing this because I forgive them. I will never forgive them. I just need them.)");
     else Say("You", "(For one second it feels like having parents.)");
     parentsAllied = true;
-    AddClue("allies");
     Achieve("Not Alone");
     solemn = false;
+}
+
+// ============================================================ v0.18: whose side are they on (branches map, section 3)
+// The presentation moves them through the house. The story says what it means when they find you.
+std::string Story::Defender() const {
+    if (!OneTurned() || stance != Stance::Befriended || !collection || handlers) return "";
+    if (momTurned && !momFought && MomHere() && !momOnFloor) return "Mom";
+    if (dadTurned && !dadFought && DadFree() && !dadOnFloor) return "Dad";
+    return "";
+}
+static std::string RoomShout(Room r) {
+    switch (r) {
+        case Room::KidsRoom: return "his room";
+        case Room::Bathroom: return "the bathroom";
+        case Room::ParentsRoom: return "our room";
+        case Room::Hallway: return "the hallway";
+        case Room::Kitchen: return "the kitchen";
+        case Room::LivingRoom: return "the living room";
+        case Room::Shed: return "the shed";
+        case Room::Basement: return "the basement";
+        case Room::Backyard: return "out back";
+        default: return "the yard";
+    }
+}
+void Story::OnParentCall(const std::string& who) {
+    static std::map<std::string, int> n;
+    int k = n[who]++;
+    auto pick = [&](std::vector<const char*> l) { Bubble(who, l[k % l.size()]); };
+    if (handlers) {
+        if (who == "Mom") pick({"Kiddo. It's just us now. Come here.", "Nobody's going to hurt you. We just have to drive somewhere.", "Please come out. You don't know what they do if we don't bring you."});
+        else pick({"I know every spot in this house, buddy. I built half of them.", "Come on out. We're doing this by the book now.", "Finse is a long drive. Let's not make it longer."});
+    } else if (ParentsHunt()) {
+        if (who == "Mom") pick({"Kiddo? Come out. It's easier.", "Sweetie, please. Don't make him look.", "You're not in trouble. Just come out."});
+        else pick({"Not this way, buddy.", "Come on out. Make it easy on everybody.", "I'm not moving, kiddo."});
+    } else if (who == "Mom") pick({"(very quietly) Kiddo? It's okay. Come out.", "He's not going to hurt you, sweetie.", "(to herself) Please just come out."});
+}
+void Story::OnParentSpots(const std::string& who, Room r) {
+    if (!chase) return;
+    if (handlers) Bubble(who, who == "Mom" ? "Here! He's here!" : "There you are.");
+    else Bubble(who, who == "Mom" ? "He's in " + RoomShout(r) + "! In " + RoomShout(r) + "!" : "Buddy's in " + RoomShout(r) + "!");
+    AddClue("they_hunt");
+}
+void Story::OnParentFinds(const std::string& who) {
+    if (!chase) return;
+    AddClue("they_hunt");
+    if (handlers) {
+        chase = false;
+        Say("", who == "Mom" ? "(Light. Mom's face. She's been crying. She doesn't stop now.)" : "(Light. Dad's big hand. He doesn't grab. He just holds it out.)");
+        Say(who, who == "Mom" ? "There you are. Come on. Come on, sweetie." : "Up you get, buddy.");
+        HandlersEnding(true);
+        return;
+    }
+    Bubble(who, who == "Mom" ? "(she lifts the edge and looks right at you) ...Oh, sweetie." : "(he looks right at you) ...Found him.");
+    Bubble(who, who == "Mom" ? "He's in here! In here!" : "Over here!");
+}
+void Story::OnParentGrabs(const std::string& who) {
+    if (!chase) return;
+    chase = false;
+    AddClue("they_hunt");
+    if (who == "Dad") Say("", "(Dad's arms close around you from behind. Not hard. Just enough.)");
+    else Say("", "(Mom's hand closes on your sleeve. She's shaking. She doesn't let go.)");
+    if (handlers) { Say(who, who == "Dad" ? "Got him. ...I've got him." : "I've got him. I've got him."); HandlersEnding(true); return; }
+    Say(who, who == "Dad" ? "(over his shoulder) Got him. ...I've got him." : "(very quietly) I'm sorry. I'm so sorry. Over here.");
+    Say("The visitor", "(walking up, not hurrying) Thank you, handler " + std::string(who == "Dad" ? "one." : "two."));
+    if (who == "Dad") Say("You", "(He held the door. He held me. He never once looked at me.)");
+    CollectionScript();
+}
+void Story::OnDefend(const std::string& who) {
+    if (!chase) return;
+    Bubble(who, who == "Mom" ? "GET AWAY FROM HIM!" : "Hey! HEY! Over here!");
+}
+void Story::OnDefendDone(const std::string& who, int x, int y) {
+    if (!chase) return;
+    Sound("crack");
+    dropX = x; dropY = y;
+    if (who == "Mom") {
+        momFought = true; momOnFloor = true;
+        dropItem = "box";
+        Bubble("The visitor", "(breathing hard) ...Handler two. Really?");
+        Bubble("You", "(Something black skids across the floor. The box from his belt.)");
+        AddClue("mom_fought");
+        Achieve("Just Her");
+    } else {
+        dadFought = true; dadOnFloor = true; dadDown = true;
+        dropItem = "taser";
+        Bubble("The visitor", "(breathing hard) Should have stayed in the shed, handler one.");
+        Bubble("You", "(Something yellow skids across the floor. His taser.)");
+        AddClue("dad_fought");
+        Achieve("Just Him");
+    }
+}
+
+void Story::StartHandlers() {
+    // Noah's answer 7: you beat him, and they were never on your side. They take over the hunt
+    darkPoints = DARK_MAX; tainted = true;
+    visitorDead = visitorDowned = true;
+    FadeFor(0, "");
+    Black("You don't remember deciding. Just the sound.");
+    Black("He doesn't get up. The box in your hand keeps blinking green.");
+    solemn = true;
+    std::string who = DadFree() && !dadOnFloor && !dadTurned ? "Dad" : "Mom";
+    if (MomHere() && !momOnFloor) Say("Mom", "(from the doorway, very quietly) ...What did you do.");
+    Say("", "(The radio on his belt clicks.)");
+    Say("Finse", "(on the radio) Collector. Status.");
+    Say("", who == "Dad" ? "(Dad kneels and takes the radio off his belt. He looks at you the whole time.)" : "(Mom kneels and takes the radio off his belt. She looks at you the whole time.)");
+    Say(who, "Collector is down. The subject did it.");
+    Say("Finse", "(a long pause) ...Then recover the subject. Deliver him yourselves. You know the road.");
+    Say(who, "...Copy.");
+    if (Knows("graduation")) Say("You", "(Appendix C said whoever kills his collector replaces him. Nobody told them that part.)");
+    Say(who, who == "Dad" ? "(he stands up, slowly) Buddy. Put that down. Come here." : "(she stands up, slowly) Sweetie. Put that down. Come here.");
+    Say("You", "(No.)");
+    solemn = false;
+    handlers = true;
+    AddClue("handlers_hunt");
+    SceneBeat("chase");
+}
+
+void Story::HandlersEnding(bool caught) {
+    chase = false;
+    // whoever was still on their feet and still on his side. At least one of them, or this never started
+    bool mom = MomHere() && !momOnFloor && !momTurned, dad = DadFree() && !dadOnFloor && !dadTurned;
+    if (!mom && !dad) dad = true;
+    std::string driver = dad ? "Dad" : "Mom";
+    if (!caught) {
+        Sound("bells");
+        Say("", "(17:00. Far away, the bells start.)");
+        Say("", "(A torch comes round the corner. His torch. " + driver + " is holding it.)");
+        if (dad) Say("Dad", "(not unkindly) Every spot in this house, buddy. I built half of them.");
+        else Say("Mom", "(gently) I know where you hide, sweetie. I put the blankets in there.");
+    }
+    FadeFor(0, "");
+    Sound("hush_on");
+    if (mom && dad) {
+        Black("They don't tie you. They don't have to. Dad carries you out to the man's car. Mom carries the radio.");
+        Black(momRemorse ? "Mom sits in the back with you. Halfway there she starts humming. She stops. She starts again."
+                         : "Mom sits in the back with you. She keeps a hand on your knee the whole way, like you might float off.");
+    } else if (dad) {
+        Black("He doesn't tie you. He doesn't have to. Dad carries you out to the man's car by himself.");
+        Black("He drives with both hands on the wheel. He doesn't turn the radio on. Once, at a red light that isn't there, he says your name.");
+    } else {
+        Black("She doesn't tie you. She doesn't have to. Mom carries you out to the man's car. You're too big to carry. She does it anyway.");
+        Black(momRemorse ? "She drives. Halfway there she starts humming. She stops. She starts again."
+                         : "She drives. She keeps looking at you in the mirror, like you might float off.");
+    }
+    if (DoggoExists()) Black("Doggo runs after the car all the way to the gate. Then he just stands there in the snow.");
+    else if (doggoDead) Black("Nobody says anything about Doggo. Not once, the whole way.");
+    Black(std::string("Two hours of snow chains. Then a gate. A voice: \"") + (mom && dad ? "Handlers" : "Handler") + "? You're not on the list.\"");
+    Black("\"We brought him ourselves,\" " + driver + " says. \"The collector is down.\" " + (dad ? "He says" : "She says") + " it like a thank you is coming.");
+    Black("Two people in white coats lift you out of the car. They're very gentle with you.");
+    Black(mom && dad ? "They walk Mom and Dad round the back of the building. Like there's something there they need to sign."
+                     : "They walk " + driver + " round the back of the building. Like there's something there to sign.");
+    Sound("bang");
+    Black("BANG.");
+    if (mom && dad) { Sound("bang"); Black("BANG."); }
+    Black("Handlers don't deliver. Collectors deliver. Nobody ever told them that rule either.");
+    Narrate(mom && dad ? "They hunted me for them. They drove me there for them. They still didn't get to go home."
+                       : dad ? "He hunted me for them. He drove me there for them. He still didn't get to go home."
+                             : "She hunted me for them. She drove me there for them. She still didn't get to go home.");
+    endings.insert("handlers");
+    lastEnd = "ending:handlers";
+    Achieve("Family Business");
+    Beat e; e.type = BeatType::Ending; e.id = "handlers"; e.speaker = "ENDING";
+    e.text = "THE HANDLERS\n\nHe was gone, so they finished his job. They didn't follow the rules.";
+    beats.push_back(e);
+}
+
+void Story::LastTollEnding(bool killed) {
+    // Noah's answer 7: you convinced them and beat him. False hope. On the last toll you're still in the loop
+    chase = false;
+    visitorDowned = true;
+    bool mom = MomHere() && !momOnFloor, dad = DadFree() && !dadOnFloor;
+    solemn = true;
+    if (killed) {
+        darkPoints = DARK_MAX; tainted = true;
+        FadeFor(0, "");
+        Black("You don't remember deciding. Just the sound.");
+        Black("He doesn't get up. The box in your hand stays green.");
+        if (mom) Black("Mom takes the knife out of your hand, very gently, like it's scissors. She washes it in the kitchen sink and puts it back in the block.");
+        Black(dad ? "Dad drags him out to the shed by his boots and bars the door. Out of habit." : "Mom drags him out to the shed by his boots. It takes her a long time. She won't let you help.");
+    } else {
+        Sound("thud");
+        if (mom && dad) Say("", "(Dad lands on him with his whole weight. Mom has his wrist bent up behind him before he can push off the floor.)");
+        else if (dad) Say("", "(Dad lands on him with his whole weight. You hold one arm with everything you've got. It's like holding a car.)");
+        else Say("", "(Mom lands on his arm with both knees. You hold the other one. It's like holding a car.)");
+        Say("The visitor", "(face in the floor, almost laughing) Three of you. That's new.");
+        Say(dad ? "Dad" : "Mom", "Basement. Now.");
+        FadeFor(0, "");
+        Black("They bolt him in the basement, with the blue screens and the chair with the straps. Nobody says anything about that.");
+        Black("You hear him through the floor for a while. Then you don't.");
+    }
+    Black("The power is still out. Mom lights the candles. Dad finds the ribbe in the cold oven and carves it anyway.");
+    if (!mom) Black("Mom can't get up off the floor, so you all eat on the floor next to her. Dad says it's a picnic.");
+    if (!dad) Black("Dad lies on the couch with a dish towel full of snow on his head. He keeps saying he's fine.");
+    if (DoggoExists()) Black("Doggo gets a whole plate of his own. Nobody says a word about it.");
+    else if (doggoDead) Black("Nobody looks at the hallway, where Doggo is.");
+    Black("Riskrem. Dad gets the almond and acts surprised. He gets it every year. Mom always makes sure.");
+    Sound("hum_on");
+    Black(Knows("the_tape") ? "Mom hums. You know where that song comes from now. You let her anyway. Nobody looks at the clock." : "Mom hums. Dad laughs at nothing. You laugh too. Nobody looks at the clock.");
+    Sound("hum_off");
+    Black("Except you.");
+    Sound("bells");
+    Black("17:00. Far away, through the storm, the bells start.");
+    Black("Mom counts them out loud, like a game. Dad joins in. You don't.");
+    Black("They go on for a long time. Then they slow down. Then there's one more.");
+    Black("The last one.");
+    Sound("beep");
+    Black("BEEP BEEP.");
+    Black("16:00. Your bed. Your room. Your watch.");
+    Black("Downstairs, Mom is humming. She doesn't remember any of it. Neither does Dad.");
+    Narrate("We won. All three of us, alive, at the same table. It didn't count. The hour doesn't care who wins it.");
+    if (HingePieces() >= 5 && !Knows("he_remembers")) Narrate("The only one who could have told me why was locked downstairs. I never asked him.");
+    solemn = false;
+    AddClue("last_toll");
+    endings.insert("lasttoll");
+    lastEnd = "ending:lasttoll";
+    Achieve("Last Toll");
+    Beat e; e.type = BeatType::Ending; e.id = "lasttoll"; e.speaker = "ENDING";
+    e.text = "LAST TOLL\n\nThey were on your side. He was beaten. The bells rang anyway.";
+    beats.push_back(e);
 }
 
 void Story::DeadSwitchLoop() {
@@ -2963,8 +3256,25 @@ void Story::Choose(const std::string& id, int px, int py) {
         Choice("Are you sure?", {{"c_finish2", "Do it.", false, true}, {"none", "(Back away.)"}});
     } else if (id == "c_finish2") {
         chase = false;
-        if (switchTaken) MonsterEnding();
+        // v0.18: answer 7. Who was standing there when you did it decides what happens next
+        if (switchTaken && parentsAllied && TurnedStanding()) LastTollEnding(true);
+        else if (switchTaken && UntouchedParent() && !TurnedStanding()) StartHandlers();
+        else if (switchTaken) MonsterEnding();
         else DeadSwitchLoop();
+    } else if (id == "c_help") {
+        chase = false;
+        LastTollEnding(false);
+    } else if (id == "c_tase") {
+        // v0.18: Dad left it on the floor for you. One shot
+        hasTaser = false;
+        Sound("crack");
+        Say("", "(You wait until he's close enough to touch. Then you push it into his coat and squeeze.)");
+        Say("", "(Every muscle he has locks at once. He goes over like a tree. The floor shakes.)");
+        Say("The visitor", "(through his teeth, from the floor) ...Hhh. That's... mine.");
+        visitorDowned = visitorInjured = true;
+        AddClue("tased_him");
+        Achieve("His Own Medicine");
+        SceneBeat("downed");
     } else if (id == "c_know") {
         chase = false;
         Say("You", "I know what you are.");
@@ -3189,6 +3499,8 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("You", "Chores are stupid.");
         Say("Mom", "Excuse me? Try that again and see what happens.");
         ChangeMood(-1);
+    } else if (id == "m_loop" && momTurned) {
+        Say("Mom", "(very quietly, not looking up) I know. When he knocks, you hide. I'll be right there.");
     } else if (id == "m_loop" && Befriended()) {
         if (HasProof()) ConvinceParents("Mom");
         else {
@@ -3260,6 +3572,8 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("You", "Why does it say PICKUP behind door 24?");
         Say("Dad", "...Presents. Mom's thing.");
         Say("You", "(He doesn't look at me when he says it.)");
+    } else if (id == "d_loop" && dadTurned) {
+        Say("Dad", "(he doesn't stop working) I heard you, buddy. When he knocks, you hide. Leave him to me.");
     } else if (id == "d_loop" && Befriended() && HasProof()) {
         ConvinceParents("Dad");
     } else if (id == "d_loop" && Befriended()) {
@@ -3575,7 +3889,22 @@ void Story::Choose(const std::string& id, int px, int py) {
 void Story::Interact(const std::string& id, int px, int py) {
     (void)px; (void)py;
     if (id != "fliptendo") playStreak = 0;
+    if (id == "visitor" && chase && visitorDead) { Say("", "(He doesn't move. He isn't going to.)"); return; }
     if (id == "visitor" && chase) { VisitorChoice(); return; }
+    if (id == "drop" && !dropItem.empty()) {
+        // v0.18: what the fight left on the floor
+        if (dropItem == "box") {
+            switchTaken = true;
+            Say("", "(The black box from his belt. A wire hangs off it, torn. The green light keeps blinking.)");
+            Say("You", Knows("dead_switch") ? "(Without the box he's just a man. Mom knew that.)" : "(Mom didn't go for his face. Or his gun. She went for this.)");
+        } else {
+            hasTaser = true;
+            Say("", "(His taser, half under the couch. Heavier than it looks. The little screen says 1.)");
+            Say("You", "(One shot. I'd have to let him get really close.)");
+        }
+        dropItem.clear(); dropX = dropY = -1;
+        return;
+    }
     if (id == "door_bath" && !collection && (momBathLocked || (MomInBath() && momRoomNow == Room::Bathroom))) {
         // v0.13: hinge A. Mom is in there and you are out here
         if (momBathLocked) {

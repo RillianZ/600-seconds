@@ -248,6 +248,14 @@ public:
     bool remembered = false;                   // all five: he knows the house. He knows he was you
     bool visitorTied = false;                  // Noah's answer 10: knocked down three times, then tied with the tripwire
     int tiedTalk = 0;
+    // v0.18 per loop: whose side are they on (branches map, section 3)
+    bool momTurned = false, dadTurned = false; // five chores + proof, told one at a time. Both = parentsAllied
+    bool momFought = false, dadFought = false; // a turned parent ran at him in the hunt, and lost
+    std::string dropItem;                      // what the fight left on the floor: "box" or "taser" ("" = nothing)
+    int dropX = -1, dropY = -1;
+    bool hasTaser = false;                     // his own taser. One shot
+    bool visitorDead = false;                  // you finished it, and somebody saw
+    bool handlers = false;                     // answer 7: he's dead, they weren't on your side. They take over the hunt
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -296,6 +304,19 @@ public:
     void OnDoggoCalled();                     // you called him back in time
     void OnDoggoPutDown(int x, int y);        // you didn't
     void OnTased();
+    // v0.18: whose side are they on. The presentation moves them, the story says what it means
+    bool ParentsHunt() const { return chase && !handlers && stance == Stance::Dark && !Tutorial(); }   // they look for you with him
+    bool MomSearches() const { return (ParentsHunt() || handlers) && MomHere() && !momOnFloor && !momTurned; }
+    bool DadGuardsDoor() const { return ParentsHunt() && DadFree() && !dadOnFloor && !dadTurned; }
+    bool DadSearches() const { return handlers && DadFree() && !dadOnFloor && !dadTurned; }
+    bool OneTurned() const { return momTurned != dadTurned; }
+    std::string Defender() const;           // the one parent on your side who can still stand up for you, or ""
+    void OnParentSpots(const std::string& who, Room r);   // a parent saw you out in the open
+    void OnParentFinds(const std::string& who);           // a parent opened your hiding spot
+    void OnParentGrabs(const std::string& who);           // got you. With him: he's on his way. Without him: the car
+    void OnDefend(const std::string& who);                // a turned parent runs at him
+    void OnDefendDone(const std::string& who, int x, int y);   // they lost. Something is on the floor
+    void OnParentCall(const std::string& who);            // a line while they look (bubble)
     // v0.17: the true ending. Once you start telling him the pieces, or once he's tied, he stays down
     bool HoldDown() const { return visitorDowned && (visitorTied || !toldPieces.empty()); }
     bool ParentsOut() const { return (!MomHere() || momOnFloor) && (!DadFree() || dadOnFloor); }   // answer 10: nobody else in the room
@@ -410,6 +431,12 @@ private:
     void SameHouseEnding();    // finish it: you take the coat, the watch and the radio. Confirmed
     void AfterEnding();        // don't: he snaps the dose, and keeps the house
     void TiedBells();          // 17:00 with him still on the floor
+    // v0.18: answer 7
+    void StartHandlers();      // you finished him in front of them. They take over the hunt
+    void HandlersEnding(bool caught);
+    void LastTollEnding(bool killed);   // they were on your side and he's beaten. The bells ring anyway
+    bool UntouchedParent() const { return (MomHere() && !momOnFloor && !momTurned) || (DadFree() && !dadOnFloor && !dadTurned); }
+    bool TurnedStanding() const { return (momTurned && MomHere() && !momOnFloor) || (dadTurned && DadFree() && !dadOnFloor); }
     bool Nag(const std::string& id);   // v0.16: asked the same thing again. True if the parent answered with that instead
     void Egg(const std::string& id);   // v0.15: one of the six things out back
     void AddDark(int n) { darkPoints = std::min(DARK_MAX, darkPoints + n); darkThisLoop += n; }

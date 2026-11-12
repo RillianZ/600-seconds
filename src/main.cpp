@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.17.0";
+static const char* kVersion = "v0.18.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -148,6 +148,21 @@ static void AddRing(Vector2 p, int kind) { rings.push_back({ p, 0, kind }); if (
 static void ResetHunt() {
     stamina = breath = 1; breathHeardT = wetT = wetCD = vStepAcc = 0; winded = holdingBreath = gasped = false;
     marbles.clear(); rings.clear(); vSure = false; vShowT = 0.4f; vHearCD = 0;
+}
+// v0.18: whose side are they on. Parents who look for you (Dark: with him. The Handlers: instead of him),
+// and the one parent who knows, waiting for him to get close to you
+struct PHunt { int visited = 0; std::vector<int> spots; std::vector<Vector2> path; size_t pathI = 0;
+               float pause = 0, seeCD = 0, callT = 5, startT = 0; int spotObj = -1; bool chasing = false; Vector2 last{}; };
+static PHunt pMom, pDad;
+static Vector2 momFell{ -1, -1 }, dadFell{ -1, -1 };   // where they went down in the fight. They stay there
+static std::string defWho;                              // the parent fighting him right now
+static int defStage = 0;                                 // 0 waiting, 1 running at him, 2 the fight, 3 done
+static float defT = 0, normalCallT = 9;
+static void ResetParents() {
+    pMom = PHunt(); pDad = PHunt(); pMom.callT = 4; pDad.callT = 8; defWho.clear(); defStage = 0; defT = 0; normalCallT = 9;
+    // like his grace pause: a few seconds before they start. Long enough to get out of the room
+    pMom.startT = 3.0f; pDad.startT = 3.5f;
+    pMom.visited = GetRandomValue(0, 2); pDad.visited = GetRandomValue(0, 2);   // not always the same room first
 }
 // v0.15: climbing through a window. Takes a few seconds, it's loud, and he can pull you back
 static bool climbing = false, climbOut = false, climbBanged = false, climbDoggo = false;
@@ -735,7 +750,7 @@ static void StartSearch(bool dadRan) {
     vHunchT = 18; vHunches = 0; vHunchSearch = false;
     vJukes = 0; vTaserT = vTaserCD = vNoReachT = vPathCD = 0; vCantReach = false;
     // v0.16: unless he stays, is out, or is shut in somewhere, Doggo goes to the door
-    doggoGuard = (story.DoggoExists() && !story.doggoStay && !story.Tutorial()) ? 1 : 0; doggoGuardT = 6.0f; doggoStuckT = 0;
+    doggoGuard = (story.DoggoExists() && !story.doggoStay && !story.Tutorial() && !story.handlers) ? 1 : 0; doggoGuardT = 6.0f; doggoStuckT = 0;
     ResetHunt();
     vPath.clear(); vSpots.clear(); vRoom = -1;
     if (dadRan) {
@@ -789,7 +804,7 @@ static void StartNextBeat() {
         if (b.type == BeatType::Flash) { flashT = 0.9f; continue; }
         if (b.type == BeatType::Bubble) { AddBubble(b.speaker, b.text); if (b.speaker == "Doggo" && IsBark(b.text)) Play("bark"); continue; }
         if (b.type == BeatType::Scene) {
-            bool keepHunt = b.id == "doggo_dies" && story.chase;   // v0.16: he put Doggo down mid-hunt. You stay where you are
+            bool keepHunt = (b.id == "doggo_dies" || b.id == "downed") && story.chase;   // v0.16: he put Doggo down mid-hunt. You stay where you are
             if (!keepHunt) { sceneT = 0; hidden = false; }
             if (b.id == "doggo_dies") {
                 doggoShownDead = true; doggoDeadT = 0;
@@ -827,10 +842,12 @@ static void StartNextBeat() {
                 }
                 continue;
             }
+            if (b.id == "downed") { scene = SceneMode::Chase; downedT = 8.0f; continue; }   // v0.18: his own taser
             if (b.id == "dad_runs") scene = SceneMode::DadRuns;
             else if (b.id == "chase") {
                 scene = SceneMode::Chase;
-                if (story.visitorDowned) downedT = 7.0f;
+                if (story.visitorDowned) downedT = story.visitorDead ? 0.0f : 7.0f;
+                ResetParents();
                 StartSearch(story.dadDown && std::hypot(visitor.pos.x - TileCenter(20, 19).x, visitor.pos.y - TileCenter(20, 19).y) > TS * 3);
             }
             continue;
@@ -966,6 +983,7 @@ static void UpdateBeat(float dt) {
             Snap(player, 5, 5); player.dir = 0;
             Snap(mom, 8, 16); Snap(dad, 24, 16); Snap(doggo, 6, 6); Snap(visitor, 20, 29);
             momDoor = HeldDoor(); dadDoor = HeldDoor(); lastThreats = 0; vDoorT = 0; struggleT = 0; climbing = false;
+            momFell = dadFell = { -1, -1 }; ResetParents();
             scene = SceneMode::None; hidden = false; wasCollection = false;
             StartNextBeat();
         }
@@ -989,6 +1007,10 @@ static Target FindTarget() {
     auto dist = [&](const Actor& a) { return std::hypot(a.pos.x - front.x, a.pos.y - front.y); };
     if (visitor.visible && (story.chase || !story.collection)) consider("visitor", "The visitor", dist(visitor), 18, 4);
     if (story.chase && story.DoggoExists() && doggo.visible) consider("doggo", "Doggo", dist(doggo), 14, 0);
+    if (story.chase && !story.dropItem.empty()) {   // v0.18: what the fight left on the floor
+        Vector2 c = TileCenter(story.dropX, story.dropY);
+        consider("drop", story.dropItem == "box" ? "The box" : "His taser", std::hypot(c.x - front.x, c.y - front.y), 20, 6);
+    }
     if (!story.collection) {
         if (mom.visible) consider("mom", "Mom", dist(mom), 14, 2);
         if (dad.visible) consider("dad", "Dad", dist(dad), 14, 2);
@@ -1340,7 +1362,8 @@ static void DrawBubbles(float dt) {
 
 static void DrawChaseBanner() {
     if (scene == SceneMode::None) return;
-    const char* t = scene == SceneMode::DadRuns ? "DAD IS FIGHTING HIM. RUN." : hidden ? (touchMode ? "HIDING  (E: out, RUN: hold breath)" : "HIDING  (E: out, Shift: hold breath)") :
+    const char* t = scene == SceneMode::DadRuns || (defStage == 2 && defWho == "Dad") ? "DAD IS FIGHTING HIM. RUN." :
+                    defStage == 2 ? "MOM IS FIGHTING HIM. RUN." : story.handlers && !hidden ? "THEY'RE LOOKING FOR YOU" : hidden ? (touchMode ? "HIDING  (E: out, RUN: hold breath)" : "HIDING  (E: out, Shift: hold breath)") :
                     story.threats >= 3 ? "HE'S DONE WAITING" : story.threats > 0 ? "HE'S HURTING THEM" : "THE LAST 600 SECONDS";
     float p = 0.5f + 0.5f * std::sin(globalT * 5);
     UIText(t, VW / 2.0f - UIMeasure(t, 10) / 2, 40, 10, Fade(Color{ 240, 70, 70, 255 }, 0.6f + 0.4f * p));
@@ -1362,6 +1385,15 @@ static void DrawChaseBanner() {
         else if (story.threats > 0) h = "Come out and face him (E). Or don't.";
         else h = story.pebbles > 0 ? (touchMode ? "He's searching. Walk, don't run. THROW a marble to move him." : "He's searching. Walk, don't run. Q throws a marble.")
                                    : "He's searching. Walk, don't run. He hears running. Hide (E) or face him (E).";
+        // v0.18: whose side they're on
+        if (!hidden && (!story.visitorDowned || story.handlers)) {
+            if (story.handlers) h = "Mom and Dad. They know every spot in this house. Stay out of sight.";
+            else if (story.DadGuardsDoor() && vmode == VMode::Search) h = "Three of them now. Dad is holding the front door.";
+            else if (story.MomSearches() && vmode == VMode::Search) h = "Mom is looking too. If she sees you, he knows.";
+        }
+        if (story.handlers && hidden && !gasped && !holdingBreath) h = "Stay still. They check every spot.";
+        if (!story.dropItem.empty() && !hidden) h = story.dropItem == "box" ? "The box from his belt is on the floor. Grab it (E)." : "His taser is on the floor. Grab it (E).";
+        else if (story.hasTaser && !hidden && !story.visitorDowned) h = "His taser. Let him get close, then face him (E).";
         if (story.cold > 0.3f) h = story.Warm() ? "Warm in here. Stay." : "You're freezing. Get inside, or get your jacket.";
         if (climbing) h = "Climbing. He can hear it.";
         else if (story.doggoWithKid && story.Knows("doggo_stay") && !hidden) h = "Doggo is right next to you. Tell him to stay (E on Doggo).";
@@ -2174,6 +2206,191 @@ static void DrawRotateHint() {
 #if defined(SHOTS)
 #include "../test/shots.inc"   // v0.15: scripted screenshots on a virtual screen. Never in a release build
 #endif
+// ============================================================ v0.18: parents in the hunt (branches map, section 3)
+static const Room kMomRooms[] = { Room::KidsRoom, Room::Bathroom, Room::ParentsRoom, Room::Hallway, Room::Kitchen, Room::LivingRoom };
+static const Room kDadRooms[] = { Room::LivingRoom, Room::Kitchen, Room::Hallway, Room::ParentsRoom, Room::KidsRoom, Room::Outside, Room::Shed, Room::Bathroom, Room::Backyard };
+static void ParentPlan(PHunt& h, Room r, Vector2 from) {
+    h.path.clear(); h.pathI = 0; h.spots.clear(); h.spotObj = -1;
+    if (r == Room::Outside) {
+        const int pts[3][2] = { { 6, 23 }, { 25, 26 }, { 33, 12 } };
+        for (auto& p : pts) h.path.push_back(TileCenter(p[0], p[1]));
+    } else if (r == Room::Backyard) {
+        const int pts[4][2] = { { 12, 0 }, { 26, -6 }, { 18, -9 }, { 10, -16 } };
+        for (auto& p : pts) h.path.push_back(TileCenter(p[0], p[1]));
+    } else {
+        float cx = 0, cy = 0; int n = 0;
+        for (int y = 0; y < 34; ++y) for (int x = 0; x < World::W; ++x)
+            if (story.world.RoomAt(x, y) == r && story.world.tiles[y][x] != Tile::Door && story.world.Walkable(x, y, false)) { cx += x; cy += y; ++n; }
+        if (n) {
+            int tx = (int)std::round(cx / n), ty = (int)std::round(cy / n);
+            if (story.world.Walkable(tx, ty, false)) h.path.push_back(TileCenter(tx, ty));
+        }
+    }
+    // they live here. They know every spot, and they check all of them
+    for (int i = 0; i < (int)story.world.objs.size(); ++i) {
+        const Obj& o = story.world.objs[i];
+        if (IsHideObj(o.id) && story.world.RoomAt(o.x, o.y) == r) h.spots.push_back(i);
+    }
+    std::sort(h.spots.begin(), h.spots.end(), [&](int a, int b) {
+        const Obj& A = story.world.objs[a]; const Obj& B = story.world.objs[b];
+        return std::hypot(A.x * TS - from.x, A.y * TS - from.y) < std::hypot(B.x * TS - from.x, B.y * TS - from.y);
+    });
+}
+static bool ParentSees(const Actor& a, bool torch) {
+    if (hidden || climbing) return false;
+    float dx = player.pos.x - a.pos.x, dy = player.pos.y - a.pos.y, d = std::hypot(dx, dy);
+    float range = (torch && OutdoorsAt(player.pos) && OutdoorsAt(a.pos)) ? TS * 12.0f : TS * 6.0f;
+    if (d > range) return false;
+    if (d > 26) {
+        const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
+        if ((dx * fx[a.dir] + dy * fy[a.dir]) / d < 0.2f) return false;
+    }
+    return LineOfSight(a.pos, player.pos);
+}
+// grown-ups have keys. A closed door in the way just opens
+static void ParentWalk(Actor& a, Vector2 to, float sp, float dt, float stop) {
+    Vector2 st = NextStep(a.pos, TX(to.x), TX(to.y), false);
+    int sx = TX(st.x), sy = TX(st.y);
+    if (story.world.InBounds(sx, sy) && story.world.tiles[sy][sx] == Tile::Door && story.DoorClosed(sx, sy)) {
+        story.OpenDoor(sx, sy);
+        if (std::hypot(a.pos.x - player.pos.x, a.pos.y - player.pos.y) < TS * 9) Play("door");
+    }
+    MoveActor(a, TX(to.x), TX(to.y), sp, dt, false, stop);
+}
+// he goes where they point
+static void SendVisitor(Vector2 at, bool toSpot) {
+    if (story.handlers || downedT > 0 || defStage == 2) return;
+    if (vmode == VMode::Grace || vmode == VMode::Chase || vmode == VMode::GoToHide) return;
+    if (toSpot) { vmode = VMode::GoToHide; return; }
+    vmode = VMode::Investigate; vNoise = at; vNoiseWait = 0.6f; vNoiseT = 0; vPause = 0; vHunchSearch = false;
+}
+// one parent looking for you. True if it stopped the hunt
+static bool HuntWith(Actor& a, PHunt& h, const char* who, float dt) {
+    bool dadMode = std::string(who) == "Dad";
+    bool torch = dadMode && story.handlers;
+    if (h.startT > 0) { h.startT -= dt; a.anim = 0; return false; }
+    float walk = dadMode ? 58.0f : 52.0f, run = dadMode ? 96.0f : 84.0f;
+    h.seeCD -= dt; h.callT -= dt;
+    if (h.callT <= 0) { story.OnParentCall(who); StartNextBeat(); h.callT = (float)GetRandomValue(9, 14); }
+    bool sees = ParentSees(a, torch);
+    if (sees) {
+        if (h.seeCD <= 0) {
+            story.OnParentSpots(who, story.world.RoomAt(TX(player.pos.x), TX(player.pos.y)));
+            StartNextBeat(); h.seeCD = 6;
+            SendVisitor(player.pos, false);
+            // the other one comes too
+            PHunt& o = dadMode ? pMom : pDad;
+            if (story.handlers && !o.chasing) { o.path.assign(1, player.pos); o.pathI = 0; o.spots.clear(); o.spotObj = -1; o.pause = 0; }
+        }
+        h.chasing = true; h.last = player.pos;
+    }
+    float dk = std::hypot(a.pos.x - player.pos.x, a.pos.y - player.pos.y);
+    if (h.chasing) {
+        ParentWalk(a, h.last, run, dt, 2);
+        if (dk < 12 && !hidden && !climbing) { scene = SceneMode::None; story.OnParentGrabs(who); StartNextBeat(); return true; }
+        if (!sees && std::hypot(a.pos.x - h.last.x, a.pos.y - h.last.y) < 6) { h.chasing = false; h.pause = 1.4f; }
+        return false;
+    }
+    if (h.pause > 0) {
+        h.pause -= dt; a.anim = 0;
+        if (std::fmod(h.pause, 0.5f) < dt) a.dir = (a.dir + 1 + GetRandomValue(0, 2)) % 4;
+        return false;
+    }
+    if (h.spotObj >= 0) {
+        const Obj& o = story.world.objs[h.spotObj];
+        Vector2 at = SpotNextTo(o, a.pos);
+        if (std::hypot(a.pos.x - at.x, a.pos.y - at.y) > 2) { ParentWalk(a, at, walk, dt, 0); return false; }
+        Vector2 oc = TileCenter(o.x, o.y);
+        float dx = oc.x - a.pos.x, dy = oc.y - a.pos.y;
+        a.dir = std::fabs(dx) > std::fabs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
+        bool there = hidden && std::hypot(hidePos.x - oc.x, hidePos.y - oc.y) < 2;
+        h.spotObj = -1;
+        if (there) {
+            story.OnParentFinds(who); StartNextBeat();
+            if (!story.chase) { hidden = false; scene = SceneMode::None; return true; }
+            SendVisitor(hidePos, true);
+            h.pause = 4.0f;   // they stand there with the lid up and wait for him
+        } else h.pause = 1.0f;
+        return false;
+    }
+    if (h.pathI < h.path.size()) {
+        if (std::hypot(a.pos.x - h.path[h.pathI].x, a.pos.y - h.path[h.pathI].y) < 2) { ++h.pathI; h.pause = 0.6f; }
+        else ParentWalk(a, h.path[h.pathI], walk, dt, 0);
+        return false;
+    }
+    if (!h.spots.empty()) { h.spotObj = h.spots.front(); h.spots.erase(h.spots.begin()); return false; }
+    const Room* rooms = dadMode ? kDadRooms : kMomRooms;
+    int n = dadMode ? (int)(sizeof(kDadRooms) / sizeof(Room)) : (int)(sizeof(kMomRooms) / sizeof(Room));
+    ParentPlan(h, rooms[h.visited++ % n], a.pos);
+    return false;
+}
+// the whole family, once a frame during the hunt. True if the hunt stopped
+static bool UpdateParents(float dt) {
+    if (scene != SceneMode::Chase || !story.chase || beatActive) return false;
+    // they went down fighting. They stay where they fell
+    if (story.momFought && momFell.x >= 0) { mom.pos = momFell; mom.anim = 0; }
+    if (story.dadFought && dadFell.x >= 0) { dad.pos = dadFell; dad.anim = 0; }
+    if (story.MomSearches() && HuntWith(mom, pMom, "Mom", dt)) return true;
+    if (story.DadSearches() && HuntWith(dad, pDad, "Dad", dt)) return true;
+    if (story.DadGuardsDoor()) {
+        // Dark: Dad takes the door. He doesn't go looking. He waits, and grabs you if you try it
+        Vector2 post = TileCenter(20, 19);
+        if (pDad.startT > 0) { pDad.startT -= dt; return false; }
+        if (std::hypot(dad.pos.x - post.x, dad.pos.y - post.y) > 2) ParentWalk(dad, post, 60, dt, 0);
+        else { dad.anim = 0; dad.dir = 1; }
+        pDad.seeCD -= dt; pDad.callT -= dt;
+        if (ParentSees(dad, false) && pDad.seeCD <= 0) {
+            story.OnParentSpots("Dad", story.world.RoomAt(TX(player.pos.x), TX(player.pos.y))); StartNextBeat(); pDad.seeCD = 7;
+            SendVisitor(player.pos, false);
+        }
+        if (pDad.callT <= 0 && std::hypot(dad.pos.x - player.pos.x, dad.pos.y - player.pos.y) < TS * 9) { story.OnParentCall("Dad"); StartNextBeat(); pDad.callT = (float)GetRandomValue(10, 15); }
+        if (std::hypot(dad.pos.x - player.pos.x, dad.pos.y - player.pos.y) < 15 && !hidden && !climbing) { scene = SceneMode::None; story.OnParentGrabs("Dad"); StartNextBeat(); return true; }
+    }
+    // Normal: they stand where they are and hand you over. Mom can't help saying something
+    if (story.stance == Stance::Normal && !story.handlers && story.MomHere() && !story.momOnFloor && !story.momTurned) {
+        normalCallT -= dt;
+        if (normalCallT <= 0 && std::hypot(mom.pos.x - player.pos.x, mom.pos.y - player.pos.y) < TS * 10) { story.OnParentCall("Mom"); StartNextBeat(); normalCallT = (float)GetRandomValue(12, 17); }
+    }
+    // the one who knows. Mom stays close to you. Dad stays close to him. When he gets close to you, they go
+    std::string d = defStage == 0 ? story.Defender() : defWho;
+    if (!d.empty() && defStage < 3) {
+        Actor& a = d == "Mom" ? mom : dad;
+        float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
+        if (defStage == 0) {
+            if (d == "Mom") { if (std::hypot(a.pos.x - player.pos.x, a.pos.y - player.pos.y) > TS * 3) ParentWalk(a, player.pos, 70, dt, TS * 2.5f); else a.anim = 0; }
+            else { if (std::hypot(a.pos.x - visitor.pos.x, a.pos.y - visitor.pos.y) > TS * 3) ParentWalk(a, visitor.pos, 62, dt, TS * 2.5f); else a.anim = 0; }
+            bool near = (vmode == VMode::Chase && dk < TS * 6) ||
+                        (hidden && (vmode == VMode::GoToHide || vmode == VMode::CheckSpot) && std::hypot(visitor.pos.x - hidePos.x, visitor.pos.y - hidePos.y) < TS * 3);
+            if (near && downedT <= 0) { defWho = d; defStage = 1; defT = 0; story.OnDefend(d); StartNextBeat(); }
+        } else if (defStage == 1) {
+            defT += dt;
+            ParentWalk(a, visitor.pos, 125, dt, 9);
+            if (std::hypot(a.pos.x - visitor.pos.x, a.pos.y - visitor.pos.y) < 14 || defT > 3.5f) { defStage = 2; defT = 0; }
+        } else {
+            // the fight. He doesn't move while it lasts. It doesn't last long
+            defT += dt;
+            a.anim += dt * 14; visitor.anim += dt * 10;
+            a.pos.x += std::sin(globalT * 37) * 0.35f;
+            if (std::fmod(defT, 0.55f) < dt) { Play("thud"); AddBubble(d, GetRandomValue(0, 1) ? "RUN!" : "GO!", 0.8f); }
+            if (defT > 2.6f) {
+                Play("crack"); flashT = 0.35f;
+                defStage = 3;
+                (d == "Mom" ? momFell : dadFell) = a.pos;
+                // it skids across the floor, most of the way to you. Then he needs a second to get his breath back
+                Vector2 to = player.pos;
+                for (float k : { 0.7f, 0.55f, 0.4f, 0.85f, 1.0f }) {
+                    Vector2 c = { visitor.pos.x + (player.pos.x - visitor.pos.x) * k, visitor.pos.y + (player.pos.y - visitor.pos.y) * k };
+                    if (story.world.Walkable(TX(c.x), TX(c.y), false) && LineOfSight(visitor.pos, c)) { to = c; break; }
+                }
+                story.OnDefendDone(d, TX(to.x), TX(to.y)); StartNextBeat();
+                a.anim = 0; visitor.anim = 0;
+                vmode = VMode::Lost; vPause = 1.8f; vLastSeen = player.pos; vLostT = 0;
+            }
+        }
+    }
+    return false;
+}
+
 // ============================================================ frame
 static void UpdateDrawFrame() {
     float dt = std::min(GetFrameTime(), 0.05f);
@@ -2461,7 +2678,9 @@ static void UpdateDrawFrame() {
         };
         bool momTalking = beatActive && talkingTo == "mom" && !story.collection;
         bool dadTalking = beatActive && talkingTo == "dad" && !story.collection && scene == SceneMode::None;
-        if (momTalking) face(mom); else MoveActor(mom, ms.x, ms.y, npcSpeed, dt, true);
+        // v0.18: in the hunt she might be looking for you, standing by you, or lying where she fell
+        bool momOwn = story.collection && (story.MomSearches() || story.momFought || (!story.Defender().empty() && story.Defender() == "Mom") || (defStage > 0 && defWho == "Mom"));
+        if (momTalking) face(mom); else if (!momOwn) MoveActor(mom, ms.x, ms.y, npcSpeed, dt, true);
         if (ms.facingWall && TX(mom.pos.x) == ms.x && TX(mom.pos.y) == ms.y) mom.dir = 1;
         story.momRoomNow = story.world.RoomAt(TX(mom.pos.x), TX(mom.pos.y));   // v0.13: hinge A needs her really in there
 
@@ -2532,6 +2751,7 @@ static void UpdateDrawFrame() {
             dad.visible = ds.visible;
             if (dadTalking) face(dad);
             else if (!story.collection) MoveActor(dad, ds.x, ds.y, npcSpeed, dt, false);
+            else if (story.dadFought && dadFell.x >= 0) { dad.pos = dadFell; dad.anim = 0; }   // v0.18: where he went down
             else if (story.dadOnFloor) { Snap(dad, ds.x, ds.y); dad.anim = 0; }
             if (!story.collection) humanDoors(dad, dadDoor, "Dad");
             if (scene != SceneMode::Chase) {
@@ -2618,6 +2838,12 @@ static void UpdateDrawFrame() {
                     scene = SceneMode::None; hidden = false;
                     story.OnLeftPremises();
                     StartNextBeat();
+                } else if (story.handlers) {
+                    // v0.18: he's dead. They're the ones looking now
+                    visitor.anim = 0; vShowT = 0.3f; vmode = VMode::Grace;
+                } else if (defStage == 2) {
+                    // v0.18: somebody is on top of him. He doesn't move while it lasts
+                    vShowT = 0.3f;
                 } else if (story.visitorStun > 0) {
                     // v0.6: blinded by the flashlight
                     story.visitorStun -= dt;
@@ -2646,7 +2872,7 @@ static void UpdateDrawFrame() {
                         }
                         goto chaseDone;
                     }
-                    if (sees && !hidden && vTaserCD <= 0) {
+                    if (sees && !hidden && vTaserCD <= 0 && !story.dadFought) {   // v0.18: Dad tore it out of his hand
                         float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
                         vPathCD -= dt;
                         if (vPathCD <= 0) {
@@ -2889,7 +3115,8 @@ static void UpdateDrawFrame() {
                     }
                 }
                 chaseDone:
-                story.visitorChasing = vmode == VMode::Chase;
+                story.visitorChasing = vmode == VMode::Chase && !story.handlers;
+                UpdateParents(dt);
             }
         }
         story.kidHidden = hidden;
