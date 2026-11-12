@@ -43,6 +43,11 @@
 //   allmem | forget ID  know every memory | forget one
 //   lockfront           the front door is locked
 //   state               print the clock, the front door and where the parents are to stderr
+//   bolt | sweep K | idle N   v0.20 look: lightning now, headlights K of the way across, the kid has stood still N seconds
+//   sister   this loop's reality: somebody in the bathroom
+//   journal TAB | newmem ID   the log open on a tab | a memory found this loop
+//   luse ID | lchoose ID   use / choose with the close-up hook
+//   ending ID | att mom|dad cold|scared|broken | say WHO TEXT   (WHO with _ for spaces, e.g. The_visitor)
 //   quit
 #include <fstream>
 #include <sstream>
@@ -149,6 +154,18 @@ static void ShotsStep() {
         else if (c == "forget") { std::string id; ss >> id; story.memory.erase(id); }
         else if (c == "lockfront") { story.frontLocked = true; story.frontLockedAt = story.t; story.closedDoors.insert(20 * World::W + 20); }
         else if (c == "state") { fprintf(stderr, "STATE t=%.0f front=%d mom=%d dad=%d nobody=%d coll=%d\n", story.t, story.frontLocked, story.momLocked, story.dadLocked, story.nobodyHome, story.collection); }
+        // v0.20 look: stage the look on demand
+        else if (c == "luse") { std::string id; ss >> id; LookOnInteract(id); story.Interact(id, px, py); if (!beatActive) StartNextBeat(); }   // use, with the close-up hook
+        else if (c == "lchoose") { std::string id; ss >> id; beatActive = false; LookOnInteract(id); story.Choose(id, px, py); StartNextBeat(); }
+        else if (c == "journal") { journalOpen = true; ss >> journalTopic; journalScroll = 0; }   // the memory log, open on this tab
+        else if (c == "newmem") { std::string id; ss >> id; story.memory.insert(id); story.loopNew.push_back(id); }   // found this loop
+        else if (c == "sister") { story.shift = Shift::Sister; }                     // this loop is the one with somebody in the bathroom
+        else if (c == "bolt") { lkBoltT = 0.02f; }                                     // lightning, now
+        else if (c == "sweep") { float k = 0.4f; ss >> k; lkSweepAt = globalT - k * 3.2f; }   // his headlights, k of the way across
+        else if (c == "idle") { float n = 5; ss >> n; lkIdleT = n; lkIdlePos = player.pos; }   // the kid has stood still for N seconds
+        else if (c == "ending") { std::string id; ss >> id; Beat e; e.type = BeatType::Ending; e.id = id; e.speaker = "ENDING"; for (auto& en : AllEndings()) if (en.id == id) e.text = en.title + "\n\n" + en.hint; story.beats.clear(); beatActive = false; story.beats.push_back(e); StartNextBeat(); }
+        else if (c == "att") { std::string w, v; ss >> w >> v; Attitude a = v == "cold" ? Attitude::Cold : v == "scared" ? Attitude::Scared : v == "broken" ? Attitude::Broken : Attitude::Normal; if (w == "mom") story.momAtt = a; else story.dadAtt = a; }
+        else if (c == "say") { std::string who, rest; ss >> who; std::getline(ss, rest); for (auto& ch : who) if (ch == '_') ch = ' '; Beat b; b.type = BeatType::Say; b.speaker = who; b.text = rest; story.beats.clear(); beatActive = false; story.beats.push_back(b); StartNextBeat(); typed = 1e9f; }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

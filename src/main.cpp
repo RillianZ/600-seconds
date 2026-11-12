@@ -6,6 +6,7 @@
 #include "game/Story.h"
 #include "audio/Soundtrack.h"
 #include "art/Bake.h"
+#include "art/Look.h"   // v0.20 look: forward declarations for the v0.20 art
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -999,6 +1000,7 @@ static void UpdateBeat(float dt) {
         if (beatTime > 0.15f && (IsKeyPressed(KEY_E) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER))) {
             std::string id = cur.choices[choiceSel].id;
             beatActive = false;
+            LookOnInteract(id);   // v0.20 look: the tape
             story.Choose(id, px, py);
             StartNextBeat();
         }
@@ -1120,6 +1122,7 @@ static Color Shade(Color c, int d) {
 }
 #include "art/Sprites.inc"
 #include "art/WorldDraw.inc"
+#include "art/Look.inc"      // v0.20 look: darkness in the house, stage 1 flux, the power room by room, lightning, headlights
 
 // ============================================================ UI drawing (screen space)
 static void Panel(float x, float y, float w, float h, Color bg, Color border) {
@@ -1158,11 +1161,11 @@ static void DrawWatch(const std::string& clock, float x, float y, float s) {
     DrawRing(mark, 1.8f * US, 2.3f * US, 0, 360, 32, ice);
     DrawCircleV(mark, 0.8f * US, Color{ 214, 70, 56, 255 });
     UIText("ORIGIN", bx + 11.5f, by + 2, 5, ice);
-    const char* sub = "MODEL 06";
+    const char* sub = story.tainted ? "UNIT 06" : "MODEL 06";   // v0.20 look
     UIText(sub, bx + w - 5 - UIMeasure(sub, 3.2f), by + 3.4f, 3.2f, Color{ 136, 150, 164, 255 });
     // LCD: colder than a normal watch, ice blue instead of green
     float lx = x - 4, ly = y - 3, lw = w - 10, lh = s * 2 + 7;
-    DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(lh * US), Color{ 150, 178, 186, 255 });
+    DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(lh * US), LookLcd());   // v0.20 look: it goes dark with you
     DrawRectangle((int)(lx * US), (int)(ly * US), (int)(lw * US), (int)(std::max(1.0f, 1.2f * US)), Fade(BLACK, 0.18f));
     Color on = { 22, 32, 44, 255 };
     float cx = x;
@@ -1183,7 +1186,9 @@ static void DrawWatch(const std::string& clock, float x, float y, float s) {
         float sy = y + 2 * s - 2 * ss;   // bottom aligned, like the real watch
         for (size_t i = 6; i < 8 && i < clock.size(); ++i) { Seg(cx, sy, ss, clock[i] - '0', on); cx += ss * 1.5f; }
     }
+    LookWatchFace(bx, by, w, bh, lx, ly, lw, lh);   // v0.20 look: the dot beats, the glass cracks
 }
+#include "art/LookUI.inc"   // v0.20 look: faces, the quiet HUD, the fridge list, log handwriting, close-ups, ending pictures
 
 static Color NarratorColor() {
     int st = story.Stage();
@@ -1499,21 +1504,10 @@ static void DrawHUD() {
     Room r = story.world.RoomAt(TX(player.pos.x), TX(player.pos.y));
     Panel(6, 6, UIMeasure(RoomName(r), 10) + 12, 15, Fade(BLACK, 0.6f), Fade(WHITE, 0.3f));
     UIText(RoomName(r), 12, 9, 10, WHITE);
-    std::string lp = "LOOP " + std::to_string(story.loop);
-    UIText(lp.c_str(), 8, 25, 6, Fade(WHITE, 0.6f));
-    std::string ch = "CHORES " + std::to_string(story.ChoresDone()) + "/" + std::to_string(Story::CHORES) + (story.earnedPresent ? "  PRESENT!" : "");
-    UIText(ch.c_str(), VW - 84, 46, 6, Fade(WHITE, 0.7f));
-    std::string mem = "MEMORY " + std::to_string(story.Awareness()) + "/" + std::to_string(story.MemoryTotal()) + "  [J]";   // v0.20 knife: MemoryTotal
-    UIText(mem.c_str(), VW - 84, 54, 6, Color{ 190, 150, 255, 200 });
-    float iy = 62;
-    {
-        // v0.6: one thing in your hands
-        std::string hand = std::string("IN HANDS: ") + (story.held == Item::None ? "nothing" : ItemName(story.held));
-        if (story.doggoStay && story.DoggoExists()) hand += "   DOGGO: STAYING";
-        Color hc = story.hasKnife ? Color{ 235, 80, 80, 255 } : story.hasKey ? GOLD : story.held == Item::None ? Fade(WHITE, 0.45f) : Color{ 200, 230, 255, 255 };
-        UIText(hand.c_str(), VW - 84, iy, 6, hc); iy += 8;
-    }
-    if (story.tainted) { std::string dk = "DARK " + std::to_string(story.darkPoints); UIText(dk.c_str(), 8, 33, 6, Color{ 200, 40, 40, 220 }); }
+    // v0.20 look: the loop on the watch strap, memory and hands quieter under it, chores on the fridge.
+    // The darkness is in the house now (and on the watch). The number only shows in debug mode
+    LookHUD(16 + 8 * 2 + 11 + 1);
+    if (debugMode) { std::string dk = "DARK " + std::to_string(story.darkPoints); UIText(dk.c_str(), 8, 25, 6, Color{ 200, 40, 40, 220 }); }
     if (debugMode) {
         std::string rs = std::string("DEBUG  reality: ") + ShiftName(story.shift) + "  streak " + std::to_string(story.cleanStreak) + "  [O]";
         if (scene == SceneMode::Chase) {
@@ -1726,9 +1720,10 @@ static void DrawJournal() {
             UIText(r.title.c_str(), 24, y + 4, 10, r.ending ? GOLD : WHITE);
             auto lines = Wrap(r.ending ? std::string("You reached this ending.") : r.text, VW - 52, adult ? 11 : 8, adult);
             float ly = y + 17;
+            bool fresh = !r.ending && LookNewThisLoop(r.title);   // v0.20 look: handwriting, and cold old entries on the dark path
             for (size_t i = 0; i < lines.size() && i < 2; ++i) {
-                if (adult && hasNarratorFont) DrawTextEx(narratorFont, lines[i].c_str(), { 24 * US, ly * US }, 11 * US, 1, Color{ 220, 170, 170, 255 });
-                else UIText(lines[i].c_str(), 24, ly, 8, Color{ 210, 210, 220, 255 });
+                if (r.ending) UIText(lines[i].c_str(), 24, ly, 8, Color{ 210, 210, 220, 255 });
+                else LookJournalText(lines[i], 24, ly, idx * 3 + (int)i, adult, fresh);
                 ly += 10;
             }
         } else {
@@ -2804,7 +2799,7 @@ static void UpdateDrawFrame() {
                         hidePos = o ? TileCenter(o->x, o->y) : player.pos;
                     } else if (tg.id == lastTalkId && globalT - lastTalkT < 0.9f) {
                         // v0.6: a stray extra click right after a conversation doesn't restart it
-                    } else { talkingTo = tg.id; lastTalkId = tg.id; story.Interact(tg.id, TX(player.pos.x), TX(player.pos.y)); }
+                    } else { talkingTo = tg.id; lastTalkId = tg.id; LookOnInteract(tg.id); story.Interact(tg.id, TX(player.pos.x), TX(player.pos.y)); }   // v0.20 look: close-ups
                 }
             }
         }
@@ -3552,6 +3547,7 @@ static void UpdateDrawFrame() {
     cam.offset = { VW / 2.0f, VH / 2.0f };
     cam.zoom = 1;
     worldCam = cam;
+    LookTick(dt);   // v0.20 look
     BuildLightmap(cam);
     BeginTextureMode(target);
     DrawWorld(cam);
@@ -3576,15 +3572,16 @@ static void UpdateDrawFrame() {
     SW = (int)(VW * US); SH = (int)(VH * US);
     DrawBubbles(dt);
     DrawHUD();
+    bool closeUpDone = LookCloseUp();   // v0.20 look: the mirror, the screens, the chair, the tape. True if it drew the words too
     if (beatActive) {
         switch (cur.type) {
         case BeatType::Say: DrawDialogue(); break;
         case BeatType::Narrate: DrawNarrator(cur.text, typed); break;
-        case BeatType::Black: DrawBlack(); break;
+        case BeatType::Black: if (!closeUpDone) DrawBlack(); break;
         case BeatType::Choice: DrawChoice(); break;
         case BeatType::Fade: DrawFade(); break;
         case BeatType::Card: DrawCard(); break;
-        case BeatType::Ending: DrawCard(); break;
+        case BeatType::Ending: LookEndingCard(); break;   // v0.20 look: with a picture
         case BeatType::QTE: DrawQTE(); break;
         case BeatType::EndLoop: DrawRectangle(0, 0, SW, SH, BLACK); break;
         default: break;
