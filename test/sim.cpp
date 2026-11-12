@@ -590,6 +590,42 @@ int main(int argc, char** argv) {
     qteWin = true;
     assert(s.Knows("piece_mom") && s.HingePieces() == 3 && s.achievements.count("Three of Five"));
 
+    // v0.14: hinges D and E
+    CleanLoop();
+    Header("LOOP 13d: hinge D. Open the front door before he knocks");
+    {
+        Story q; q.memory = {"loop"}; q.loop = 3; q.BeginLoop(); q.beats.clear();
+        q.t = 46 * 60; q.Interact("frontdoor", 20, 19);
+        for (auto& bt : q.beats) for (auto& ch : bt.choices) assert(ch.id != "f_greet");   // he isn't coming yet, as far as you know
+        std::puts("  no greeting before you know he comes, or before he sits back in his car");
+    }
+    At(20, 19); WaitUntil(48);
+    { chasePlan = "crates"; int L = s.loop;
+      Use("frontdoor", {"f_greet"});
+      assert(s.loop == L && s.collection && s.chase && s.huntStart == "door" && s.doorGreeted);
+      assert(px == 20 && py == 19 && s.Knows("piece_door"));
+      s.OnCaught(); Drain(); assert(s.loop != L); }
+
+    CleanLoop();
+    Header("LOOP 13e: hinge E. Under the blanket in his car. Stay there through the knock");
+    {
+        Story o; o.memory = {"loop", "his_car"}; o.loop = 3; o.BeginLoop(); o.beats.clear();
+        o.t = 45 * 60; o.Interact("car", 21, 29);
+        bool offered = false; for (auto& bt : o.beats) for (auto& ch : bt.choices) if (ch.id == "car_hide") offered = true;
+        assert(offered); o.beats.clear();
+        o.Choose("car_hide", 21, 29);
+        assert(o.carHidden && !o.collection && (int)o.t == o.visitorTime - Story::VISIT_OUT);
+        o.beats.clear(); o.Choose("cr_out", 21, 29);
+        bool moved = false; for (auto& bt : o.beats) if (bt.type == BeatType::Fade && bt.tx == 27 && bt.ty == 27) moved = true;
+        assert(moved && !o.collection);
+        std::puts("  slip out: back in the yard a minute before the knock, nothing ended");
+    }
+    At(21, 29); WaitUntil(45);
+    { int L = s.loop;
+      Use("car", {"car_hide", "cr_stay"});
+      assert(s.loop != L && s.Knows("piece_car")); }
+    assert(s.HingePieces() == 5 && s.achievements.count("Five of Five") && s.achievements.count("Open House") && s.achievements.count("Stowaway"));
+
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {
         Story k; k.memory = {"loop"}; k.loop = 2;

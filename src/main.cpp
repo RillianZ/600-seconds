@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.13.0";
+static const char* kVersion = "v0.14.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -679,6 +679,7 @@ static void StartSearch(bool dadRan) {
         // v0.13: the hinges. At Mom's door he takes his time. Out at the shed he has a long walk back
         if (story.huntStart == "bath") { vGraceWait = 5.0f; visitor.dir = 1; }
         else if (story.huntStart == "shed") { vGraceWait = 1.5f; visitor.dir = 1; }
+        else if (story.huntStart == "door") { vGraceWait = 4.0f; visitor.dir = 1; }   // v0.14: hinge D. You opened it. He stands there counting rooms
     }
 }
 static void VisitorBark(const char* const* lines, int n) {
@@ -1258,7 +1259,7 @@ static void DrawChaseBanner() {
         }
         else if (vmode == VMode::Investigate) h = "He heard something. He's going to look.";
         else if (winded) h = "Out of breath. You can't run yet.";
-        else if (vmode == VMode::Grace) h = "He's coming back in. Get out of sight.";
+        else if (vmode == VMode::Grace) h = story.huntStart == "door" ? "He's counting the rooms. Go. Now." : "He's coming back in. Get out of sight.";
         else if (vmode == VMode::Chase) h = "HE SEES YOU. Run (Shift). Break line of sight.";
         else if (vmode == VMode::Lost) h = "He lost you. Keep moving.";
         else if (story.threats > 0) h = "Come out and face him (E). Or don't.";
@@ -2261,13 +2262,16 @@ static void UpdateDrawFrame() {
             }
         }
         // v0.13 debug: H sets up the next hinge. A: key in hand, outside the bathroom at 16:46. B: at the shed, Dad inside. C: key in hand at the basement door
+        // v0.14: D: at the front door, he is in his car. E: at his car while he is at the window
         if (debugMode && IsKeyPressed(KEY_H) && !story.collection && !story.Tutorial()) {
             static int hinge = 0;
             int x = TX(player.pos.x), y = TX(player.pos.y);
             if (hinge == 0) { story.Hold(Item::Key, true); story.AdvanceMinutes(std::max(0, 46 - (int)(story.t / 60)), x, y); story.t = std::max(story.t, 46 * 60 + 25.0f); Snap(player, 13, 10); player.dir = 1; ToastFor("DEBUG", "Hinge A: Mom goes in at 16:46. Lock her in", SKYBLUE); }
             else if (hinge == 1) { if (story.t < 9 * 60) story.AdvanceMinutes(9 - (int)(story.t / 60), x, y); Snap(player, 34, 11); player.dir = 1; ToastFor("DEBUG", "Hinge B: Dad is in the shed. Bar the door", SKYBLUE); }
-            else { story.Hold(Item::Key, true); if (story.t < 45 * 60) story.AdvanceMinutes(45 - (int)(story.t / 60), x, y); Snap(player, 28, 10); player.dir = 3; ToastFor("DEBUG", "Hinge C: go down and wait", SKYBLUE); }
-            hinge = (hinge + 1) % 3;
+            else if (hinge == 2) { story.Hold(Item::Key, true); if (story.t < 45 * 60) story.AdvanceMinutes(45 - (int)(story.t / 60), x, y); Snap(player, 28, 10); player.dir = 3; ToastFor("DEBUG", "Hinge C: go down and wait", SKYBLUE); }
+            else if (hinge == 3) { story.memory.insert("visitor_time"); story.frontLocked = false; story.t = std::max(story.t, (float)(story.visitorTime - Story::VISIT_IN_CAR + 5)); Snap(player, 20, 19); player.dir = 0; ToastFor("DEBUG", "Hinge D: he's in his car. Open the front door", SKYBLUE); }
+            else { story.memory.insert("his_car"); story.t = (float)(story.visitorTime - 360); Snap(player, 20, 29); player.dir = 0; ToastFor("DEBUG", "Hinge E: his car is empty. Get in the back", SKYBLUE); }
+            hinge = (hinge + 1) % 5;
         }
         if (debugMode && IsKeyPressed(KEY_FOUR) && !story.inBasement && !story.collection) story.DebugToBasement();   // debug: the tape, downstairs
         if (debugMode && IsKeyPressed(KEY_THREE) && !story.inBasement) { Snap(player, 20, 29); player.dir = 0; }   // debug: hop to the gate

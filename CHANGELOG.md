@@ -2,6 +2,27 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.14.0
+Built on the branch `claude-batch-v0.14-hinges-de`, on top of v0.13.0 (`claude-batch-v0.13-hinges`). Not merged. Expansion 1 of 4 is now complete: hinges D and E. All five pieces can be found. The true ending that uses them is not built yet. The story test now has 67 memories and the same 8 endings.
+
+**Hinge D: open the door yourself**
+- Once you know he comes at 16:50, and he has sat back down in his car (from 16:47), the front door offers "Open it and wait for him in the doorway."
+- There is no knock. He walks up the path and stops on the step. Nobody has ever opened the door for him, and for a minute he is off his script. What he says on the step is the fourth piece.
+- Traps on the step don't go off. He steps over them.
+- He doesn't grab you. The hunt starts with him on the step, counting rooms, and you get four seconds.
+
+**Hinge E: under a blanket in his car**
+- While he is at the window, his car has a new option (once you have looked in it or its trunk before): get in the back and hide on the floor.
+- He gets back in and sits there with you for two minutes. The radio talks to him. That is the fifth piece.
+- When he gets out you choose. Slip out, and you are back in the yard a minute before the knock. Or stay, and hear the rest of the hour from the car. It still ends at the bells.
+
+**The pieces**
+- Two new memories: After, always after, and The new collector.
+- New achievements: Open House, Stowaway, Five of Five (with a narrator line).
+
+**Debug**
+- `H` now cycles through all five hinges. D puts you at the front door at 16:47. E puts you at his car at 16:44.
+
 ## What's in v0.13.0
 Built on the branch `claude-batch-v0.13-hinges`, on top of v0.12.0 (`claude-batch-v0.12-hunt`). Not merged. Expansion 1 of 4: the first three hinges. Each hinge is a door you shut on somebody before he comes. He has to deal with them first, and you get to listen. The story test now has 65 memories and the same 8 endings.
 

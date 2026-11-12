@@ -231,6 +231,9 @@ public:
     bool bathLockDark = false;                 // she was scared, or you had the knife: that one counts
     std::string huntStart;                     // "", "bath", "shed" or "basement": the presentation reads it
     Room momRoomNow = Room::Kitchen;           // set by the presentation: where Mom really stands right now
+    // v0.14 per loop: hinges D and E
+    bool doorGreeted = false;                  // hinge D: you opened the front door for him before he knocked
+    bool carHidden = false;                    // hinge E: you sat under the blanket in his car while he was in it
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -270,7 +273,8 @@ public:
     // v0.13: the hinges
     bool MomInBath() const;                 // her two minutes in the bathroom, every loop
     bool BathLockIsDark() const;            // Noah: a trick when she's happy, a dark act when she's scared or you hold the knife
-    int HingePieces() const { return (Knows("piece_mom") ? 1 : 0) + (Knows("piece_dad") ? 1 : 0) + (Knows("piece_reissue") ? 1 : 0); }
+    int HingePieces() const { int n = 0; for (const char* id : {"piece_mom", "piece_dad", "piece_reissue", "piece_door", "piece_car"}) n += Knows(id) ? 1 : 0; return n; }
+    bool CanGreet() const;                  // v0.14: hinge D. He is in his car or on the step, and you know he's coming
     bool BasementInHunt() const { return basementUnlocked; }   // he only searches down there if the door is open
     // v0.13: which room is on the other side of a door, from where you stand
     bool DoorSides(int dx, int dy, int px, int py, Room& here, Room& there, int& ox, int& oy) const;
@@ -361,6 +365,9 @@ private:
     void HingeBath();
     void HingeShed();
     void HingeBasement();
+    void HingeDoor();          // v0.14: D, you opened the door yourself
+    void HingeCar();           // v0.14: E, under the blanket in his car
+    void GoneEnding();         // v0.14: E, you stayed in the car through the knock
     void PieceCheck();
     void AddDark(int n) { darkPoints = std::min(DARK_MAX, darkPoints + n); darkThisLoop += n; }
     void ScreenTimeEnding();
