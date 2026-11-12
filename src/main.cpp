@@ -2,8 +2,10 @@
 // Sund Origin Studio. All game rules live in src/game (engine-free).
 // This file only draws, plays sounds and reads input.
 #include "raylib.h"
+#include "rlgl.h"
 #include "game/Story.h"
 #include "audio/Soundtrack.h"
+#include "art/Bake.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -106,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.10.0";
+static const char* kVersion = "v0.11.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -154,7 +156,7 @@ static volatile float aWindT = 0, aBrightT = 1, aHumT = 0, aStoveT = 0, aMomT = 
 static volatile bool aHumSolo = false;   // the tape, and the dinner: nothing but her
 static bool audioOk = false;
 // v0.9: settings, saved apart from the game
-struct Settings { int music = 7, sfx = 10, text = 1; bool calmFlashes = false; };
+struct Settings { int music = 7, sfx = 10, text = 1; bool calmFlashes = false; bool roofs = true; };
 static Settings settings;
 static bool pauseOpen = false;
 static int pauseSel = 0, pauseTapRow = -1, pauseTapDir = 0;
@@ -905,815 +907,17 @@ static Color Shade(Color c, int d) {
     auto cl = [](int v) { return (unsigned char)std::max(0, std::min(255, v)); };
     return { cl(c.r + d), cl(c.g + d), cl(c.b + d), c.a };
 }
-static Color WallpaperFor(Room r) {
-    switch (r) {
-    case Room::KidsRoom: return { 132, 150, 178, 255 };
-    case Room::Bathroom: return { 206, 216, 220, 255 };
-    case Room::ParentsRoom: return { 142, 156, 128, 255 };
-    case Room::Hallway: return { 190, 170, 132, 255 };
-    case Room::Kitchen: return { 214, 204, 170, 255 };
-    case Room::LivingRoom: return { 182, 138, 92, 255 };
-    case Room::Shed: return { 128, 98, 70, 255 };
-    case Room::Basement: return { 86, 90, 98, 255 };
-    default: return { 150, 140, 120, 255 };
-    }
-}
-static void Planks(int px, int py, int x, int y, Color base, int seamLen) {
-    for (int k = 0; k < 4; ++k) {
-        int gy = y * 4 + k;
-        int off = (int)(Hash(gy, 9) % (unsigned)seamLen);
-        for (int i = 0; i < TS; ) {
-            int gx = x * TS + i + off;
-            int idx = gx / seamLen, rem = seamLen - gx % seamLen;
-            int w = std::min(rem, TS - i);
-            int v = (int)(Hash(idx, gy) % 13) - 6;
-            DrawRectangle(px + i, py + k * 4, w, 4, Shade(base, v));
-            if (gx % seamLen == 0) DrawRectangle(px + i, py + k * 4, 1, 4, Shade(base, -28));
-            i += w;
-        }
-        DrawRectangle(px, py + k * 4 + 3, TS, 1, Shade(base, -18));
-        if (Hash(x * 7 + k, y * 3) % 9 == 0) DrawRectangle(px + (int)(Hash(x, gy) % 12) + 2, py + k * 4 + 1, 3, 1, Shade(base, -12)); // grain
-    }
-}
-static void FloorShadows(int px, int py, int x, int y) {
-    if (IsWallT(x, y - 1)) DrawRectangleGradientV(px, py, TS, 7, Fade(BLACK, 0.38f), Fade(BLACK, 0));
-    if (IsWallT(x - 1, y)) DrawRectangleGradientH(px, py, 4, TS, Fade(BLACK, 0.22f), Fade(BLACK, 0));
-    if (IsWallT(x + 1, y)) DrawRectangleGradientH(px + TS - 4, py, 4, TS, Fade(BLACK, 0), Fade(BLACK, 0.22f));
-}
-
-static void DrawTile(int x, int y) {
-    Tile t = story.world.tiles[y][x];
-    Room r = story.world.rooms[y][x];
-    int px = x * TS, py = y * TS;
-    unsigned h = Hash(x, y);
-    bool storm = story.Storm();
-    switch (t) {
-    case Tile::Vidda: {
-        // v0.8: deep snow, with rocks sticking through
-        Color base = { 214, 222, 236, 255 };
-        if (storm) base = Mix(base, WHITE, 0.4f);
-        DrawRectangle(px, py, TS, TS, base);
-        for (int k = 0; k < 3; ++k) {
-            unsigned q = Hash(x * 5 + k, y * 11);
-            DrawRectangle(px + q % 13, py + (q >> 5) % 14, 4, 1, Shade(base, -(int)(q % 3) * 6 - 4));
-        }
-        if (h % 9 == 0) {
-            int rx = px + (int)(h % 8), ry = py + (int)((h >> 6) % 8);
-            DrawRectangle(rx, ry + 2, 7, 3, Color{ 112, 112, 118, 255 });
-            DrawRectangle(rx + 1, ry, 5, 2, base);
-            DrawRectangle(rx, ry + 5, 7, 1, Fade(Color{ 60, 70, 110, 255 }, 0.25f));
-        }
-    } break;
-    case Tile::Grass: {
-        // v0.8: the yard is under snow. The tile keeps its old name
-        Color base = (Hash(x / 2, y / 2) % 2) ? Color{ 234, 239, 247, 255 } : Color{ 228, 234, 244, 255 };
-        if (storm) base = Mix(base, WHITE, 0.4f);
-        DrawRectangle(px, py, TS, TS, base);
-        for (int k = 0; k < 3; ++k) {
-            unsigned q = Hash(x * 3 + k, y * 13 + k);
-            DrawRectangle(px + q % 12, py + (q >> 4) % 14, 3 + q % 3, 1, Shade(base, -8));
-        }
-        if (h % 23 == 0 && !storm && std::fmod(globalT + h % 7, 3.0f) < 0.5f) DrawRectangle(px + h % 13 + 1, py + (h >> 3) % 13 + 1, 1, 1, WHITE);
-        if (TileAt(x, y - 1) == Tile::Wall) DrawRectangleGradientV(px, py, TS, 7, Fade(Color{ 60, 70, 120, 255 }, 0.3f), Fade(Color{ 60, 70, 120, 255 }, 0));
-    } break;
-    case Tile::Gravel: {
-        // v0.8: the road, ploughed this morning. Two wheel ruts, filling in once the storm comes
-        Color base = { 204, 210, 224, 255 };
-        if (storm) base = Mix(base, WHITE, 0.45f);
-        DrawRectangle(px, py, TS, TS, base);
-        Color rut = storm ? Color{ 196, 204, 222, 255 } : Color{ 164, 172, 192, 255 };
-        if (x == 19 || x == 21) { DrawRectangle(px + 5, py, 4, TS, rut); DrawRectangle(px + 5, py, 1, TS, Shade(rut, -12)); }
-        if (TileAt(x, y - 1) == Tile::Wall) DrawRectangleGradientV(px, py, TS, 7, Fade(Color{ 60, 70, 120, 255 }, 0.3f), Fade(Color{ 60, 70, 120, 255 }, 0));
-    } break;
-    case Tile::Floor:
-    case Tile::ShedFloor: {
-        if (r == Room::Kitchen) {
-            for (int j = 0; j < 2; ++j) for (int i = 0; i < 2; ++i) {
-                bool dark = ((x * 2 + i) + (y * 2 + j)) % 2;
-                DrawRectangle(px + i * 8, py + j * 8, 8, 8, dark ? Color{ 168, 170, 162, 255 } : Color{ 214, 212, 198, 255 });
-            }
-            DrawRectangle(px, py + 7, TS, 1, Fade(BLACK, 0.08f)); DrawRectangle(px + 7, py, 1, TS, Fade(BLACK, 0.08f));
-        } else if (r == Room::Bathroom) {
-            for (int j = 0; j < 2; ++j) for (int i = 0; i < 2; ++i)
-                DrawRectangle(px + i * 8, py + j * 8, 8, 8, (Hash(x * 2 + i, y * 2 + j) % 5 == 0) ? Color{ 168, 194, 204, 255 } : Color{ 186, 208, 216, 255 });
-            DrawRectangle(px, py + 7, TS, 1, Color{ 150, 172, 182, 255 }); DrawRectangle(px + 7, py, 1, TS, Color{ 150, 172, 182, 255 });
-            DrawRectangle(px, py + 15, TS, 1, Color{ 150, 172, 182, 255 }); DrawRectangle(px + 15, py, 1, TS, Color{ 150, 172, 182, 255 });
-        } else if (r == Room::KidsRoom) {
-            Color c = { 146, 124, 156, 255 };
-            DrawRectangle(px, py, TS, TS, c);
-            for (int k = 0; k < 7; ++k) { unsigned q = Hash(x * 31 + k, y * 7); DrawRectangle(px + q % 16, py + (q >> 4) % 16, 1, 1, Shade(c, (q & 1) ? 10 : -10)); }
-        } else if (r == Room::Basement) {
-            Color c = { 70, 74, 82, 255 };
-            DrawRectangle(px, py, TS, TS, c);
-            if (h % 5 == 0) DrawCircle(px + (int)(h % 10) + 3, py + (int)((h >> 4) % 10) + 3, 3, Shade(c, -8));
-            DrawRectangle(px, py + 15, TS, 1, Shade(c, -10)); DrawRectangle(px + 15, py, 1, TS, Shade(c, -10));
-        } else if (t == Tile::ShedFloor) {
-            Planks(px, py, x, y, Color{ 116, 100, 84, 255 }, 32);
-        } else {
-            Color c = r == Room::LivingRoom ? Color{ 170, 122, 82, 255 } : r == Room::ParentsRoom ? Color{ 152, 108, 74, 255 } : Color{ 142, 102, 68, 255 };
-            Planks(px, py, x, y, c, 48);
-        }
-        FloorShadows(px, py, x, y);
-    } break;
-    case Tile::Wall: {
-        Tile below = TileAt(x, y + 1);
-        Color cap = { 56, 48, 46, 255 };
-        // v0.8: snow on the outer walls
-        if (IsOutsideT(TileAt(x, y - 1)) || IsOutsideT(TileAt(x, y + 1)) || IsOutsideT(TileAt(x - 1, y)) || IsOutsideT(TileAt(x + 1, y)))
-            cap = (h % 3) ? Color{ 216, 224, 238, 255 } : Color{ 204, 214, 232, 255 };
-        DrawRectangle(px, py, TS, TS, cap);
-        if (!IsWallT(x, y - 1)) DrawRectangle(px, py, TS, 1, Shade(cap, 22));
-        if (!IsWallT(x - 1, y) && TileAt(x - 1, y) != Tile::Door) DrawRectangle(px, py, 1, TS, Shade(cap, 14));
-        if (below == Tile::Floor || below == Tile::ShedFloor || below == Tile::BasementDoor) {
-            Room rb = story.world.rooms[std::min(World::H - 1, y + 1)][x];
-            Color wp = WallpaperFor(rb);
-            DrawRectangle(px, py + 6, TS, 10, wp);
-            if (rb == Room::KidsRoom && (x % 2 == 0)) DrawRectangle(px + 4, py + 6, 3, 8, Shade(wp, 12));          // stripes
-            if (rb == Room::Bathroom || rb == Room::Kitchen) { DrawRectangle(px, py + 10, TS, 1, Shade(wp, -16)); DrawRectangle(px + (y % 2 ? 7 : 0), py + 6, 1, 4, Shade(wp, -16)); }
-            if (rb == Room::Hallway) DrawRectangle(px, py + 10, TS, 1, Shade(wp, -24));                             // wainscot rail
-            if (rb == Room::Shed) for (int k = 0; k < 3; ++k) DrawRectangle(px, py + 7 + k * 3, TS, 1, Shade(wp, -20));
-            DrawRectangle(px, py + 6, TS, 1, Shade(cap, -10));
-            DrawRectangle(px, py + 14, TS, 2, rb == Room::Basement ? Shade(wp, -20) : Color{ 92, 66, 46, 255 });      // skirting
-        } else if (IsOutsideT(below)) {
-            // falu red log cabin, like every proper house on the vidda
-            Color red = { 140, 52, 42, 255 };
-            if (story.Storm()) red = Mix(red, Color{ 120, 110, 120, 255 }, 0.15f);
-            DrawRectangle(px, py + 5, TS, 11, red);
-            for (int k = 0; k < 4; ++k) DrawRectangle(px, py + 7 + k * 3, TS, 1, Shade(red, -30));
-            if (x % 6 == 0) DrawRectangle(px + 7, py + 5, 2, 11, Color{ 226, 220, 206, 255 });                    // white corner trim
-            DrawRectangle(px, py + 5, TS, 1, Color{ 226, 220, 206, 255 });
-            DrawRectangle(px + (int)(h % 12), py + 5, 1, 2 + (int)(h % 3), Color{ 226, 236, 246, 255 });          // icicle
-            if (y == 20 && (x == 8 || x == 15 || x == 25)) {
-                // v0.8: a window with an advent candle bridge. Bulbs start dying once you've gone dark
-                bool on = !story.PowerOut();
-                DrawRectangle(px + 1, py + 6, 14, 9, Color{ 226, 220, 206, 255 });
-                DrawRectangle(px + 2, py + 7, 12, 7, on ? Color{ 255, 206, 120, 255 } : Color{ 24, 30, 48, 255 });
-                for (int k = 0; k < 7; ++k) {
-                    int dy = std::abs(k - 3);
-                    bool dead = !on || (story.tainted && (k + x) % 3 == 0);
-                    DrawRectangle(px + 2 + k * 2 - 0, py + 8 + dy, 1, 5 - dy, Color{ 240, 236, 226, 255 });
-                    DrawRectangle(px + 2 + k * 2, py + 7 + dy, 1, 1, dead ? Color{ 90, 84, 80, 255 } : Color{ 255, 250, 200, 255 });
-                }
-            }
-            if (y == 20 && x == 21) {
-                // the wreath next to the front door
-                DrawCircle(px + 8, py + 10, 4.5f, Color{ 40, 92, 62, 255 });
-                DrawCircle(px + 8, py + 10, 2.0f, red);
-                DrawRectangle(px + 7, py + 13, 3, 2, Color{ 200, 40, 40, 255 });
-            }
-        }
-    } break;
-    case Tile::Door: {
-        bool horiz = IsWallT(x - 1, y) || IsWallT(x + 1, y);
-        Room rb = story.world.rooms[std::min(World::H - 1, y + 1)][x];
-        Tile below = TileAt(x, y + 1);
-        if (IsOutsideT(below) || IsOutsideT(TileAt(x, y - 1))) Planks(px, py, x, y, Color{ 120, 90, 62, 255 }, 32);
-        else Planks(px, py, x, y, Color{ 142, 102, 68, 255 }, 48);
-        (void)rb;
-        Color frame = { 96, 66, 42, 255 };
-        if (horiz) { DrawRectangle(px, py, 2, TS, frame); DrawRectangle(px + TS - 2, py, 2, TS, frame); DrawRectangle(px, py + TS - 2, TS, 2, Shade(frame, -12)); }
-        else { DrawRectangle(px, py, TS, 2, frame); DrawRectangle(px, py + TS - 2, TS, 2, frame); }
-        if (story.DoorClosed(x, y)) {
-            DrawRectangle(px + 1, py + 1, TS - 2, TS - 2, Color{ 92, 60, 36, 255 });
-            DrawRectangle(px + 2, py + 2, TS - 4, TS - 4, Color{ 112, 74, 46, 255 });
-            DrawRectangle(px + 3, py + 3, TS - 6, TS - 6, Color{ 132, 90, 56, 255 });
-            DrawRectangle(px + 4, py + 4, TS - 8, 3, Color{ 146, 102, 64, 255 });
-            DrawRectangle(px + TS - 6, py + 7, 2, 2, Color{ 220, 196, 110, 255 });
-            if (story.DoorLocked(x, y)) {   // a little brass lock plate
-                DrawRectangle(px + TS - 7, py + 9, 4, 4, Color{ 190, 160, 70, 255 });
-                DrawRectangle(px + TS - 6, py + 10, 1, 2, Color{ 40, 30, 20, 255 });
-            }
-        } else if (story.DoorBroken(x, y)) {
-            DrawRectangle(px + 1, py + 2, 3, 2, Color{ 132, 90, 56, 255 }); DrawRectangle(px + 10, py + 11, 4, 2, Color{ 112, 74, 46, 255 });
-            DrawRectangle(px + 5, py + 13, 2, 1, Color{ 150, 110, 70, 255 }); DrawRectangle(px + 12, py + 3, 2, 3, Color{ 92, 60, 36, 255 });
-        }
-    } break;
-    case Tile::Fence: {
-        Tile in = (y == 0 || x == 0 || y == World::H - 1 || x == World::W - 1) ? Tile::Vidda : Tile::Grass;
-        DrawRectangle(px, py, TS, TS, in == Tile::Vidda ? Color{ 214, 222, 236, 255 } : Color{ 230, 236, 245, 255 });
-        bool vertical = TileAt(x, y - 1) == Tile::Fence && TileAt(x, y + 1) == Tile::Fence && TileAt(x - 1, y) != Tile::Fence;
-        Color wood = { 120, 86, 54, 255 };
-        if (vertical) {
-            DrawRectangle(px + 5, py, 2, TS, wood); DrawRectangle(px + 9, py, 2, TS, Shade(wood, -14));
-            DrawRectangle(px + 4, py + 4, 8, 4, Shade(wood, -20));
-            DrawRectangle(px + 4, py + 3, 8, 1, WHITE);
-        } else {
-            DrawRectangle(px, py + 5, TS, 2, wood); DrawRectangle(px, py + 10, TS, 2, wood);
-            DrawRectangle(px, py + 12, TS, 1, Fade(BLACK, 0.2f));
-            DrawRectangle(px + 6, py + 2, 3, 12, Shade(wood, -16)); DrawRectangle(px + 6, py + 2, 3, 1, Shade(wood, 16));
-            DrawRectangle(px + 5, py + 14, 5, 1, Fade(BLACK, 0.25f));
-            DrawRectangle(px, py + 4, TS, 1, WHITE); DrawRectangle(px, py + 9, TS, 1, Color{ 236, 240, 248, 255 });   // snow on the rails
-            DrawRectangle(px + 6, py + 1, 3, 1, WHITE);
-        }
-    } break;
-    case Tile::Void:
-        DrawRectangle(px, py, TS, TS, Color{ 4, 4, 8, 255 });
-        break;
-    case Tile::BasementDoor:
-        if (story.BasementOpen()) {
-            DrawRectangle(px, py, TS, TS, Color{ 10, 14, 30, 255 });
-            float pulse = 0.5f + 0.5f * std::sin(globalT * 4);
-            DrawRectangle(px + 2, py + 2, TS - 4, TS - 4, Fade(Color{ 70, 140, 255, 255 }, 0.25f + 0.25f * pulse));
-            for (int k = 0; k < 3; ++k) DrawRectangle(px + 3, py + 4 + k * 4, TS - 6, 1, Fade(Color{ 150, 190, 255, 255 }, 0.4f));
-        } else {
-            Planks(px, py, x, y, Color{ 142, 102, 68, 255 }, 48);
-            DrawRectangle(px + 1, py + 1, TS - 2, TS - 2, Color{ 76, 78, 86, 255 });
-            DrawRectangle(px + 2, py + 2, TS - 4, TS - 4, Color{ 98, 102, 112, 255 });
-            DrawRectangle(px + 2, py + 2, TS - 4, 1, Color{ 130, 134, 146, 255 });
-            DrawRectangle(px + TS - 6, py + 7, 3, 3, Color{ 210, 196, 120, 255 });
-        }
-        break;
-    }
-}
-
-static void DrawObj(const Obj& o, Vector2 jit) {
-    float x = o.x * TS + jit.x, y = o.y * TS + jit.y;
-    const std::string& id = o.id;
-    auto R = [&](float ox, float oy, float w, float h, Color c) { DrawRectangle((int)(x + ox), (int)(y + oy), (int)w, (int)h, c); };
-    // v0.5: soft contact shadow under furniture
-    static const char* flat[] = { "toys", "window", "mirror", "calendar", "frontdoor", "sheddoor", "rope", "stairs", "gate", "basement", "screens", "fliptendo",
-                                  "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl" };
-    bool isFlat = false;
-    for (auto f : flat) if (id == f) isFlat = true;
-    if (!isFlat) {
-        float sw = (id == "couch" || id == "pbed") ? 36.0f : (id == "bench" || id == "woodpile") ? 24.0f : 15.0f;
-        float sx = (id == "couch") ? 8.0f : (id == "pbed") ? 8.0f : 8.0f;
-        DrawEllipse((int)(x + sx), (int)(y + 15), sw / 2, 2.5f, Fade(BLACK, 0.22f));
-    }
-    if (id == "bed") {
-        R(0, -5, 16, 21, Color{ 104, 72, 46, 255 });                       // frame
-        R(1, -4, 14, 19, Color{ 236, 234, 226, 255 });                     // sheet
-        R(2, -3, 12, 5, Color{ 250, 250, 246, 255 }); R(2, 1, 12, 1, Color{ 210, 208, 200, 255 }); // pillow
-        R(1, 3, 14, 12, Color{ 74, 104, 168, 255 });                       // duvet
-        R(1, 3, 14, 2, Color{ 104, 134, 196, 255 });                       // fold
-        for (int k = 0; k < 3; ++k) R(3 + k * 4, 7 + (k % 2) * 3, 2, 2, Color{ 230, 200, 90, 255 }); // stars
-        R(1, 14, 14, 1, Color{ 54, 80, 136, 255 });
-    }
-    else if (id == "toys") { if (!story.roomClean) { R(1, 3, 4, 4, RED); R(8, 8, 5, 3, YELLOW); R(4, 10, 3, 3, SKYBLUE); R(11, 2, 3, 5, GREEN); } }
-    else if (id == "window") { R(1, -6, 14, 8, story.Storm() ? Color{ 214, 222, 234, 255 } : Color{ 92, 112, 164, 255 }); R(7, -6, 2, 8, BROWN); }
-    else if (id == "toilet") { R(3, -2, 10, 5, Color{ 236, 238, 240, 255 }); R(3, -2, 10, 1, WHITE); R(4, 3, 8, 11, Color{ 242, 244, 246, 255 }); R(5, 5, 6, 6, Color{ 170, 196, 210, 255 }); R(4, 13, 8, 1, Color{ 190, 196, 200, 255 }); }
-    else if (id == "mirror") { R(3, -6, 10, 10, Color{ 200, 220, 230, 255 }); R(4, -5, 3, 3, WHITE); }
-    else if (id == "desk") {
-        R(0, 2, 16, 10, Color{ 122, 80, 48, 255 }); R(0, 2, 16, 1, Color{ 150, 104, 66, 255 });
-        R(1, 12, 2, 4, Color{ 90, 58, 34, 255 }); R(13, 12, 2, 4, Color{ 90, 58, 34, 255 });
-        R(3, 4, 6, 4, RAYWHITE); R(4, 5, 4, 1, Color{ 150, 150, 160, 255 }); R(4, 7, 3, 1, Color{ 150, 150, 160, 255 });
-        R(10, 1, 4, 2, Color{ 230, 200, 120, 255 }); R(11, 3, 2, 3, Color{ 70, 70, 74, 255 });    // lamp
-    }
-    else if (id == "pbed") {
-        R(-8, -5, 32, 23, Color{ 104, 72, 46, 255 });
-        R(-7, -4, 30, 21, Color{ 236, 234, 226, 255 });
-        R(-6, -3, 12, 5, Color{ 250, 250, 246, 255 }); R(10, -3, 12, 5, Color{ 250, 250, 246, 255 });
-        R(-7, 3, 30, 14, Color{ 156, 64, 60, 255 }); R(-7, 3, 30, 2, Color{ 184, 92, 86, 255 });
-        R(8, 5, 1, 12, Color{ 130, 50, 48, 255 });
-    }
-    else if (id == "drawer") {
-        R(1, 1, 14, 14, Color{ 100, 64, 36, 255 }); R(4, 4, 8, 2, GOLD); R(4, 9, 8, 2, GOLD);
-        if (story.drawerOpen) { R(2, 7, 12, 6, Color{ 40, 26, 16, 255 }); if (story.held != Item::Tape) R(4, 9, 7, 3, Color{ 20, 20, 24, 255 }); if (story.keyInDrawer) R(12, 8, 2, 2, GOLD); }
-    }
-    else if (id == "coats") { R(6, -6, 3, 20, BROWN); R(1, -4, 6, 10, DARKBLUE); R(9, -3, 6, 9, MAROON); }
-    else if (id == "phone") { R(2, 3, 12, 9, Color{ 220, 200, 120, 255 }); R(3, 1, 10, 4, Color{ 60, 60, 60, 255 }); }
-    else if (id == "fridge") {
-        R(0, -10, 16, 26, Color{ 226, 228, 232, 255 }); R(0, -10, 16, 1, WHITE); R(14, -10, 2, 26, Color{ 196, 198, 204, 255 });
-        R(0, -1, 16, 1, Color{ 180, 182, 188, 255 });                       // freezer line
-        R(12, -7, 1, 4, Color{ 150, 152, 160, 255 }); R(12, 2, 1, 7, Color{ 150, 152, 160, 255 });
-        R(2, -7, 6, 5, Color{ 250, 236, 140, 255 }); R(3, -6, 4, 1, Color{ 120, 120, 120, 255 }); // chore list
-        R(4, 4, 2, 2, RED); R(7, 6, 2, 2, Color{ 80, 140, 220, 255 });     // magnets
-    }
-    else if (id == "stove") {
-        R(0, 0, 16, 16, Color{ 222, 222, 216, 255 }); R(0, 0, 16, 7, Color{ 70, 70, 76, 255 });
-        DrawCircle((int)x + 4, (int)y + 3, 2.5f, Color{ 40, 40, 44, 255 }); DrawCircle((int)x + 11, (int)y + 3, 2.5f, Color{ 40, 40, 44, 255 });
-        DrawCircleLines((int)x + 4, (int)y + 3, 2, Color{ 200, 80, 50, 255 });
-        R(2, 8, 12, 6, Color{ 60, 60, 66, 255 }); R(3, 9, 10, 4, Color{ 120, 110, 90, 255 }); R(3, 7, 10, 1, Color{ 160, 160, 160, 255 });
-    }
-    else if (id == "trashcan") { R(3, 2, 10, 13, Color{ 80, 110, 80, 255 }); if (!story.hasBag && !story.trashDone) R(4, 0, 8, 4, BLACK); }
-    else if (id == "bowl") { R(3, 9, 10, 5, Color{ 200, 60, 60, 255 }); if (!story.fed) R(5, 10, 6, 2, Color{ 120, 80, 40, 255 }); }
-    else if (id == "tv") {
-        R(-1, 8, 18, 8, Color{ 110, 74, 46, 255 }); R(-1, 8, 18, 1, Color{ 140, 100, 64, 255 });   // cabinet
-        R(0, -2, 16, 11, Color{ 30, 30, 34, 255 }); R(0, -2, 16, 1, Color{ 70, 70, 76, 255 });
-        Color sc = story.PowerOut() ? Color{ 10, 10, 10, 255 } : (story.Stage() >= 2 && std::fmod(globalT, 4.0f) < 0.6f ? (((int)(globalT * 12)) % 2 ? Color{ 150, 150, 150, 255 } : Color{ 60, 60, 60, 255 }) : Color{ 90, 160, 220, 255 });
-        R(2, 0, 12, 7, sc);
-        if (!story.PowerOut()) { R(3, 1, 4, 1, Fade(WHITE, 0.35f)); R(2, 2 + ((int)(globalT * 9)) % 5, 12, 1, Fade(BLACK, 0.12f)); }
-    }
-    else if (id == "couch") {
-        Color c = { 70, 112, 116, 255 };
-        R(-12, -5, 40, 7, Shade(c, -16)); R(-12, -5, 40, 1, Shade(c, 8));                // back
-        R(-12, 1, 40, 13, c);
-        R(-12, -2, 5, 16, Shade(c, -10)); R(23, -2, 5, 16, Shade(c, -10));              // arms
-        R(-7, 2, 1, 10, Shade(c, -20)); R(3, 2, 1, 10, Shade(c, -20)); R(13, 2, 1, 10, Shade(c, -20)); // cushions
-        R(-6, 0, 8, 4, Color{ 214, 196, 150, 255 });                                      // pillow
-        R(-12, 13, 40, 1, Shade(c, -30));
-    }
-    else if (id == "radio") {
-        R(2, 4, 12, 8, Color{ 140, 80, 50, 255 }); R(4, 6, 4, 4, Color{ 40, 40, 40, 255 });
-        // a little nisse on top. From stage 2 he has turned to face the wall
-        R(10, 1, 3, 3, Color{ 190, 40, 40, 255 }); R(11, -1, 1, 2, Color{ 190, 40, 40, 255 });
-        if (story.Stage() < 2) { R(10, 2, 3, 1, Color{ 240, 210, 180, 255 }); R(10, 3, 3, 1, WHITE); }
-    }
-    else if (id == "tree") {
-        // v0.8: the tree. Lights die as the stages go on, red once you're dark, off in the power cut
-        R(6, 12, 4, 4, Color{ 92, 60, 36, 255 });
-        Color g = { 40, 96, 66, 255 };
-        for (int k = 0; k < 4; ++k) { R(5 - k * 2 + 0, -14 + k * 7, 6 + k * 4, 8, k % 2 ? g : Shade(g, 10)); }
-        R(7, -18, 2, 5, Shade(g, 16));
-        DrawPoly({ x + 8, y - 19 }, 5, 3, globalT * 8, story.PowerOut() ? Color{ 120, 110, 70, 255 } : GOLD);
-        static const int bx[9] = { 7, 4, 10, 2, 12, 6, 0, 8, 14 }, by[9] = { -12, -8, -6, -2, -1, 1, 6, 5, 7 };
-        for (int k = 0; k < 9; ++k) {
-            bool on = !story.PowerOut() && !(story.Stage() >= 2 && k % 3 == 0) && std::fmod(globalT * 0.7f + k * 0.37f, 2.0f) < 1.4f;
-            Color c = story.tainted ? Color{ 220, 40, 40, 255 } : (k % 3 == 0 ? Color{ 255, 220, 120, 255 } : k % 3 == 1 ? Color{ 240, 90, 80, 255 } : Color{ 120, 180, 250, 255 });
-            R(bx[k], by[k], 2, 2, on ? c : Color{ 30, 60, 44, 255 });
-        }
-        R(-3, 10, 6, 6, Color{ 180, 50, 50, 255 }); R(0, 10, 1, 6, Color{ 240, 220, 150, 255 });
-        if (!story.zuldaOpened) { R(10, 11, 7, 5, Color{ 60, 90, 170, 255 }); R(13, 11, 1, 5, Color{ 240, 240, 240, 255 }); }
-        R(4, 13, 5, 3, Color{ 220, 200, 100, 255 });
-    }
-    else if (id == "woodstove") {
-        R(6, -14, 4, 15, Color{ 36, 36, 40, 255 }); R(6, -14, 1, 15, Color{ 70, 70, 76, 255 });       // pipe
-        R(1, 0, 14, 15, Color{ 40, 40, 44, 255 }); R(1, 0, 14, 1, Color{ 80, 80, 86, 255 });
-        float fl = std::sin(globalT * 7) * std::sin(globalT * 3.1f);
-        R(4, 5, 8, 7, Color{ 30, 20, 16, 255 });
-        R(5, 7, 6, 5, Color{ 255, (unsigned char)(120 + 40 * fl), 40, 255 });
-        R(6, 9, 4, 3, Color{ 255, 220, 120, 255 });
-        R(0, 15, 16, 1, Color{ 60, 60, 64, 255 });
-    }
-    else if (id == "bins") { R(0, 2, 7, 12, Color{ 40, 70, 40, 255 }); R(9, 2, 7, 12, Color{ 40, 40, 90, 255 }); R(0, 1, 7, 3, WHITE); R(9, 1, 7, 3, WHITE); }
-    else if (id == "doghouse") {
-        R(0, 3, 16, 12, Color{ 150, 60, 50, 255 }); for (int k = 0; k < 3; ++k) R(0, 6 + k * 3, 16, 1, Color{ 120, 44, 38, 255 });
-        R(5, 7, 6, 8, Color{ 24, 18, 16, 255 }); R(5, 7, 6, 1, Color{ 60, 40, 34, 255 });
-        R(-1, -1, 18, 5, Color{ 70, 64, 62, 255 }); R(-1, -2, 18, 3, Color{ 236, 240, 248, 255 });
-        R(4, 1, 8, 2, Color{ 230, 220, 200, 255 });                                            // name board
-    }
-    else if (id == "gate") { R(0, 4, 3, 10, Color{ 90, 64, 40, 255 }); }
-    else if (id == "flag") { R(7, -20, 2, 34, LIGHTGRAY); float w = std::sin(globalT * 9) * 2; Color navy = { 0, 32, 91, 255 }; R(9, -20, 10 + w, 7, RED); R(12, -20, 3, 7, RAYWHITE); R(9, -18, 10 + w, 3, RAYWHITE); R(13, -20, 1, 7, navy); R(9, -17, 10 + w, 1, navy); }
-    else if (id == "generator") {
-        R(1, 2, 14, 12, Color{ 206, 164, 44, 255 }); R(1, 2, 14, 1, Color{ 236, 200, 90, 255 });
-        R(3, 4, 10, 4, Color{ 40, 40, 40, 255 }); for (int k = 0; k < 4; ++k) R(4 + k * 2, 5, 1, 2, Color{ 90, 90, 90, 255 });
-        R(2, 14, 3, 1, BLACK); R(11, 14, 3, 1, BLACK);
-    }
-    else if (id == "pantry") {
-        R(0, -12, 16, 28, Color{ 222, 214, 186, 255 }); R(0, -12, 16, 2, Color{ 240, 234, 210, 255 }); R(14, -10, 2, 26, Color{ 196, 188, 160, 255 });
-        R(7, -10, 1, 24, Color{ 170, 160, 130, 255 });
-        R(2, -8, 4, 10, Color{ 232, 226, 200, 255 }); R(9, -8, 4, 10, Color{ 232, 226, 200, 255 });
-        R(5, 0, 1, 3, Color{ 120, 110, 90, 255 }); R(9, 0, 1, 3, Color{ 120, 110, 90, 255 });
-    }
-    else if (id == "sink") {
-        R(0, 0, 16, 16, Color{ 214, 204, 176, 255 }); R(0, 0, 16, 1, Color{ 236, 230, 210, 255 });
-        R(2, 2, 12, 7, Color{ 170, 180, 186, 255 }); R(3, 3, 10, 5, Color{ 130, 146, 156, 255 });
-        R(7, -2, 2, 4, Color{ 190, 196, 200, 255 }); R(6, -3, 4, 1, Color{ 190, 196, 200, 255 });
-        if (!story.dishesDone) { R(4, 4, 4, 3, Color{ 240, 240, 236, 255 }); R(9, 5, 3, 2, Color{ 210, 170, 120, 255 }); }
-        R(2, 10, 12, 5, Color{ 196, 184, 150, 255 }); R(7, 10, 1, 5, Color{ 170, 158, 124, 255 });
-    }
-    else if (id == "fliptendo") {
-        // a beanbag with the handheld on it
-        DrawEllipse((int)x + 8, (int)y + 10, 8, 5, Color{ 160, 60, 70, 255 });
-        DrawEllipse((int)x + 7, (int)y + 9, 6, 3, Color{ 186, 80, 90, 255 });
-        R(4, 6, 8, 5, Color{ 40, 40, 46, 255 }); R(5, 7, 6, 3, story.zuldaOpened ? Color{ 90, 190, 110, 255 } : Color{ 120, 170, 230, 255 });
-        if (std::fmod(globalT, 1.4f) < 0.7f) R(6, 8, 1, 1, WHITE);
-    }
-    else if (id == "wardrobe") {
-        R(0, -12, 16, 28, Color{ 128, 86, 54, 255 }); R(0, -12, 16, 2, Color{ 156, 110, 72, 255 }); R(14, -10, 2, 26, Color{ 100, 66, 40, 255 });
-        R(7, -10, 1, 24, Color{ 70, 45, 30, 255 });
-        R(2, -8, 4, 10, Color{ 140, 96, 62, 255 }); R(9, -8, 4, 10, Color{ 140, 96, 62, 255 });
-        R(5, 0, 1, 3, GOLD); R(9, 0, 1, 3, GOLD);
-    }
-    else if (id == "marbles") { R(4, 4, 8, 10, Fade(Color{ 200, 230, 255, 255 }, 0.8f)); R(5, 9, 2, 2, RED); R(8, 10, 2, 2, BLUE); R(6, 11, 2, 2, GREEN); R(4, 3, 8, 2, Color{ 150, 150, 160, 255 }); }
-    else if (id == "calendar") {
-        // the advent calendar, every door open except that the last one is red
-        R(3, -6, 10, 11, Color{ 200, 56, 52, 255 }); R(3, -6, 10, 1, GOLD);
-        for (int k = 0; k < 12; ++k) R(4 + (k % 4) * 2, -4 + (k / 4) * 2, 1, 1, RAYWHITE);
-        R(10, 0, 2, 2, Color{ 20, 20, 24, 255 });
-    }
-    else if (id == "knives") { R(4, 4, 8, 10, Color{ 110, 70, 40, 255 }); if (!story.hasKnife) R(5, 0, 2, 5, LIGHTGRAY); R(8, 1, 2, 4, LIGHTGRAY); R(10, 2, 1, 3, LIGHTGRAY); }
-    else if (id == "bookshelf") {
-        R(0, -10, 16, 26, Color{ 96, 62, 36, 255 }); R(0, -10, 16, 1, Color{ 130, 88, 54, 255 });
-        static const Color bk[6] = { { 150, 50, 50, 255 }, { 50, 80, 140, 255 }, { 60, 120, 80, 255 }, { 200, 170, 90, 255 }, { 120, 90, 140, 255 }, { 210, 200, 180, 255 } };
-        for (int k = 0; k < 3; ++k) {
-            float bx = 2;
-            for (int b = 0; b < 5 && bx < 14; ++b) {
-                unsigned q = Hash(k * 7 + b, 3);
-                int w = 1 + (int)(q % 3), hgt = 4 + (int)((q >> 3) % 3);
-                R(bx, -2 + k * 8 - hgt, (float)w, (float)hgt, bk[q % 6]); bx += w + ((q >> 6) % 2 ? 1 : 0);
-            }
-            R(1, -2 + k * 8, 14, 1, Color{ 70, 44, 26, 255 });
-        }
-    }
-    else if (id == "album") { R(3, 5, 10, 7, Color{ 120, 40, 50, 255 }); R(4, 6, 8, 1, GOLD); }
-    else if (id == "frontdoor") {
-        if (story.frontLocked && !story.collection) R(6, 2, 4, 4, Color{ 220, 200, 80, 255 });
-        if (story.trapsSet.count("marbles")) for (int k = 0; k < 7; ++k) R((float)((k * 5) % 14), 18 + (float)((k * 3) % 6), 2, 2, k % 2 ? RED : SKYBLUE);
-        if (story.trapsSet.count("tripwire")) R(-2, 22, 20, 1, Color{ 230, 230, 210, 255 });
-        if (story.trapsSet.count("paint")) { R(3, -14, 10, 9, Color{ 220, 60, 60, 255 }); R(7, -18, 1, 4, GRAY); }
-    }
-    else if (id == "sheddoor") { if (story.dadLocked) R(-2, 6, 20, 3, Color{ 160, 120, 70, 255 }); }
-    else if (id == "rope") { DrawCircleLines((int)x + 8, (int)y + 8, 5, Color{ 200, 180, 120, 255 }); DrawCircleLines((int)x + 8, (int)y + 8, 3, Color{ 200, 180, 120, 255 }); }
-    else if (id == "toolbox") { R(1, 5, 14, 9, Color{ 190, 40, 40, 255 }); R(5, 3, 6, 2, GRAY); R(11, -2, 5, 7, Color{ 230, 230, 230, 255 }); }
-    else if (id == "woodpile") { for (int k = 0; k < 3; ++k) R(-4 + k * 7, 8, 7, 7, Color{ 130, 90, 55, 255 }); R(4, 0, 8, 9, Color{ 110, 75, 45, 255 }); R(9, -4, 2, 8, Color{ 140, 140, 150, 255 }); R(-4, 7, 21, 2, WHITE); R(4, -1, 8, 2, WHITE); }
-    else if (id == "stairs") { for (int k = 0; k < 4; ++k) R(0, k * 4, 16, 3, Color{ 90, 92, 100, 255 }); }
-    else if (id == "screens") {
-        for (int k = 0; k < 6; ++k) {
-            float fx = (float)((k % 3) * 11 - 8), fy = (float)((k / 3) * 9 - 12);
-            R(fx, fy, 10, 8, Color{ 20, 20, 24, 255 });
-            Color glow = Mix(Color{ 60, 140, 255, 255 }, Color{ 150, 200, 255, 255 }, 0.5f + 0.5f * std::sin(globalT * 3 + k));
-            R(fx + 1, fy + 1, 8, 6, glow);
-        }
-    }
-    else if (id == "files") { R(1, -6, 14, 22, Color{ 120, 125, 130, 255 }); for (int k = 0; k < 3; ++k) R(5, -3 + k * 7, 6, 2, Color{ 60, 60, 66, 255 }); }
-    else if (id == "console") { R(-2, 2, 20, 12, Color{ 50, 55, 60, 255 }); R(10, 5, 4, 4, RED); for (int k = 0; k < 3; ++k) R(1 + k * 3, 5, 2, 2, GREEN); }
-    else if (id == "chair") { R(2, -6, 12, 20, Color{ 80, 40, 40, 255 }); R(0, 2, 16, 2, Color{ 60, 50, 40, 255 }); R(0, 8, 16, 2, Color{ 60, 50, 40, 255 }); R(3, -4, 10, 2, Color{ 60, 50, 40, 255 }); }
-    else if (id == "vcr") {
-        R(1, 8, 14, 7, Color{ 70, 70, 76, 255 }); R(2, 14, 2, 2, Color{ 30, 30, 30, 255 }); R(12, 14, 2, 2, Color{ 30, 30, 30, 255 });   // cart
-        R(2, 9, 12, 3, Color{ 30, 30, 34, 255 }); R(4, 10, 6, 1, Color{ 10, 10, 10, 255 }); R(11, 10, 1, 1, RED);                          // VCR
-        R(0, -6, 16, 14, Color{ 50, 46, 44, 255 }); R(2, -4, 10, 10, Color{ 24, 30, 36, 255 });                                              // TV
-        if (std::fmod(globalT, 2.0f) < 1.0f) R(3, -3, 8, 1, Fade(WHITE, 0.08f));
-    }
-    else if (id == "medfridge") { R(1, -6, 14, 22, Color{ 230, 235, 240, 255 }); R(3, -3, 10, 8, Fade(SKYBLUE, 0.6f)); for (int k = 0; k < 4; ++k) R(4 + k * 2, 0, 1, 3, ORANGE); }
-    else if (id == "bench") { R(-4, 2, 20, 12, Color{ 120, 90, 60, 255 }); R(0, 3, 5, 3, GRAY); R(8, 4, 6, 4, Color{ 50, 50, 50, 255 }); }
-}
-
-// Simple pixel people with a 4 frame walk
-struct Look { Color shirt, pants, hair, skin; float scale; bool longHair; bool beard; Color eyes = BLACK; };
-static void DrawPerson(const Actor& a, Look l) {
-    if (!a.visible) return;
-    float s = l.scale;
-    bool moving = a.anim > 0;
-    int frame = moving ? ((int)a.anim) % 4 : 0;
-    float breathe = moving ? 0 : (std::fmod(globalT + a.pos.x * 0.01f, 1.6f) < 0.8f ? 0 : 1);
-    float bob = (frame == 1 || frame == 3) ? -1 : 0;
-    float x = a.pos.x, y = a.pos.y + 4 + bob;
-    int pass = 0;   // v0.5: pass 0 draws a dark outline, pass 1 the person
-    Color outline = { 26, 20, 22, 230 };
-    auto R = [&](float ox, float oy, float w, float h, Color c) {
-        int rx = (int)std::round(x + ox * s), ry = (int)std::round(y + oy * s), rw = (int)std::ceil(w * s), rh = (int)std::ceil(h * s);
-        if (pass == 0) DrawRectangle(rx - 1, ry - 1, rw + 2, rh + 2, outline);
-        else DrawRectangle(rx, ry, rw, rh, c);
-    };
-    DrawEllipse((int)x, (int)(a.pos.y + 4 + 3 * s), 6 * s, 2 * s, Fade(BLACK, 0.3f));
-    for (pass = 0; pass < 2; ++pass) {
-    Color pantsD = Mix(l.pants, BLACK, 0.25f), shirtD = Mix(l.shirt, BLACK, 0.2f);
-    bool side = a.dir == 2 || a.dir == 3;
-    float flip = a.dir == 2 ? -1 : 1;
-    // legs
-    if (side) {
-        float swing = frame == 0 ? 2 : frame == 2 ? -2 : 0;
-        R(-2 + swing * flip, -2, 3, 5, pantsD);
-        R(-1 - swing * flip, -2, 3, 5, l.pants);
-        R(-2 + swing * flip + (flip > 0 ? 1 : -1), 2, 3, 1, Color{ 40, 30, 25, 255 });
-    } else {
-        float lift0 = frame == 0 ? 1.5f : 0, lift2 = frame == 2 ? 1.5f : 0;
-        R(-4, -2 - lift0, 3, 5, l.pants);
-        R(1, -2 - lift2, 3, 5, l.pants);
-        R(-4, 2 - lift0, 3, 1, Color{ 40, 30, 25, 255 });
-        R(1, 2 - lift2, 3, 1, Color{ 40, 30, 25, 255 });
-    }
-    // body
-    R(-5, -10 - breathe * 0.5f, 10, 9, l.shirt);
-    R(-5, -2, 10, 1, shirtD);
-    // arms
-    float armSwing = moving ? (frame == 0 ? 2 : frame == 2 ? -2 : 0) : 0;
-    if (side) {
-        R(-1 - armSwing * flip, -9, 3, 6, shirtD);
-        R(-1 - armSwing * flip, -3, 3, 2, l.skin);
-    } else {
-        R(-7, -9 + armSwing * 0.5f, 2, 6, shirtD);
-        R(5, -9 - armSwing * 0.5f, 2, 6, shirtD);
-        R(-7, -3 + armSwing * 0.5f, 2, 2, l.skin);
-        R(5, -3 - armSwing * 0.5f, 2, 2, l.skin);
-    }
-    // head
-    R(-4, -18 - breathe * 0.5f, 8, 8, l.skin);
-    float hy = -breathe * 0.5f;
-    if (a.dir == 1) R(-4, -19 + hy, 8, 8, l.hair);
-    else {
-        R(-4, -19 + hy, 8, 3, l.hair);
-        if (side) R(flip > 0 ? -4 : 2, -19 + hy, 2, 6, l.hair);
-        if (l.longHair) { R(-5, -18 + hy, 2, 9, l.hair); R(3, -18 + hy, 2, 9, l.hair); }
-        bool blink = std::fmod(globalT + a.pos.y * 0.03f, 3.7f) < 0.12f;
-        if (!blink) {
-            if (a.dir == 0) { R(-2, -14 + hy, 1, 2, l.eyes); R(1, -14 + hy, 1, 2, l.eyes); }
-            if (a.dir == 2) R(-3, -14 + hy, 1, 2, l.eyes);
-            if (a.dir == 3) R(2, -14 + hy, 1, 2, l.eyes);
-        }
-        if (l.beard) R(-4, -12 + hy, 8, 3, l.hair);
-    }
-    if (pass == 1) {
-        // a little light on the hair and shoulders
-        R(-3, -19 + hy, 4, 1, Shade(l.hair, 30));
-        R(-5, -10 - breathe * 0.5f, 10, 1, Shade(l.shirt, 22));
-    }
-    }
-}
-
-// v0.7: someone on the floor. Lying on their side, not moving much.
-static void DrawPersonDown(const Actor& a, Look l, bool sob) {
-    float s = l.scale, x = a.pos.x, y = a.pos.y + 4;
-    float shake = sob ? (std::fmod(globalT, 0.5f) < 0.25f ? 0.5f : 0) : 0;
-    DrawEllipse((int)x, (int)y + 2, 11 * s, 2.5f * s, Fade(BLACK, 0.3f));
-    for (int pass = 0; pass < 2; ++pass) {
-        auto R = [&](float ox, float oy, float w, float h, Color c) {
-            int rx = (int)std::round(x + ox * s), ry = (int)std::round(y + oy * s + shake), rw = (int)std::ceil(w * s), rh = (int)std::ceil(h * s);
-            if (pass == 0) DrawRectangle(rx - 1, ry - 1, rw + 2, rh + 2, Color{ 26, 20, 22, 230 });
-            else DrawRectangle(rx, ry, rw, rh, c);
-        };
-        R(-2, -5, 7, 5, l.pants);                  // legs
-        R(5, -4, 2, 4, Color{ 40, 30, 25, 255 });  // shoes
-        R(-10, -6, 9, 6, l.shirt);                 // body
-        R(-8, -1, 5, 2, l.skin);                   // a hand on the floor
-        R(-17, -7, 7, 7, l.skin);                  // head
-        R(-17, -8, 7, 3, l.hair);
-        if (l.longHair) R(-19, -7, 3, 7, l.hair);
-        if (l.beard) R(-12, -3, 2, 3, l.hair);
-        if (pass == 1) R(-15, -4, 2, 1, Color{ 40, 30, 30, 255 });   // closed eye
-    }
-}
-
-static void DrawDoggoDead(const Actor& a) {
-    // v0.7: fade to black, and this is what's left. He doesn't move. A thin line of red keeps running.
-    float x = a.pos.x, y = a.pos.y + 4;
-    float t = doggoDeadT;
-    Color fur = { 150, 106, 62, 255 }, dark = { 106, 70, 40, 255 }, blood = { 160, 18, 24, 255 };
-    float pool = std::min(8.0f, 2.0f + t * 0.4f);
-    DrawEllipse((int)x + 2, (int)y + 2, pool + 2, pool * 0.45f, Fade(blood, 0.85f));
-    float streak = std::min(18.0f, t * 1.2f);
-    DrawRectangle((int)x + 3, (int)y + 2, 1, (int)streak, blood);
-    if (std::fmod(t, 1.6f) < 0.8f && streak < 18) DrawRectangle((int)x + 3, (int)(y + 2 + streak), 1, 1, Color{ 160, 20, 24, 255 });
-    DrawRectangle((int)x - 8, (int)y - 5, 15, 7, Color{ 26, 20, 22, 220 });
-    DrawRectangle((int)x - 7, (int)y - 4, 13, 5, fur);                      // on his side
-    DrawRectangle((int)x - 7, (int)y - 4, 13, 1, Shade(fur, 20));
-    DrawRectangle((int)x - 5, (int)y + 1, 4, 2, dark); DrawRectangle((int)x + 1, (int)y + 1, 4, 2, dark);   // legs, still
-    DrawRectangle((int)x - 13, (int)y - 3, 6, 5, fur);                      // head flat on the floor
-    DrawRectangle((int)x - 12, (int)y - 4, 2, 2, dark);                     // ear
-    DrawRectangle((int)x - 11, (int)y - 1, 2, 1, Color{ 30, 20, 20, 255 }); // closed eye
-    DrawRectangle((int)x + 6, (int)y - 2, 4, 2, dark);                      // tail, not wagging
-}
-
-static void DrawDoggo(const Actor& a) {
-    if (!a.visible) return;
-    bool moving = a.anim > 0;
-    int frame = moving ? ((int)(a.anim * 1.4f)) % 4 : 0;
-    float bob = moving && (frame == 1 || frame == 3) ? -1 : 0;
-    float x = a.pos.x, y = a.pos.y + 3 + bob;
-    Color fur = { 170, 120, 70, 255 }, dark = { 120, 80, 45, 255 };
-    DrawEllipse((int)x, (int)a.pos.y + 6, 7, 2, Fade(BLACK, 0.3f));
-    bool left = a.dir == 2;
-    {   // v0.5: outline
-        Color o = { 26, 20, 22, 220 };
-        DrawRectangle((int)x - 7, (int)y - 7, 14, 8, o);
-        DrawRectangle(left ? (int)x - 10 : (int)x + 2, (int)y - 12, 8, 9, o);
-    }
-    DrawRectangle((int)x - 6, (int)y - 6, 12, 6, fur);
-    DrawRectangle((int)x - 6, (int)y - 6, 12, 1, Shade(fur, 25));
-    // legs trot in pairs
-    int l1 = frame == 0 ? 1 : 0, l2 = frame == 2 ? 1 : 0;
-    DrawRectangle((int)x - 5, (int)y - l1, 2, 3, dark); DrawRectangle((int)x - 2, (int)y - l2, 2, 3, dark);
-    DrawRectangle((int)x + 1, (int)y - l1, 2, 3, dark); DrawRectangle((int)x + 4, (int)y - l2, 2, 3, dark);
-    int hx = left ? (int)x - 9 : (int)x + 3;
-    DrawRectangle(hx, (int)y - 10, 6, 6, fur);
-    DrawRectangle(left ? hx : hx + 4, (int)y - 7, 2, 2, BLACK);
-    DrawRectangle(left ? hx + 4 : hx, (int)y - 11, 2, 3, dark);
-    float wag = std::sin(globalT * (moving ? 20 : 12)) * 2;
-    DrawRectangle(left ? (int)x + 6 : (int)x - 8, (int)(y - 7 + wag), 2, 4, dark);
-}
-
-static void DrawCar() {
-    float x = 20 * TS - 6, y = 31 * TS + 2;
-    DrawRectangle((int)x, (int)y, 28, 22, Color{ 20, 20, 24, 255 });
-    DrawRectangle((int)x + 4, (int)y + 4, 20, 7, Color{ 60, 70, 90, 255 });
-    DrawRectangle((int)x + 2, (int)y + 11, 24, 3, Color{ 232, 238, 246, 255 });   // snow on the roof
-    DrawRectangle((int)x + 4, (int)y + 10, 9, 1, Color{ 232, 238, 246, 255 });
-    DrawCircleGradient((int)x + 6, (int)y, 16, Fade(Color{ 255, 250, 200, 255 }, 0.2f), Fade(Color{ 255, 250, 200, 255 }, 0));
-    DrawCircleGradient((int)x + 22, (int)y, 16, Fade(Color{ 255, 250, 200, 255 }, 0.2f), Fade(Color{ 255, 250, 200, 255 }, 0));
-}
-
-// ============================================================ v0.5 lighting, rain, dust
-// v0.8: footprints in the snow. The storm fills them in fast
-static float printCD[3] = { 0, 0, 0 };
-static float vPrintCD = 0;
-static int printSide = 0;
-static void AddPrint(const Actor& a, int who, float dt, float every) {
-    printCD[who] -= dt;
-    if (printCD[who] > 0 || a.anim <= 0) return;
-    if (!IsOutsideT(TileAt(TX(a.pos.x), TX(a.pos.y + 6)))) return;
-    printCD[who] = every;
-    printSide = 1 - printSide;
-    prints.push_back({ { a.pos.x, a.pos.y + 6 }, 0, who, printSide });
-    if (prints.size() > 500) prints.erase(prints.begin());
-}
-static void UpdatePrints(float dt) {
-    float life = story.Storm() ? 16.0f : 150.0f;
-    for (auto& p : prints) p.t += dt;
-    prints.erase(std::remove_if(prints.begin(), prints.end(), [&](const Print& p) { return p.t > life; }), prints.end());
-}
-static void DrawPrints() {
-    float life = story.Storm() ? 16.0f : 150.0f;
-    Color c = { 142, 156, 190, 255 };
-    for (auto& p : prints) {
-        float a = 0.8f * (1 - p.t / life);
-        int ox = p.side ? 2 : -2;
-        if (p.who == 1) DrawRectangle((int)p.p.x + ox - 1, (int)p.p.y, 4, 2, Fade(c, a));
-        else if (p.who == 2) DrawRectangle((int)p.p.x + ox / 2, (int)p.p.y, 1, 1, Fade(c, a));
-        else DrawRectangle((int)p.p.x + ox, (int)p.p.y, 2, 1, Fade(c, a));
-    }
-}
-struct Puff { Vector2 p; float t; };
-static std::vector<Puff> puffs;
-static float puffTimer = 0;
-
-static Color LerpC(Color a, Color b, float t) { return Mix(a, b, std::max(0.0f, std::min(1.0f, t))); }
-
-static void BuildLightmap(Camera2D cam) {
-    float m = story.t / 60.0f;
-    float dusk = std::min(1.0f, m / 45.0f);
-    // v0.8: the sun went down at about 15:25. Blue dusk at 16:00, night by about 16:25. The warmth is all indoors
-    Color amb = LerpC(Color{ 196, 204, 228, 255 }, Color{ 128, 138, 182, 255 }, m / 25.0f);
-    if (story.Storm()) amb = Shade(amb, -14);
-    bool powerOut = story.PowerOut();
-    if (powerOut) amb = Color{ 96, 102, 146, 255 };
-    if (story.inBasement) amb = Color{ 92, 100, 140, 255 };
-    BeginTextureMode(lightRT);
-    ClearBackground(amb);
-    if (!powerOut && !story.inBasement) {
-        // the house and the shed stay warm while the power lasts
-        float flick = 1;
-        if (story.Storm() && !settings.calmFlashes) { float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f); if (f > 0.85f) flick = 0.72f; }
-        Color warm = LerpC(Color{ 255, 246, 228, 255 }, Color{ 226, 206, 182, 255 }, dusk);
-        warm.r = (unsigned char)(warm.r * flick); warm.g = (unsigned char)(warm.g * flick); warm.b = (unsigned char)(warm.b * flick);
-        float ox = VW / 2.0f - cam.target.x, oy = VH / 2.0f - cam.target.y;
-        DrawRectangle((int)(3 * TS + ox), (int)(2 * TS + 6 + oy), 26 * TS, 18 * TS - 6, warm);
-        DrawRectangle((int)(32 * TS + ox), (int)(4 * TS + 6 + oy), 5 * TS, 6 * TS - 6, warm);
-    }
-    BeginBlendMode(BLEND_ADDITIVE);
-    auto light = [&](float wx, float wy, float r, Color c, float k) {
-        if (k <= 0.01f) return;
-        float sx = wx - cam.target.x + VW / 2.0f, sy = wy - cam.target.y + VH / 2.0f;
-        if (sx < -r || sy < -r || sx > VW + r || sy > VH + r) return;
-        Color in = { (unsigned char)(c.r * k), (unsigned char)(c.g * k), (unsigned char)(c.b * k), 255 };
-        DrawCircleGradient((int)sx, (int)sy, r, in, Color{ 0, 0, 0, 255 });
-    };
-    auto tile = [](float t) { return t * TS + TS / 2.0f; };
-    if (!powerOut) {
-        float lamp = std::max(0.0f, dusk - 0.1f) * 1.1f;
-        if (story.Storm() && !settings.calmFlashes) { float f = std::sin(globalT * 23) * std::sin(globalT * 7.3f); if (f > 0.85f) lamp *= 0.3f; }
-        Color warm = { 150, 104, 52, 255 };
-        const float L[][2] = { { 6, 5 }, { 13, 5 }, { 22, 5 }, { 8, 10 }, { 24, 10 }, { 7, 16 }, { 19, 15 }, { 25, 17 }, { 34, 7 } };
-        for (auto& p : L) light(tile(p[0]), tile(p[1]), 78, warm, lamp);
-        light(tile(21), tile(13) + 6, 42, Color{ 40, 70, 120, 255 }, 0.5f + 0.2f * std::sin(globalT * 11));   // TV
-        // window light on the snow, and the tree
-        const float W[][2] = { { 8, 22 }, { 15, 22 }, { 25, 22 } };
-        for (auto& p : W) {
-            light(tile(p[0]), tile(p[1]) - 10, 40, Color{ 74, 44, 6, 255 }, 0.9f);
-            light(tile(p[0]), tile(20) + 2, 12, Color{ 120, 90, 40, 255 }, 1.0f);
-        }
-        light(tile(26), tile(15) - 8, 34, Color{ 90, 70, 40, 255 }, 0.8f);
-    }
-    float fire = 0.75f + 0.25f * std::sin(globalT * 7) * std::sin(globalT * 3.1f);
-    light(tile(27), tile(18), 46, Color{ 150, 70, 20, 255 }, fire * (0.4f + dusk * 0.6f + (powerOut ? 0.5f : 0)));
-    light(tile(10), tile(37) - 4, 90, Color{ 40, 80, 150, 255 }, 0.9f);                                      // basement screens
-    if (story.CarHere()) {
-        light(20 * TS - 6 + 6, 31 * TS + 2, 60, Color{ 150, 140, 100, 255 }, 0.4f);
-        light(20 * TS - 6 + 22, 31 * TS + 2, 60, Color{ 150, 140, 100, 255 }, 0.4f);
-    }
-    if (powerOut) light(player.pos.x, player.pos.y - 6, 72, Color{ 70, 70, 90, 255 }, IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y))) ? 0.35f : 1.0f);              // eyes adjusting
-    if (story.hasLight) {
-        // v0.6: Dad's flashlight, a beam in the direction you face
-        const float fx[4] = { 0, 0, -1, 1 }, fy[4] = { 1, -1, 0, 0 };
-        float k = powerOut ? 1.0f : 0.35f;
-        for (int i = 1; i <= 3; ++i) light(player.pos.x + fx[player.dir] * 26 * i, player.pos.y - 4 + fy[player.dir] * 26 * i, 26 + 8 * i, Color{ 170, 165, 130, 255 }, k);
-    }
-    EndBlendMode();
-    EndTextureMode();
-}
-
-static void DrawRainAndDust(Camera2D cam, float dt) {
-    float left = cam.target.x - VW / 2.0f, top = cam.target.y - VH / 2.0f;
-    // dust puffs when running
-    puffTimer -= dt;
-    if (kidRunning && puffTimer <= 0) { puffs.push_back({ { player.pos.x + (float)GetRandomValue(-3, 3), player.pos.y + 6 }, 0 }); puffTimer = 0.09f; }
-    for (auto& p : puffs) p.t += dt;
-    puffs.erase(std::remove_if(puffs.begin(), puffs.end(), [](const Puff& p) { return p.t > 0.45f; }), puffs.end());
-    for (auto& p : puffs) {
-        Tile t = TileAt(TX(p.p.x), TX(p.p.y));
-        Color c = IsOutsideT(t) ? Color{ 246, 248, 252, 255 } : Color{ 220, 210, 190, 255 };
-        DrawCircle((int)p.p.x, (int)(p.p.y - p.t * 6), 1.5f + p.t * 6, Fade(c, 0.45f * (1 - p.t / 0.45f)));
-    }
-    // v0.8: it snows the whole hour. The storm turns it sideways
-    bool storm = story.Storm();
-    int flakes = storm ? 460 : 120;
-    float wind = storm ? 170.0f : 9.0f, fall = storm ? 170.0f : 26.0f;
-    for (int i = 0; i < flakes; ++i) {
-        float wobble = storm ? 0 : std::sin(globalT * 0.9f + i) * 5.0f;
-        float wx = left + std::fmod((float)(Hash(i, 1) % 997) + globalT * wind * (0.8f + (Hash(i, 4) % 5) * 0.1f), (float)VW + 20) - 10 + wobble;
-        float wy = top + std::fmod((float)(Hash(i, 2) % 991) + globalT * (fall + (Hash(i, 3) % 40)), (float)VH + 20) - 10;
-        Tile t = TileAt(TX(wx), TX(wy));
-        if (!IsOutsideT(t)) continue;
-        if (storm) DrawRectangle((int)wx, (int)wy, 3, 1, Fade(WHITE, 0.75f));
-        else DrawRectangle((int)wx, (int)wy, 1 + i % 2, 1 + i % 2, Fade(WHITE, 0.9f));
-    }
-}
-
-static void DrawWorld(Camera2D cam) {
-    ClearBackground(BLACK);
-    BeginMode2D(cam);
-    int x0 = std::max(0, TX(cam.target.x - VW / 2.0f) - 1), x1 = std::min(World::W - 1, TX(cam.target.x + VW / 2.0f) + 1);
-    int y0 = std::max(0, TX(cam.target.y - VH / 2.0f) - 1), y1 = std::min(World::H - 1, TX(cam.target.y + VH / 2.0f) + 2);
-    // v0.10: the basement used to show under the yard when you stood at the gate. It is underground: only draw it from inside
-    const bool below = story.inBasement;
-    for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) if (below == (y >= 34)) DrawTile(x, y);
-
-    DrawPrints();
-    bool flux = story.Act() >= 2;
-    // Draw objects and actors sorted by y
-    struct D { float y; int kind; const Obj* o; const Actor* a; };
-    std::vector<D> ds;
-    for (auto& o : story.world.objs) if (below == (o.y >= 34)) ds.push_back({ o.y * TS + 8.0f, 0, &o, nullptr });
-    if (!hidden) ds.push_back({ player.pos.y, 1, nullptr, &player });
-    if (mom.visible) ds.push_back({ mom.pos.y, 2, nullptr, &mom });
-    if (dad.visible) ds.push_back({ dad.pos.y, 3, nullptr, &dad });
-    if (story.DoggoExists() || story.doggoDead || (story.doggoOut && !doggoRanOff)) ds.push_back({ doggo.pos.y, 4, nullptr, &doggo });
-    if (visitor.visible) ds.push_back({ visitor.pos.y, 5, nullptr, &visitor });
-    std::sort(ds.begin(), ds.end(), [](const D& a, const D& b) { return a.y < b.y; });
-    for (auto& d : ds) {
-        if (d.a && below != (d.a->pos.y >= 34 * TS)) continue;   // and nobody from the other floor
-        switch (d.kind) {
-        case 0: {
-            Vector2 j{ 0, 0 };
-            // one object at a time, a short shiver every ~9 seconds (more often once you're dark)
-            if (flux) {
-                float period = story.Act() >= 3 ? 5.0f : 9.0f;
-                int slot = (int)(globalT / period);
-                unsigned pick = Hash(slot, 77) % (unsigned)story.world.objs.size();
-                if (&story.world.objs[pick] == d.o && std::fmod(globalT, period) < 0.25f) j = { (float)((int)(globalT * 30) % 3 - 1), 0 };
-            }
-            DrawObj(*d.o, j);
-        } break;
-        case 1: {
-            Look kid{ Color{ 200, 50, 50, 255 }, Color{ 50, 60, 110, 255 }, Color{ 90, 60, 30, 255 }, Color{ 240, 200, 170, 255 }, 1.0f, false, false };
-            if (story.tainted) { kid.skin = Color{ 222, 208, 204, 255 }; kid.shirt = Color{ 120, 30, 34, 255 }; kid.eyes = Color{ 150, 0, 0, 255 }; }
-            if (story.Stage() >= 4) { kid.skin = Color{ 205, 195, 200, 255 }; kid.shirt = Color{ 50, 20, 24, 255 }; }
-            if (story.hasCoat) kid.shirt = story.tainted ? Color{ 30, 34, 54, 255 } : Color{ 48, 78, 128, 255 };
-            DrawPerson(*d.a, kid);
-            {
-                // v0.6: whatever is in the kid's hands
-                int hx = (int)d.a->pos.x + 6, hy = (int)d.a->pos.y - 4;
-                switch (story.held) {
-                case Item::Knife: DrawRectangle(hx, hy, 1, 5, Color{ 210, 210, 220, 255 }); DrawRectangle(hx, hy + 5, 1, 2, Color{ 90, 60, 40, 255 }); break;
-                case Item::Key: DrawRectangle(hx, hy + 1, 3, 2, GOLD); DrawRectangle(hx + 2, hy + 3, 1, 2, GOLD); break;
-                case Item::Stick: DrawLine(hx, hy + 6, hx + 4, hy - 4, Color{ 130, 90, 50, 255 }); break;
-                case Item::Bag: DrawRectangle(hx - 1, hy + 1, 5, 6, Color{ 30, 30, 34, 255 }); DrawRectangle(hx, hy, 3, 1, Color{ 60, 60, 66, 255 }); break;
-                case Item::DogFood: DrawRectangle(hx - 1, hy + 2, 4, 4, Color{ 200, 60, 60, 255 }); DrawRectangle(hx, hy + 1, 2, 1, Color{ 150, 100, 50, 255 }); break;
-                case Item::Flashlight: DrawRectangle(hx, hy + 1, 4, 2, Color{ 60, 60, 66, 255 }); DrawRectangle(hx + 4, hy, 1, 4, Color{ 250, 240, 180, 255 }); break;
-                case Item::Tape: DrawRectangle(hx - 1, hy + 1, 5, 3, Color{ 20, 20, 24, 255 }); DrawRectangle(hx, hy + 2, 3, 1, Color{ 220, 220, 210, 255 }); break;
-                case Item::BabyWatch: DrawRectangle(hx, hy + 2, 3, 3, Color{ 20, 26, 34, 255 }); DrawRectangle(hx + 1, hy + 3, 1, 1, Color{ 150, 178, 186, 255 }); DrawRectangle(hx + 1, hy, 1, 2, Color{ 60, 66, 76, 255 }); DrawRectangle(hx + 1, hy + 5, 1, 2, Color{ 60, 66, 76, 255 }); break;
-                default: break;
-                }
-            }
-        }
-            // Watch glint
-            DrawRectangle((int)d.a->pos.x + 4, (int)d.a->pos.y - 2, 2, 2, Color{ 180, 220, 160, 255 });
-            break;
-        case 2: {
-            Look ml{ Color{ 70, 130, 90, 255 }, Color{ 70, 130, 90, 255 }, Color{ 180, 130, 60, 255 }, Color{ 235, 195, 165, 255 }, 1.15f, true, false };
-            if (story.momOnFloor) DrawPersonDown(*d.a, ml, true); else DrawPerson(*d.a, ml);
-        } break;
-        case 3: {
-            Look dl{ Color{ 60, 90, 160, 255 }, Color{ 60, 50, 40, 255 }, Color{ 110, 70, 40, 255 }, Color{ 230, 190, 160, 255 }, 1.2f, false, true };
-            if (story.dadOnFloor && scene != SceneMode::DadRuns) DrawPersonDown(*d.a, dl, false); else DrawPerson(*d.a, dl);
-        } break;
-        case 4: if (story.doggoDead && doggoShownDead) DrawDoggoDead(*d.a); else DrawDoggo(*d.a); break;
-        case 5: DrawPerson(*d.a, { Color{ 25, 25, 28, 255 }, Color{ 25, 25, 28, 255 }, Color{ 20, 20, 20, 255 }, Color{ 210, 180, 160, 255 }, 1.55f, false, false }); break;
-        }
-    }
-    if (story.CarHere()) DrawCar();
-
-    if (!story.inBasement) DrawRainAndDust(cam, std::min(GetFrameTime(), 0.05f));   // v0.10: it does not snow in the basement
-    // (bubbles and the E prompt are drawn in UI space with the soft font, see DrawBubbles)
-    EndMode2D();
-
-    // v0.5 light: the light map (built before this pass) multiplied over the world
-    BeginBlendMode(BLEND_MULTIPLIED);
-    DrawTextureRec(lightRT.texture, { 0, 0, (float)VW, -(float)VH }, { 0, 0 }, WHITE);
-    EndBlendMode();
-    // soft vignette
-    for (int k = 0; k < 10; ++k) DrawRectangleLines(k, k, VW - 2 * k, VH - 2 * k, Fade(BLACK, 0.035f * (10 - k)));
-    if (scene == SceneMode::Chase) {
-        float p = 0.5f + 0.5f * std::sin(globalT * 6);
-        for (int k = 0; k < 18; ++k) {
-            float a = (18 - k) / 18.0f * (0.18f + 0.12f * p);
-            DrawRectangleLines(k, k, VW - 2 * k, VH - 2 * k, Fade(Color{ 160, 0, 0, 255 }, a));
-        }
-    }
-    if (story.cold > 0) {
-        // v0.8: the frost closes in
-        for (int k = 0; k < 26; ++k) DrawRectangleLines(k, k, VW - 2 * k, VH - 2 * k, Fade(Color{ 220, 236, 255, 255 }, (26 - k) / 26.0f * 0.5f * story.cold));
-    }
-    if (flux) {
-        // reality struggling to keep up
-        if (std::fmod(globalT, 23.0f) < 0.1f) DrawRectangle(0, (int)(std::fmod(globalT * 997, (float)VH)), VW, 3, Fade(WHITE, 0.2f));
-    }
-}
+#include "art/Sprites.inc"
+#include "art/WorldDraw.inc"
 
 // ============================================================ UI drawing (screen space)
 static void Panel(float x, float y, float w, float h, Color bg, Color border) {
+    // v0.11: a soft shadow under every panel, and a little light along its top edge
+    float u = std::max(1.0f, US);
+    if (bg.a > 120) DrawRectangle((int)(x * US + u), (int)(y * US + 2 * u), (int)(w * US), (int)(h * US), Fade(BLACK, 0.35f));
     DrawRectangle((int)(x * US), (int)(y * US), (int)(w * US), (int)(h * US), bg);
-    DrawRectangleLinesEx({ x * US, y * US, w * US, h * US }, std::max(1.0f, US), border);
+    if (bg.a > 120 && h > 8) DrawRectangleGradientV((int)(x * US), (int)(y * US), (int)(w * US), (int)(std::min(h, 14.0f) * US), Fade(WHITE, 0.07f), Fade(WHITE, 0));
+    DrawRectangleLinesEx({ x * US, y * US, w * US, h * US }, u, border);
 }
 
 static void Seg(float x, float y, float s, int digit, Color on) {
@@ -1803,13 +1007,25 @@ static void DrawNarrator(const std::string& text, float shown) {
 
 static void DrawDialogue() {
     float x = 12, y = VH - 74, w = VW - 24, h = 64;
+    Color nc = cur.speaker == "The visitor" ? Color{ 120, 20, 20, 255 } : cur.speaker == "You" ? Color{ 160, 50, 50, 255 } : cur.speaker == "Mom" ? Color{ 46, 100, 76, 255 } :
+               cur.speaker == "Doggo" ? Color{ 140, 96, 52, 255 } : Color{ 50, 70, 120, 255 };
+    // v0.11: whoever is talking gets a face, standing on the top edge of the box
+    float tagX = x + 8;
+    const std::string& sp = cur.speaker;
+    if (sp == "You" || sp == "Mom" || sp == "Dad" || sp == "The visitor" || sp == "Doggo") {
+        const float ps = 38;
+        Color sky = sp == "The visitor" ? Color{ 20, 10, 16, 255 } : Mix(nc, Color{ 16, 16, 28, 255 }, 0.55f);
+        Panel(x + 8, y - ps + 2, ps, ps, sky, Color{ 230, 230, 240, 255 });
+        DrawPortrait(sp, (x + 8 + ps / 2) * US, (y - ps + 2 + ps / 2) * US, 2.0f * US);
+        tagX = x + 8 + ps + 4;
+    }
+    DrawRectangle((int)(x * US), (int)(y * US), (int)(w * US), (int)(h * US), Color{ 16, 16, 28, 255 });
     Panel(x, y, w, h, Color{ 16, 16, 28, 235 }, Color{ 230, 230, 240, 255 });
     std::string vis = cur.text.substr(0, std::min<size_t>(cur.text.size(), (size_t)typed));
     if (!cur.speaker.empty()) {
         float nw = UIMeasure(cur.speaker.c_str(), 10) + 12;
-        Color nc = cur.speaker == "The visitor" ? Color{ 120, 20, 20, 255 } : cur.speaker == "You" ? Color{ 160, 50, 50, 255 } : Color{ 50, 70, 120, 255 };
-        Panel(x + 8, y - 12, nw, 15, nc, WHITE);
-        UIText(cur.speaker.c_str(), x + 14, y - 9, 10, WHITE);
+        Panel(tagX, y - 12, nw, 15, nc, WHITE);
+        UIText(cur.speaker.c_str(), tagX + 6, y - 9, 10, WHITE);
     }
     auto lines = Wrap(cur.text, w - 20, 10, false);
     size_t used = 0; float ly = y + 10;
@@ -2485,7 +1701,6 @@ static void DrawDebugPanel() {
 
 // ============================================================ title
 static void DrawTitle() {
-    ClearBackground(Color{ 6, 6, 10, 255 });
     float pulse = 0.5f + 0.5f * std::sin(globalT * 2);
     const char* t = "600 SECONDS";
     UIText(t, VW / 2.0f - UIMeasure(t, 30) / 2, 60, 30, Color{ 220, 60, 60, 255 });
@@ -2533,7 +1748,7 @@ static void DrawTitle() {
 
 // ============================================================ v0.9 pause menu and settings
 static void SaveSettings() {
-    std::string s = std::to_string(settings.music) + "|" + std::to_string(settings.sfx) + "|" + std::to_string(settings.text) + "|" + std::to_string(settings.calmFlashes ? 1 : 0);
+    std::string s = std::to_string(settings.music) + "|" + std::to_string(settings.sfx) + "|" + std::to_string(settings.text) + "|" + std::to_string(settings.calmFlashes ? 1 : 0) + "|" + std::to_string(settings.roofs ? 1 : 0);
 #if defined(PLATFORM_WEB)
     EM_ASM({ try { localStorage.setItem('600s_settings', UTF8ToString($0)); } catch (e) {} }, s.c_str());
 #else
@@ -2557,21 +1772,22 @@ static void LoadSettings() {
 #else
     if (FileExists("600s_settings.txt")) { char* t = LoadFileText("600s_settings.txt"); if (t) s = t; UnloadFileText(t); }
 #endif
-    int a, b, c, d;
-    if (std::sscanf(s.c_str(), "%d|%d|%d|%d", &a, &b, &c, &d) == 4) {
+    int a, b, c, d, e = 1;
+    if (std::sscanf(s.c_str(), "%d|%d|%d|%d|%d", &a, &b, &c, &d, &e) >= 4) {
+        settings.roofs = e != 0;
         settings.music = std::max(0, std::min(10, a)); settings.sfx = std::max(0, std::min(10, b));
         settings.text = std::max(0, std::min(3, c)); settings.calmFlashes = d != 0;
     }
 }
-static const int PAUSE_ROWS = 6;
-static const float PAUSE_Y = 84, PAUSE_H = 20, PAUSE_X = 110, PAUSE_W = 260;
+static const int PAUSE_ROWS = 7;
+static const float PAUSE_Y = 76, PAUSE_H = 20, PAUSE_X = 110, PAUSE_W = 260;
 static void DrawPause() {
     DrawRectangle(0, 0, (int)(VW * US), (int)(VH * US), Fade(Color{ 8, 8, 14, 255 }, 0.86f));
     UIText("PAUSED", VW / 2.0f - UIMeasure("PAUSED", 16) / 2, 48, 16, Color{ 230, 60, 60, 255 });
     static const char* speed[4] = { "Slow", "Normal", "Fast", "Instant" };
     std::string val[PAUSE_ROWS] = { "", std::to_string(settings.music) + " / 10", std::to_string(settings.sfx) + " / 10", speed[settings.text],
-                                    settings.calmFlashes ? "Calm" : "Normal", "" };
-    static const char* name[PAUSE_ROWS] = { "Resume", "Music", "Sound", "Text speed", "Flashes", "Back to the title" };
+                                    settings.calmFlashes ? "Calm" : "Normal", settings.roofs ? "On" : "Off", "" };
+    static const char* name[PAUSE_ROWS] = { "Resume", "Music", "Sound", "Text speed", "Flashes", "Roofs", "Back to the title" };
     for (int i = 0; i < PAUSE_ROWS; ++i) {
         float y = PAUSE_Y + i * PAUSE_H;
         if (i == pauseSel) DrawRectangle((int)(PAUSE_X * US), (int)((y - 3) * US), (int)(PAUSE_W * US), (int)((PAUSE_H - 2) * US), Color{ 50, 40, 80, 255 });
@@ -2594,7 +1810,8 @@ static void UpdatePause() {
     case 2: if (dir) { settings.sfx = std::max(0, std::min(10, settings.sfx + dir)); Play("chime"); } break;
     case 3: if (dir) settings.text = std::max(0, std::min(3, settings.text + dir)); break;
     case 4: if (dir || use) settings.calmFlashes = !settings.calmFlashes; break;
-    case 5:
+    case 5: if (dir || use) settings.roofs = !settings.roofs; break;
+    case 6:
         if (use) {
             pauseOpen = false; SaveSettings(); SaveGame();
             story.beats.clear(); beatActive = false; hushMusic = false; aHumSolo = false; hidden = false; recapOpen = false; journalOpen = false;
@@ -2865,10 +2082,11 @@ static void UpdateDrawFrame() {
         if (jb) {}
         else if (IsKeyPressed(KEY_N)) StartGame(true);
         else if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) StartGame(!hasSave);
+        DrawTitleScene();
         BeginDrawing();
-        BeginTextureMode(target); ClearBackground(BLACK); EndTextureMode();
         float ox = (SW - VW * US) / 2, oy = (SH - VH * US) / 2;
         ClearBackground(BLACK);
+        DrawTexturePro(target.texture, { 0, 0, (float)VW, -(float)VH }, { ox, oy, VW * US, VH * US }, { 0, 0 }, 0, WHITE);
         // UI is drawn in "virtual" units scaled by US; offset by letterbox
         Camera2D ui{}; ui.offset = { ox, oy }; ui.zoom = 1;
         BeginMode2D(ui);
@@ -3441,6 +2659,7 @@ int main() {
 #endif
     target = LoadRenderTexture(VW, VH);
     lightRT = LoadRenderTexture(VW, VH);
+    LoadArt();
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
     {
         // Latin-1 plus curly quotes and ellipsis, rendered big and mipmapped so it stays soft at any size
@@ -3521,6 +2740,7 @@ int main() {
 #else
     SetTargetFPS(60);
     while (!WindowShouldClose()) UpdateDrawFrame();
+    UnloadArt();
     CloseWindow();
 #endif
     return 0;

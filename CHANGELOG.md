@@ -2,6 +2,46 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.11.0
+Built on the branch `fable-visuals-20261112`, on top of the v0.10.0 audit branch. Not merged. A visual overhaul. No story changes, the story test is the same 56 memories and 8 endings.
+
+The prototype look is still the reference: a top-down house drawn in code, no image files. Everything is just drawn with a lot more care.
+
+**The world**
+- **Painted ground.** Floors, walls and snow are now painted once, pixel by pixel, when the game starts (`src/art/Bake.h`). Pine planks with knots and nails, a checkered kitchen, small bathroom tiles, carpet, cracked concrete in the basement.
+- **Every room has its own wall.** Pine panels in the living room, stars in your room, white tiles in the kitchen, wainscot in the hallway.
+- **Snow with shape.** Drifts, wind ripples on the plateau, ploughed banks along the road, snow up against the south wall, icicles under the eave.
+- **Rugs.** A red wool rug under the couch, a runner in the hallway, a town play mat in your room, a door mat.
+- **The plateau goes on.** South of the gate there used to be a black void. Now the road and the snow continue.
+
+**Roofs**
+- The house and the shed have roofs with snow on them. Step inside and the roof lifts away. Step out and it is back.
+- A brick chimney over the wood stove, with smoke. The storm tears the smoke sideways.
+- A string of coloured bulbs along the eave, and a porch lamp by the front door. They die with the power. They go red if you have gone dark.
+- From outside you no longer see into the house, only the lit windows. If you want the old view: Pause, Roofs, Off.
+
+**Light**
+- A new light pass. Soft round lights, warm pools from the windows on the snow, headlight beams up the road, and a glow on everything that shines (tree bulbs, the fire, the TV, the screens in the basement).
+- The night is a deeper blue. Indoors is warmer.
+- Snow falls in three depths and is drawn after the light, so you can see it at night. The storm adds white air.
+- A smooth vignette.
+
+**Things and people**
+- Every object is redrawn with an outline, a lit edge and a shaded edge. The tree has branches, a garland, 11 bulbs and a star. The flag waves properly.
+- People have shading, faces and clothes: your Christmas jumper, a parka and a red hat when you take the coat, Mom's apron, Dad's knitted band. The visitor has a long coat and a hat. You never quite see his eyes.
+- Doggo has a snout, a collar and a tongue.
+- Breath in the cold. Deeper footprints.
+- The car has headlights, tail lights and snow on the roof.
+
+**Screens**
+- **A title picture.** The house at 16:49, the car at the gate, and him halfway to the door.
+- **Faces in the dialogue box.** Whoever talks stands on the top edge of the box.
+- Panels have a soft shadow.
+
+**Under the hood**
+- New files: `src/art/Bake.h`, `src/art/Sprites.inc`, `src/art/WorldDraw.inc`. `main.cpp` lost about 800 lines of drawing code to them.
+- A debug jump could leave the kid in the basement while the game thought he was upstairs. The camera now decides which floor to draw.
+
 ## What's in v0.10.0
 Built on the branch `fable-audit-20261112` after a full audit. Not merged. The audit and the story calls Claude made are in [docs/AUDIT-v0.10.md](docs/AUDIT-v0.10.md).
 
