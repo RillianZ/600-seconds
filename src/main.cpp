@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.15.2";
+static const char* kVersion = "v0.16.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -163,7 +163,10 @@ static bool vHunchSearch = false;
 static int vJukes = 0;
 static float vTaserT = 0, vTaserCD = 0, vNoReachT = 0, vPathCD = 0, taserFx = 0;
 static bool vCantReach = false;
-static Vector2 taserA{}, taserB{};      // the room plan after a hunch is a normal one, not "check every spot"
+static Vector2 taserA{}, taserB{};
+// v0.16 (Noah): at the knock Doggo goes to see who it is. 0 no, 1 on his way, 2 barking at him, 3 done
+static int doggoGuard = 0;
+static float doggoGuardT = 0, doggoStuckT = 0;      // the room plan after a hunch is a normal one, not "check every spot"
 static std::vector<int> vSpots;        // hiding spots (obj index) still to check in this room
 static int vRoom = -1, vSweep = 0, vSpotObj = -1;
 static bool vRoomDone[16] = {};
@@ -731,6 +734,8 @@ static void StartSearch(bool dadRan) {
     vSweep = 0; vPause = 0; vLostT = 0; vBarkT = 5; vSpotCooldown = 0; vSpotObj = -1;
     vHunchT = 18; vHunches = 0; vHunchSearch = false;
     vJukes = 0; vTaserT = vTaserCD = vNoReachT = vPathCD = 0; vCantReach = false;
+    // v0.16: unless he stays, is out, or is shut in somewhere, Doggo goes to the door
+    doggoGuard = (story.DoggoExists() && !story.doggoStay && !story.Tutorial()) ? 1 : 0; doggoGuardT = 6.0f; doggoStuckT = 0;
     ResetHunt();
     vPath.clear(); vSpots.clear(); vRoom = -1;
     if (dadRan) {
@@ -784,8 +789,8 @@ static void StartNextBeat() {
         if (b.type == BeatType::Flash) { flashT = 0.9f; continue; }
         if (b.type == BeatType::Bubble) { AddBubble(b.speaker, b.text); if (b.speaker == "Doggo" && IsBark(b.text)) Play("bark"); continue; }
         if (b.type == BeatType::Scene) {
-            sceneT = 0;
-            hidden = false;
+            bool keepHunt = b.id == "doggo_dies" && story.chase;   // v0.16: he put Doggo down mid-hunt. You stay where you are
+            if (!keepHunt) { sceneT = 0; hidden = false; }
             if (b.id == "doggo_dies") {
                 doggoShownDead = true; doggoDeadT = 0;
                 if (story.doggoDeadX >= 0) Snap(doggo, story.doggoDeadX, story.doggoDeadY);
@@ -1419,7 +1424,7 @@ static void DrawHUD() {
         std::string rs = std::string("DEBUG  reality: ") + ShiftName(story.shift) + "  streak " + std::to_string(story.cleanStreak) + "  [O]";
         if (scene == SceneMode::Chase) {
             static const char* vm[] = { "grace", "search", "chase", "lost", "check spot", "go to your spot", "investigate" };
-            rs += std::string("  hunt: ") + vm[(int)vmode] + "  sweep " + std::to_string(vSweep) + "  wet " + std::to_string((int)wetT);
+            rs += std::string("  hunt: ") + vm[(int)vmode] + "  sweep " + std::to_string(vSweep) + "  wet " + std::to_string((int)wetT) + "  dog " + std::to_string(doggoGuard) + "  jukes " + std::to_string(vJukes);
         }
         if (visitorBlind) rs += "  VISITOR BLIND";
         UIText(rs.c_str(), 8, VH - 22, 6, Color{ 120, 220, 140, 200 });
@@ -2391,7 +2396,10 @@ static void UpdateDrawFrame() {
             } else {
                 Target tg = FindTarget();
                 if (!tg.id.empty()) {
-                    if (story.ShouldHide(tg.id)) {
+                    if (tg.id == "doggo" && (doggoGuard == 1 || doggoGuard == 2) && story.chase) {
+                        // v0.16: you got to him in time
+                        doggoGuard = 3; story.OnDoggoCalled(); StartNextBeat();
+                    } else if (story.ShouldHide(tg.id)) {
                         hidden = true; hideT = 0; story.hideSpot = tg.id; breathHeardT = 0; gasped = false;
                         const Obj* o = nullptr;
                         for (auto& ob : story.world.objs) if (ob.id == tg.id) o = &ob;
@@ -2745,6 +2753,7 @@ static void UpdateDrawFrame() {
                     case VMode::Grace:
                         if (goTo(vGraceGoal, 34, 0)) {
                             vGraceWait -= dt;
+                            if (doggoGuard == 2) vGraceWait = std::max(vGraceWait, 0.5f);   // v0.16: busy with the dog
                             if (vGraceWait <= 0) { vmode = VMode::Search; PickNextRoom(); }
                         }
                         break;
@@ -2924,6 +2933,27 @@ static void UpdateDrawFrame() {
             if (story.t >= 35 * 60 && story.t < 40 * 60 && !story.collection) { gx = 20; gy = 19; stop = 0; }
             if (story.collection && tut) { gx = 16; gy = 18; stop = 0; }
             if (story.inBasement) { gx = 28; gy = 11; stop = 0; }
+            // v0.16: to the door, to see who it is. He gives him a few seconds. Then he doesn't
+            if (scene == SceneMode::Chase && story.chase && (doggoGuard == 1 || doggoGuard == 2) && !story.doggoStay) {
+                gx = TX(visitor.pos.x); gy = TX(visitor.pos.y); stop = 20;
+                float dv = std::hypot(doggo.pos.x - visitor.pos.x, doggo.pos.y - visitor.pos.y);
+                if (doggoGuard == 1) {
+                    gMover = 2;
+                    Vector2 st = NextStep(doggo.pos, gx, gy, false);
+                    gMover = 0;
+                    bool moves = TX(st.x) != TX(doggo.pos.x) || TX(st.y) != TX(doggo.pos.y) || dv < 30;
+                    doggoStuckT = moves ? 0 : doggoStuckT + dt;
+                    if (doggoStuckT > 0.8f) doggoGuard = 3;                       // shut in. He scratches at the door, and lives
+                    if (dv < 26) { doggoGuard = 2; story.OnDoggoAtDoor(); StartNextBeat(); }
+                } else if (!beatActive) {
+                    doggoGuardT -= dt;
+                    if (barkT <= 0 && GetRandomValue(0, 30) == 0) barkT = 1.6f;
+                    if (doggoGuardT <= 0) {
+                        doggoGuard = 3;
+                        story.OnDoggoPutDown(TX(doggo.pos.x), TX(doggo.pos.y)); StartNextBeat();
+                    }
+                }
+            }
             float dd = std::hypot(doggo.pos.x - player.pos.x, doggo.pos.y - player.pos.y);
             if (!story.doggoStay) {
                 gMover = 2;
@@ -2937,7 +2967,10 @@ static void UpdateDrawFrame() {
             bool sameRoom = story.world.RoomAt(TX(doggo.pos.x), TX(doggo.pos.y)) == story.world.RoomAt(TX(player.pos.x), TX(player.pos.y));
             story.doggoWithKid = story.collection && !tut && !story.doggoStay && sameRoom && dd < TS * 6;
             // instability, or the man at the door: barking fits
-            if ((story.Act() >= 2 || scene == SceneMode::Chase) && !beatActive && barkT <= 0 && GetRandomValue(0, scene == SceneMode::Chase ? 200 : 2400) == 0) { barkT = 2.5f; }
+            // v0.16 (Noah): in the hunt he only barks when the man is in the same room. Otherwise the whole hunt is barking
+            bool withHim = story.world.RoomAt(TX(doggo.pos.x), TX(doggo.pos.y)) == story.world.RoomAt(TX(visitor.pos.x), TX(visitor.pos.y)) && visitor.visible;
+            if (scene == SceneMode::Chase && !withHim) barkT = std::min(barkT, 0.0f);
+            if ((scene == SceneMode::Chase ? withHim : story.Act() >= 2) && !beatActive && barkT <= 0 && GetRandomValue(0, scene == SceneMode::Chase ? 200 : 2400) == 0) { barkT = 2.5f; }
             if (barkT > 0) {
                 barkT -= dt;
                 if (std::fmod(barkT, 0.35f) < dt) { Play("bark"); barkText = GetRandomValue(0, 1) ? "WOOF" : "WOOF WOOF"; AddBubble("Doggo", barkText, 0.6f); }

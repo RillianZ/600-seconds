@@ -122,6 +122,9 @@ const std::vector<AchievementEntry>& AllAchievements() {
         {"Not a Dog", "Go and see what Doggo growls at."},
         {"Out Back", "Find all six things somebody left out back."},
         {"Nobody Left", "Leave him nobody to make pay. Then last the whole hunt."},
+        {"Called Back", "Get Doggo away from the door in time."},
+        {"Asked and Answered", "Ask the same thing until they've had enough."},
+        {"Dad Jokes", "Hear every joke Dad has."},
     };
     return a;
 }
@@ -211,6 +214,9 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"doggo_gate", "Doggo", "Doggo hides from him",
          "Doggo won't go near the man at the gate. He hides behind my legs.",
          "Bring Doggo to meet the visitor."},
+        {"doggo_door", "Doggo", "He goes to see who it is",
+         "When the man knocks, Doggo goes to the door to see who it is. Unless I told him to stay, let him out, or shut him in somewhere. The man gives him a few seconds. Then he doesn't.",
+         "Where does Doggo go when somebody knocks?"},
         {"doggo_stay", "Doggo", "He'll jump in front of me",
          "When the man gets close, Doggo jumps between us. Tell him to stay. Or shut him behind a door. He can't open doors.",
          "Doggo would do anything for you."},
@@ -775,6 +781,7 @@ NpcState Story::Dad() const {
     if (dadLocked) { n.x = 35; n.y = 8; return n; }
     if (collection) { n.x = 18; n.y = 17; return n; }
     if (t < 8 * 60) { n.x = 24; n.y = 16; return n; }
+    if (t >= 36 * 60 && t < 38 * 60) { n.x = 28; n.y = 25; return n; }   // v0.16: an armful of firewood before the storm
     if (t < 40 * 60) { n.x = 35; n.y = 8; return n; }
     // v0.10: every Christmas Eve at 16:44 he checks that the key is still under the flagpole
     if (t >= 43 * 60 + 30 && t < 45 * 60 + 30 && dadAtt != Attitude::Broken && dadAtt != Attitude::Scared) { n.x = 11; n.y = 26; return n; }
@@ -984,6 +991,7 @@ void Story::BeginLoop() {
     momBathLocked = bathLockDark = false; huntStart.clear(); momRoomNow = Room::Kitchen;
     doorGreeted = carHidden = false;
     windowBanged = tongueStuck = backyardCold = false;
+    asked.clear(); nagMom = nagDad = 0; dadJokes = 0;
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
@@ -1212,6 +1220,25 @@ void Story::CheckEvents(float prev, float now, int px, int py) {
             }
             if (doggoOut) Say("Mom", "And where's the dog? ...Fine. He'll scratch at the door when he's cold.");
         }
+    }
+    // v0.16 (Noah): Dad has more of a day. Only when you're close enough to hear it
+    {
+        NpcState d = Dad();
+        bool nearDad = DadFree() && d.visible && std::abs(d.x - px) + std::abs(d.y - py) <= 9;
+        if (nearDad && Crossed(prev, now, 4) && Once("dad_paper") && fresh(4))
+            Bubble("Dad", Tutorial() ? "Minus twenty-five, it says. Your nose'll fall off, buddy." : "(behind the paper) Minus twenty-five. Road closes at five. Same as always.");
+        if (nearDad && Crossed(prev, now, 15) && Once("dad_gen") && fresh(15))
+            Bubble("Dad", "(to the generator) Come on, old girl. Don't do this to me tonight.");
+        if (nearDad && Crossed(prev, now, 25) && Once("dad_whistle") && fresh(25))
+            Bubble("Dad", Stage() >= 2 ? "(he whistles. It's her song. He stops halfway.)" : "(whistling something off-key)");
+        if (nearDad && Crossed(prev, now, 33) && Once("dad_copy") && fresh(33) && !Tutorial())
+            Bubble("Dad", "(quietly, into the radio) ...Copy. No change. Out.");
+        if (nearDad && Crossed(prev, now, 36) && Once("dad_wood") && fresh(36))
+            Bubble("Dad", firewoodDone ? "Somebody already brought wood in? Huh. Good man." : "Wood for the stove. Somebody forgot their chore.");
+        if (nearDad && Crossed(prev, now, 41) && Once("dad_kitchen") && fresh(41))
+            Bubble("Dad", tainted ? "(to Mom, low) Has he said anything to you? ...He keeps looking at the door." : "(to Mom) Smells good, love. Ribbe again?");
+        if (nearDad && Crossed(prev, now, 47) && Once("dad_storm") && fresh(47))
+            Bubble("Dad", "There it is. Storm's here. Everybody inside, and nobody opens that door.");
     }
     if (Crossed(prev, now, 45) && Once("nisse_soon") && fresh(45) && DadFree() && !tainted)
         Bubble("Dad", "Julenissen comes at ten to five, buddy. Better be good.");
@@ -2292,6 +2319,12 @@ std::vector<ChoiceOpt> Story::DadQuestions() const {
     if (Knows("basement_files")) o.push_back({"d_retire", "What will you do when you retire?", true});
     if (Knows("leash")) o.push_back({"d_scar", "What's that behind your ear?", true});
     if (Knows("the_tape")) o.push_back({"d_tape", "\"Subject is resisting.\"", true});
+    // v0.16: more for Dad
+    if (Knows("no_car")) o.push_back({"d_car", "Why don't we have a car?", true});
+    if (Knows("handlers")) o.push_back({"d_real", "Are you even my dad?", true});
+    if (Knows("grave_05")) o.push_back({"d_05", "Who was zero-five?", true});
+    if (Knows("small_prints")) o.push_back({"d_prints", "Who made the small footprints out back?", true});
+    if (Knows("collector")) o.push_back({"d_man", "The man at the door wears a watch like mine.", true});
     if (shift == Shift::Sister && sisterNoticed) o.push_back({"d_sister", "Who's in the bathroom?"});
     return o;
 }
@@ -2322,6 +2355,7 @@ void Story::KnifeCheck() {
 // ============================================================ choices
 void Story::Choose(const std::string& id, int px, int py) {
     (void)px; (void)py;
+    if (Nag(id)) return;   // v0.16: you asked that already
     if (id.rfind("ft_", 0) != 0 && id != "none") playStreak = 0;   // anything else breaks the gaming streak
     // ---- v0.7 doors
     if (id.rfind("dr_", 0) == 0) {
@@ -2736,6 +2770,72 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("You", "(He sounded bored on the tape. He doesn't sound bored now.)");
         dadAtt = Attitude::Scared;
         Once("dad_sorry_scared");
+    } else if (id == "d_car") {
+        Say("You", "Why don't we have a car?");
+        Say("Dad", "Car's a liability up here. Freezes, slides off the road, eats money.");
+        Say("You", "(The man has one. It doesn't seem to freeze.)");
+    } else if (id == "d_real") {
+        Say("You", "Are you even my dad?");
+        Say("Dad", "(a long pause) I taught you to ride a bike. In the hallway, because of the snow. You hit every wall.");
+        Say("Dad", "(quieter) I remember that. Whatever else. I remember that.");
+    } else if (id == "d_05") {
+        solemn = true;
+        Say("You", "Who was zero-five?");
+        Say("", "(The wrench stops.)");
+        Say("Dad", "Where did you hear that number?");
+        Say("You", "Behind the chain fence. There's a cross.");
+        Say("Dad", "(he puts the wrench down very carefully) You don't go behind the chain fence. Not ever. Do you understand me?");
+        Say("Dad", "(then, almost too low to hear) ...He was a good kid too.");
+        solemn = false;
+        if (dadAtt == Attitude::Normal) dadAtt = Attitude::Cold;
+    } else if (id == "d_prints") {
+        Say("You", "Who made the small footprints out back?");
+        Say("Dad", "Hares. Big ones this winter.");
+        Say("You", "They have boots.");
+        Say("Dad", "(he doesn't look up) ...Big hares.");
+    } else if (id == "d_man") {
+        Say("You", "The man at the door wears a watch like mine.");
+        Say("Dad", "(he goes grey) Lots of people have watches, buddy.");
+        Say("You", "Scratched. The strap replaced. Like somebody wore it his whole life.");
+        Say("Dad", "(he checks his own wrist without meaning to) ...Go inside. Stay with your mother.");
+    } else if (id == "d_joke") {
+        static const char* jokes[] = {
+            "Why don't skeletons go out in the snow? They've got no body to go with. (he laughs at his own joke for a long time)",
+            "What do you call a reindeer with no eyes? No idea. (he waits) NO-EYE-DEER. Come on, that's a good one.",
+            "How does Julenissen take pictures? With his North Pole-aroid. (he looks very pleased with himself)",
+        };
+        if (dadJokes < 3) {
+            Say("You", "Tell me a joke.");
+            Say("Dad", jokes[dadJokes]);
+            if (++dadJokes == 3) Achieve("Dad Jokes");
+            if (Stage() >= 2 && dadJokes == 3) Say("You", "(Same three jokes. Same order. Every loop. I don't think he knows that either.)");
+        } else {
+            Say("Dad", "I'm out, buddy. Fresh out. That was the whole act.");
+            Say("Dad", "(he thinks) ...Okay, one more. Knock knock.");
+            Say("You", "(I don't say who's there. Not today.)");
+        }
+    } else if (id == "d_storm") {
+        Say("You", "Is the storm bad?");
+        Say("Dad", Storm() ? "Listen to it. Worst one in years. Nobody's getting up that road tonight." : "Worst one in years, they're saying. Road closes at five. Nobody in, nobody out.");
+        if (Stage() >= 2) Say("You", "(Somebody gets in.)");
+    } else if (id == "d_army") {
+        Say("You", "Were you in the army?");
+        Say("Dad", "Something like that. A long time ago.");
+        Say("Dad", "(he holds out his hand) Pass me that. The ten. Thanks.");
+        Say("You", "(He changed the subject with a wrench. He always does.)");
+    } else if (id == "d_mom") {
+        Say("You", "How did you meet Mom?");
+        Say("Dad", "(he smiles at the generator) At work. She was the only one who laughed at my jokes.");
+        Say("Dad", "Still is, some days.");
+        if (Stage() >= 2) Say("You", "(He says work like it's a place I've been.)");
+    } else if (id == "d_present") {
+        Say("You", "What did you get me?");
+        Say("Dad", zuldaOpened ? "You already peeked, didn't you. I can tell. You've got the face." : "Socks. Obviously. Wool ones. You'll thank me in January.");
+        if (Knows("presents")) Say("You", "(The boxes are empty. Every one of them. He doesn't know I know.)");
+    } else if (id == "d_back") {
+        Say("You", "That generator is junk. You've been fixing it for weeks.");
+        Say("Dad", tainted ? "(he doesn't answer. He keeps the workbench between you.)" : "Hey. Easy. It's older than you and it still works harder.");
+        ChangeMood(-1);
     } else if (id == "d_watch") {
         Say("Dad", "Where did you... (you can watch him check the cabinet key in his head)");
         Say("Dad", "Give me that.");
@@ -3748,6 +3848,13 @@ void Story::Interact(const std::string& id, int px, int py) {
         std::vector<ChoiceOpt> o = {{"d_what", "What are you doing?"}};
         if (dadInShed && !helpedDad) o.insert(o.begin(), {"d_help", "Need help? (15 min)"});
         if (!dadInShed && !Tutorial()) o.push_back({"d_cards", "Wanna play cards? (10 min)"});
+        // v0.16 (Noah): Dad gets as much to say as Mom
+        o.push_back({"d_joke", "Tell me a joke."});
+        o.push_back({"d_storm", "Is the storm bad?"});
+        if (Stage() >= 1) o.push_back({"d_army", "Were you in the army?"});
+        if (!Tutorial()) o.push_back({"d_mom", "How did you meet Mom?"});
+        if (!Tutorial()) o.push_back({"d_present", "What did you get me?"});
+        if (!Tutorial()) o.push_back({"d_back", "[Talk back] That generator is junk."});
         if (size_t n = DadQuestions().size()) o.push_back({"d_ask", "Ask about something I remember. (" + std::to_string(n) + ")", true});
         if (held == Item::BabyWatch) o.push_back({"d_watch", "Show him the tiny watch."});
         if (hasKnife && dadAtShed && darkPoints >= DARK_INTERROGATE && !Knows("dad_key"))
@@ -3842,6 +3949,66 @@ void Story::Interact(const std::string& id, int px, int py) {
     } else {
         Say("You", "(Huh.)");
     }
+}
+
+// ============================================================ v0.16: parents get tired of you
+bool Story::Nag(const std::string& id) {
+    // the plain talk topics. Actions, memories that change things and menus are left alone
+    static const std::set<std::string> momTalk = {"m_dinner", "m_allow", "m_nisse", "m_born", "m_baby", "m_pickup", "m_phone", "m_real", "m_car",
+                                                  "m_weeks", "m_chair", "m_juice", "m_scar", "m_back", "m_snack"};
+    static const std::set<std::string> dadTalk = {"d_what", "d_pickup", "d_report", "d_scar", "d_retire", "d_flag", "d_storm", "d_army", "d_mom",
+                                                  "d_present", "d_back", "d_car", "d_real", "d_05", "d_prints", "d_man"};
+    bool mom = momTalk.count(id) > 0, dad = dadTalk.count(id) > 0;
+    if (!mom && !dad) return false;
+    if (asked[id]++ == 0) return false;   // the first time they answer properly
+    int& n = mom ? nagMom : nagDad;
+    ++n;
+    if (mom) {
+        if (n == 1) Say("Mom", tainted ? "(she doesn't turn around) I answered that." : id == "m_snack" ? "You just had one. Nice try." : "I already told you, sweetie.");
+        else if (n == 2) { Say("Mom", "Kiddo. What did I just say? Go find something to do."); ChangeMood(-1); }
+        else if (n == 3) { Say("Mom", "(she puts the dish down hard) One more time. I dare you."); ChangeMood(-1); }
+        else {
+            Say("Mom", "That's it. I'm not answering the same question all day.");
+            Achieve("Asked and Answered");
+            Ground();
+        }
+    } else {
+        if (n == 1) Say("Dad", tainted ? "(he keeps his eyes on your hands) ...Same answer as before, buddy." : "Asked and answered, buddy.");
+        else if (n == 2) Say("Dad", "(he sighs through his nose) Go bother your mother for a bit.");
+        else if (n == 3) { Say("Dad", "Buddy. I'm working. Out."); ChangeMood(-1); }
+        else {
+            Say("Dad", "Right. Your room. Ten minutes. Go on, march.");
+            Achieve("Asked and Answered");
+            FadeFor(Dur(10), "Sent to your room", 5, 6);
+            inBasement = false;
+            if (dadAtt == Attitude::Normal) dadAtt = Attitude::Cold;
+            Say("You", "(He didn't lock the door. Dad never locks the door.)");
+        }
+    }
+    return true;
+}
+
+// ============================================================ v0.16: Doggo at the door
+void Story::OnDoggoAtDoor() {
+    if (!chase || !DoggoExists()) return;
+    if (Once("doggo_door_bark")) Bubble("The visitor", "(to the dog, quiet) Hey, boy. Easy. Where's the kid?");
+}
+void Story::OnDoggoCalled() {
+    if (!chase) return;
+    Bubble("You", "Doggo! HERE!");
+    Bubble("The visitor", "Go on, then. Good dog.");
+    AddClue("doggo_door");
+    Achieve("Called Back");
+}
+void Story::OnDoggoPutDown(int x, int y) {
+    if (!chase || !DoggoExists()) return;
+    // no fade, no cut: it happens while you're still hiding
+    doggoDead = true; doggoDeadX = x; doggoDeadY = y;
+    Bubble("The visitor", "Sorry, boy.");
+    Sound("bang");
+    SceneBeat("doggo_dies");
+    Bubble("You", "(No. NO.)");
+    AddClue("doggo_door");
 }
 
 // ============================================================ v0.15: outside

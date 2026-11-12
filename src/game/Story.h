@@ -239,6 +239,10 @@ public:
     bool windowBanged = false;                 // your window sticks in the cold. The first time each loop it needs a bang
     bool tongueStuck = false;                  // the flagpole. Once a loop is plenty
     bool backyardCold = false;                 // the first time out back without the jacket you notice
+    // v0.16 per loop: Noah. Parents get tired of the same question, and Doggo goes to the door
+    std::map<std::string, int> asked;          // how many times you asked this topic this loop
+    int nagMom = 0, nagDad = 0;                // how many times you pushed the same thing on them
+    int dadJokes = 0;
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -282,6 +286,10 @@ public:
     void OnLitUp();                           // his torch found you from far away, out in the dark
     void OnHusky();
     void TooColdToLeave();
+    // v0.16 (Noah): at the knock Doggo goes to see who it is, unless he stays, is out, or is shut in
+    void OnDoggoAtDoor();                     // he's barking at the man in the doorway
+    void OnDoggoCalled();                     // you called him back in time
+    void OnDoggoPutDown(int x, int y);        // you didn't
     void OnTased();
     bool NobodyLeft() const { return momLocked && dadLocked && (doggoOut || shift == Shift::NoDoggo) && !doggoDead; }   // v0.15.2: nobody he can reach to make pay                           // v0.15.2: you kited him one time too many. He doesn't run after you any more                    // v0.15.1: loop 1. You walk up to the edge of the yard and turn back                           // you walked up to the dog at the far fence. Nobody there
     bool BoardSpells() const { return (tainted || Act() >= 3) && t >= 45 * 60; }   // the lights behind the shed spell at you
@@ -388,6 +396,7 @@ private:
     void HingeCar();           // v0.14: E, under the blanket in his car
     void GoneEnding();         // v0.14: E, you stayed in the car through the knock
     void PieceCheck();
+    bool Nag(const std::string& id);   // v0.16: asked the same thing again. True if the parent answered with that instead
     void Egg(const std::string& id);   // v0.15: one of the six things out back
     void AddDark(int n) { darkPoints = std::min(DARK_MAX, darkPoints + n); darkThisLoop += n; }
     void ScreenTimeEnding();

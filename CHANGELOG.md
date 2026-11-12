@@ -2,7 +2,25 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
-## What's in v0.15.2
+## What's in v0.16.0
+Same branch, `claude-batch-v0.15-outside`, on top of v0.15.2. From Noah's playtest: Doggo, Dad, and parents who feel less stiff. The story test now has 74 memories and 9 endings.
+
+**Doggo at the door**
+- In the hunt Doggo only barks when the man is in the same room. No more barking all ten minutes from the other end of the house.
+- When the hunt starts, Doggo goes to see who's at the door. Unless you told him to stay, let him out, or shut him in somewhere he can't get out of.
+- He barks at the man in the doorway. The man stays busy with him, which buys you a few seconds. After about six seconds he puts him down, right there, while you're still hiding.
+- Get to Doggo before that and call him (E) and he comes with you. Achievement Called Back.
+- New memory: He goes to see who it is.
+
+**Dad has a day now**
+- He reads the paper, swears at the generator, whistles (her song, once you know it), says "Copy. No change." into the radio, carries in firewood at 16:36, says something to Mom in the kitchen and calls everybody inside when the storm hits. Only when you're close enough to hear.
+- Six new things to talk about: a joke (three of them, achievement Dad Jokes), the storm, the army, how he met Mom, your present, and talking back about the generator.
+- Five new things to ask him once you know them: the car, are you even my dad, who was zero-five (he does not like that one), the small footprints, and the man's watch.
+
+**Asking the same thing again**
+- Mom and Dad answer properly once. Ask the same thing again and they get shorter, then annoyed, then cross. The fifth time Mom grounds you and Dad sends you to your room for ten minutes. Achievement Asked and Answered.
+
+
 Same branch, `claude-batch-v0.15-outside`. Noah's playtest of the hunt: too much sitting and waiting, then he kills your parents. More chase now.
 
 - **The hunt is longer.** 16:50 to 17:00 now takes about five real minutes instead of two. The debug panel (O) has "Hunt clock": real time (ten minutes), half (the new default) or the old speed.

@@ -74,6 +74,7 @@ static void Drain() {
                 else if (chasePlan == "outside") s.OnLeftPremises();
                 else if (chasePlan == "litup") { s.OnLitUp(); s.OnCaught(); }   // v0.15: his torch, from across the yard
                 else if (chasePlan == "taser") s.OnTased();                      // v0.15.2: kited him one time too many
+                else if (chasePlan == "doggodoor") { assert(s.DoggoExists()); s.OnDoggoAtDoor(); s.OnDoggoPutDown(19, 19); assert(s.doggoDead && s.chase); s.OnCaught(); }   // v0.16
                 else if (chasePlan == "empty") { s.momLocked = s.dadLocked = true; s.doggoOut = true; At(9, 5); s.kidHidden = true; }   // v0.15.2: nobody he can reach
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
             }
@@ -711,6 +712,23 @@ int main(int argc, char** argv) {
     CleanLoop();
     FinishLoop("taser");
     assert(s.Knows("taser"));
+    CleanLoop();
+    Header("LOOP 16: v0.16. Doggo goes to the door, parents get tired of the same question, Dad's jokes");
+    {
+        Story m; m.memory = {"loop"}; m.loop = 3; m.BeginLoop(); m.beats.clear();
+        for (int i = 0; i < 4; ++i) { m.Choose("m_dinner", 8, 15); assert(!m.grounded); }
+        m.Choose("m_dinner", 8, 15); assert(m.grounded && m.achievements.count("Asked and Answered"));
+        Story d; d.memory = {"loop"}; d.loop = 3; d.BeginLoop(); d.beats.clear();
+        for (int i = 0; i < 5; ++i) d.Choose("d_storm", 35, 7);
+        assert(d.dadAtt == Attitude::Cold && d.nagDad == 4);
+        for (int i = 0; i < 3; ++i) d.Choose("d_joke", 35, 7);
+        assert(d.achievements.count("Dad Jokes"));
+        Story g; g.memory = {"loop"}; g.loop = 3; g.BeginLoop(); g.beats.clear(); g.collection = g.chase = true;
+        g.OnDoggoAtDoor(); g.OnDoggoCalled(); assert(g.Knows("doggo_door") && g.achievements.count("Called Back") && g.DoggoExists());
+        std::puts("  five times the same question: grounded by Mom, sent off by Dad. Three jokes. Doggo called back in time");
+    }
+    FinishLoop("doggodoor");
+    assert(s.Knows("doggo_door"));
     CleanLoop();
     FinishLoop("empty");
     assert(s.Knows("nobody_left") && s.endings.count("empty") && s.achievements.count("Nobody Left"));
