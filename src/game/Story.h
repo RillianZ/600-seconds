@@ -243,6 +243,11 @@ public:
     std::map<std::string, int> asked;          // how many times you asked this topic this loop
     int nagMom = 0, nagDad = 0;                // how many times you pushed the same thing on them
     int dadJokes = 0;
+    // v0.17 per loop: the true ending. He's down, you have all five pieces, and you say them to him
+    std::vector<std::string> toldPieces;       // in the order you said them. The first one comes back at the very end
+    bool remembered = false;                   // all five: he knows the house. He knows he was you
+    bool visitorTied = false;                  // Noah's answer 10: knocked down three times, then tied with the tripwire
+    int tiedTalk = 0;
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -291,6 +296,9 @@ public:
     void OnDoggoCalled();                     // you called him back in time
     void OnDoggoPutDown(int x, int y);        // you didn't
     void OnTased();
+    // v0.17: the true ending. Once you start telling him the pieces, or once he's tied, he stays down
+    bool HoldDown() const { return visitorDowned && (visitorTied || !toldPieces.empty()); }
+    bool ParentsOut() const { return (!MomHere() || momOnFloor) && (!DadFree() || dadOnFloor); }   // answer 10: nobody else in the room
     bool NobodyLeft() const { return momLocked && dadLocked && (doggoOut || shift == Shift::NoDoggo) && !doggoDead; }   // v0.15.2: nobody he can reach to make pay                           // v0.15.2: you kited him one time too many. He doesn't run after you any more                    // v0.15.1: loop 1. You walk up to the edge of the yard and turn back                           // you walked up to the dog at the far fence. Nobody there
     bool BoardSpells() const { return (tainted || Act() >= 3) && t >= 45 * 60; }   // the lights behind the shed spell at you
     bool Warm() const { return chase && kidHidden && hideSpot == "beast"; }
@@ -396,6 +404,12 @@ private:
     void HingeCar();           // v0.14: E, under the blanket in his car
     void GoneEnding();         // v0.14: E, you stayed in the car through the knock
     void PieceCheck();
+    // v0.17: the true ending, woven into the dark path (branches map, section 6)
+    void TellPiece(const std::string& id);
+    void Remember();
+    void SameHouseEnding();    // finish it: you take the coat, the watch and the radio. Confirmed
+    void AfterEnding();        // don't: he snaps the dose, and keeps the house
+    void TiedBells();          // 17:00 with him still on the floor
     bool Nag(const std::string& id);   // v0.16: asked the same thing again. True if the parent answered with that instead
     void Egg(const std::string& id);   // v0.15: one of the six things out back
     void AddDark(int n) { darkPoints = std::min(DARK_MAX, darkPoints + n); darkThisLoop += n; }

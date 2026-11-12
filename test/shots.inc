@@ -1,4 +1,4 @@
-// 600 Seconds - test/shots.inc (v0.15)
+// 600 Seconds - test/shots.inc (v0.15, v0.17: traps N, knife, lockparents)
 // A tiny script runner for screenshots on a virtual screen (Xvfb). Only built with -DSHOTS, never in a release.
 //   SHOTS=script.txt ./600s
 // One command per line:
@@ -20,6 +20,8 @@
 //   hide ID             hide in a spot
 //   wait N              let N frames pass
 //   shot FILE           save a screenshot next to the exe
+//   traps N             rig the first N traps (marbles, tripwire, paint) on the front step
+//   knife | lockparents hold the knife | Mom bolted in the basement and Dad barred in the shed
 //   quit
 #include <fstream>
 #include <sstream>
@@ -78,6 +80,9 @@ static void ShotsStep() {
         else if (c == "debug") debugMode = true;
         else if (c == "jukes") ss >> vJukes;
         else if (c == "doggo") { int x, y; ss >> x >> y; Snap(doggo, x, y); }
+        else if (c == "traps") { int n; ss >> n; const char* t[3] = {"marbles", "tripwire", "paint"}; for (int i = 0; i < n && i < 3; ++i) story.trapsSet.insert(t[i]); story.traps = n; }   // v0.17
+        else if (c == "knife") story.Hold(Item::Knife, true);
+        else if (c == "lockparents") { story.momLocked = story.dadLocked = true; }
         else if (c == "nobodyleft") { story.momLocked = story.dadLocked = true; story.doggoOut = true; }
         else if (c == "skip") { story.beats.clear(); beatActive = false; }
         else if (c == "hold" || c == "press") { std::string k; int n = 1; ss >> k >> n; shotHoldKey = ShotKey(k); shotHoldN = c == "press" ? 1 : n; return; }

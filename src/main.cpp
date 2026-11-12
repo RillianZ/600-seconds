@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.16.0";
+static const char* kVersion = "v0.17.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -1346,7 +1346,9 @@ static void DrawChaseBanner() {
     UIText(t, VW / 2.0f - UIMeasure(t, 10) / 2, 40, 10, Fade(Color{ 240, 70, 70, 255 }, 0.6f + 0.4f * p));
     if (scene == SceneMode::Chase) {
         const char* h = "";
-        if (story.visitorDowned) h = "He's down. For now.";
+        if (story.visitorTied) h = "He's tied up. The bells are still coming.";
+        else if (story.HoldDown()) h = "He's not getting up. He's listening.";
+        else if (story.visitorDowned) h = "He's down. For now.";
         else if (hidden) {
             bool near = vmode == VMode::GoToHide || (vmode == VMode::CheckSpot && vSpotObj >= 0 &&
                         story.world.RoomAt(story.world.objs[vSpotObj].x, story.world.objs[vSpotObj].y) == story.world.RoomAt(TX(hidePos.x), TX(hidePos.y)));
@@ -2621,6 +2623,7 @@ static void UpdateDrawFrame() {
                     story.visitorStun -= dt;
                     visitor.dir = (int)(globalT * 6) % 4;
                 } else if (downedT > 0) {
+                    if (story.HoldDown()) downedT = std::max(downedT, 0.5f);   // v0.17: tied, or listening. He isn't getting up
                     downedT -= dt;
                     visitor.dir = 0;
                     if (downedT <= 0 && story.visitorDowned) { story.OnVisitorUp(); StartNextBeat(); vmode = VMode::Search; PickNextRoom(); }

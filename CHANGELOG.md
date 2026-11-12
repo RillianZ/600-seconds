@@ -2,6 +2,27 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.17.0
+New branch `claude-batch-v0.17-true-ending`, on top of v0.16.0 (`claude-batch-v0.15-outside`). The true ending, woven into the dark path, and the other half of Noah's answer 10: tying him up. The story test now has 76 memories and 11 endings. Every line is new and Claude's, for Noah to react to.
+
+**Tie him up**
+- Rig all three traps on the front step (marbles, tripwire, paint can). He goes down three times in one go.
+- While he's on the floor, walk up and press E: "Tie his hands with the tripwire." He stays down for the rest of the hour.
+- Talk to him and he only speaks in riddles, one at a time. Or sit by the door and wait for the bells.
+- He can't hurt anyone tied up, so no threats. At 17:00 he reports "Restrained. By the subject." and the hour starts over anyway. Memory: Not going anywhere. Achievement Knots.
+
+**He remembers**
+- With all five pieces, five new things to say to him while he's down: hum Mom's song, make him read the back of his watch, ask what reissue means, tell him he hasn't had his dose, tell him it's his last pickup.
+- Once you start, he stays down and listens. Each one gets something back.
+- After all five he remembers the house. He pulls you close and whispers the part nobody else hears: he stood where you're standing once, and what you'll do next time. If you didn't take the box off his belt, he hands it to you himself.
+- Memory: He remembers. Achievement He Remembers.
+
+**Two true endings**
+- **Same House.** Finish it. Only with nobody else in the room: Mom bolted or locked away, Dad barred in the shed (answer 10). Knife, or his own gun if you have no knife. You take his coat, his watch and his radio. "Confirmed." Next cycle you're the man at the window, and a small kid in a red sweater opens the door before you knock.
+- **After.** Don't. Works with the parents right there too. He snaps the dose in half and lies to Finse for you. At 16:00 his car is at the gate, early. He never comes in. Now two of you remember.
+- Both change with: where Mom and Dad are (basement, bathroom, shed, in the room), whether you hummed the song back to Mom, what happened to Doggo, how dark you are, whether you read Appendix C, whether you found the cross out back, knife or no knife, and which of the five things you said first (it comes back at the very end).
+- Ending cards say TRUE ENDING. Achievements Same House and After.
+
 ## What's in v0.16.0
 Same branch, `claude-batch-v0.15-outside`, on top of v0.15.2. From Noah's playtest: Doggo, Dad, and parents who feel less stiff. The story test now has 74 memories and 9 endings.
 

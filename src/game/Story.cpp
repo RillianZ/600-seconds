@@ -41,6 +41,9 @@ const std::vector<EndingEntry>& AllEndings() {
         {"paid", "They Paid", "Stay hidden. No matter what you hear."},
         {"bells", "One Good Hour", "Running doesn't work. You'd have to know that first. Then stay."},
         {"empty", "The Empty House", "Leave him nobody to make pay. Not even the dog. Then last until the bells."},
+        // v0.17: the true ending, two ways
+        {"samehouse", "Same House", "Five doors. Him on the floor. Nobody else in the room. Then finish it."},
+        {"after", "After", "Five doors. Him on the floor. Say all of it. Then don't."},
     };
     return e;
 }
@@ -125,6 +128,11 @@ const std::vector<AchievementEntry>& AllAchievements() {
         {"Called Back", "Get Doggo away from the door in time."},
         {"Asked and Answered", "Ask the same thing until they've had enough."},
         {"Dad Jokes", "Hear every joke Dad has."},
+        // v0.17: the true ending
+        {"Knots", "Knock him down three times. Then make sure he stays down."},
+        {"He Remembers", "Tell him all five things while he can't get up."},
+        {"Same House", "An ending. Five doors, then finish it."},
+        {"After", "An ending. Five doors, then don't."},
     };
     return a;
 }
@@ -272,6 +280,13 @@ const std::vector<MemoryEntry>& AllMemories() {
         {"nobody_left", "The visitor", "Nobody left to hurt",
          "Mom bolted in the basement, Dad barred in the shed, Doggo gone through the gate. I lasted to the bells. He sat down in Dad's chair and talked to the empty room. He said he never got that far. He always came out for them.",
          "Leave him nobody to make pay. Then last the whole hunt."},
+        // v0.17: answer 10 and the true ending
+        {"tied_up", "The visitor", "Not going anywhere",
+         "All three traps, and he went down hard. I tied his wrists with the tripwire. He didn't fight. He just talked in riddles until the bells, and then the hour started over anyway.",
+         "Knock him down three times. The tripwire is still lying there."},
+        {"he_remembers", "The visitor", "He remembers",
+         "He was on the floor and I told him all five. The song, the watch, reissue, the dose, his last pickup. He remembered the house. Then he whispered so only I could hear: he stood where I'm standing once, and the man on the floor told him all of it, and he didn't believe it either.",
+         "Five pieces. Say them to him while he can't get up."},
         {"they_paid", "The visitor", "He makes them pay",
          "If he can't find me, he starts on them. 16:57 a warning. 16:58 Dad. 16:59 Mom. I heard all of it.",
          "Stay hidden long enough."},
@@ -910,6 +925,9 @@ void Story::LoopOpener(const std::string& how) {
     else if (how == "ending:monster" || how == "ending:program") r = "A new 16:00. The same hands.";
     else if (how == "ending:screen") r = "I had spent a whole hour of my life on a paper plane. Well. The same hour.";
     else if (how == "ending:paid") r = "I had let them pay for me. The house didn't know. I did.";
+    else if (how == "tied") r = alt ? "My fingers still remembered the knots. They hadn't held. Nothing holds past 17:00." : "I had tied him up. He told me riddles. I could still hear one of them and I didn't like it.";
+    else if (how == "ending:samehouse") r = alt ? "16:00. I checked my hands first. Small. For now." : "My bed. My watch. Somewhere a coat that would fit me one day.";
+    else if (how == "ending:after") r = alt ? "Whatever he remembered, he would have to forget it again by 16:43." : "I looked at the gate first thing. No car yet. He didn't know me yet. Again.";
     if (r) { Narrate(r); return; }
     static const char* s1[] = {
         "16:00. Same bed. Same watch. Same me. Mostly.",
@@ -992,6 +1010,7 @@ void Story::BeginLoop() {
     doorGreeted = carHidden = false;
     windowBanged = tongueStuck = backyardCold = false;
     asked.clear(); nagMom = nagDad = 0; dadJokes = 0;
+    toldPieces.clear(); remembered = visitorTied = false; tiedTalk = 0;
     std::string how = lastEnd; lastEnd.clear();
     visitorTime = 50 * 60;
     firedEvents.clear();
@@ -1057,7 +1076,7 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
             (void)before;
             // v0.15.2 (Noah): more hunt before he starts on them, and more time between them
             static const int kThreatAt[3] = { 57 * 60 + 30, 58 * 60 + 40, 59 * 60 + 40 };
-            for (int n = 1; n <= 3; ++n) if (t >= kThreatAt[n - 1] && threats < n && !visitorChasing) { Threat(n); break; }
+            for (int n = 1; n <= 3; ++n) if (t >= kThreatAt[n - 1] && threats < n && !visitorChasing && !visitorDowned) { Threat(n); break; }
             // v0.8: the storm gets you if you stay out in it. A jacket buys time. Indoors you warm up again
             Room here = world.RoomAt(px, py);
             // v0.15 (Noah): without the jacket you don't make it across the yard. With it you can stay out
@@ -1072,7 +1091,7 @@ void Story::Tick(float realDt, bool waiting, int px, int py) {
             } else if (IsYard(here)) cold = std::max(0.0f, cold - realDt / 30.0f);
             else cold = std::max(0.0f, cold - realDt / 12.0f);
             if (cold >= 1.0f && Once("cold")) { ColdOut(); return; }
-            if (t >= HOUR && Once("tired")) { if (NobodyLeft()) EmptyHouseEnding(); else if (kidHidden) PaidEnding(); else TiredOut(); }
+            if (t >= HOUR && Once("tired")) { if (HoldDown()) TiedBells(); else if (NobodyLeft()) EmptyHouseEnding(); else if (kidHidden) PaidEnding(); else TiredOut(); }
         }
         return;
     }
@@ -1679,6 +1698,30 @@ void Story::SceneDone(const std::string& id) {
 
 void Story::VisitorChoice() {
     std::vector<ChoiceOpt> o;
+    // v0.17: the true ending. All five pieces, and him where he can't walk away from them
+    auto told = [&](const char* id) { return std::find(toldPieces.begin(), toldPieces.end(), id) != toldPieces.end(); };
+    if (visitorDowned && HingePieces() >= 5 && !remembered) {
+        if (!told("t_hum")) o.push_back({"t_hum", "(Hum Mom's song.)", true});
+        if (!told("t_watch")) o.push_back({"t_watch", "\"Read the back of your watch.\"", true});
+        if (!told("t_reissue")) o.push_back({"t_reissue", "\"Do you know what reissue means?\"", true});
+        if (!told("t_dose")) o.push_back({"t_dose", "\"You haven't had your dose.\"", true});
+        if (!told("t_last")) o.push_back({"t_last", "\"This is your last pickup.\"", true});
+    }
+    if (visitorTied) {
+        // Noah's answer 10: tied up he only talks in riddles
+        o.push_back({"t_talk", "Talk to him."});
+        o.push_back({"t_wait", "(Sit down by the door and wait for the bells.)"});
+        o.push_back({"none", "(Leave him.)"});
+        Choice(toldPieces.empty() ? "His hands are tied behind him. He's watching you." : "He's still tied up. He's listening now.", o);
+        return;
+    }
+    if (!toldPieces.empty()) {
+        // you started. He isn't going anywhere, and you aren't either
+        o.push_back({"none", "(Not yet. Back away.)"});
+        Choice("He's still on the floor. He's listening now.", o);
+        return;
+    }
+    if (visitorDowned && traps >= 3 && trapsSet.count("tripwire")) o.push_back({"t_tie", "Tie his hands with the tripwire."});
     if (visitorDowned && hasKnife && tainted) o.push_back({"c_finish", "Finish it.", false, true});
     if (visitorDowned && !hasKnife) o.push_back({"c_kick", "Kick him while he's down."});
     if (visitorDowned && !Knows("collector")) o.push_back({"c_wrist", "Look at his wrist."});
@@ -1768,7 +1811,7 @@ void Story::OnLeftPremises() {
 }
 
 void Story::OnVisitorUp() {
-    if (!visitorDowned) return;
+    if (!visitorDowned || HoldDown()) return;
     visitorDowned = false;
     Say("The visitor", "(getting up, slow, one arm hanging wrong) ...Okay. That one hurt.");
 }
@@ -2293,6 +2336,237 @@ void Story::DeadSwitchLoop() {
     Beat e; e.type = BeatType::EndLoop; beats.push_back(e);
 }
 
+// ============================================================ v0.17: the true ending
+// Branches map, section 6. The final dark choice was already there in pieces: Appendix C, Noah's answer 10,
+// the Monster ending's "Confirmed". With all five pieces you get to say them to him while he's on the floor.
+// Every line here is Claude's, for Noah to react to.
+void Story::TellPiece(const std::string& id) {
+    solemn = true;
+    toldPieces.push_back(id);
+    if (id == "t_hum") {
+        Say("You", "(You hum it. Mom's song, the one from the kitchen. You don't know all of it. You hum what you know.)");
+        Say("", "(He stops breathing through his teeth. For a second he doesn't breathe at all.)");
+        Say("The visitor", "...Under the duvet. She stood in the door until I stopped. She thought I was asleep.");
+        Say("The visitor", "(very quiet) That's not yours. Where did you get that?");
+    } else if (id == "t_watch") {
+        Say("You", "Read the back of your watch.");
+        Say("", "(He turns his wrist over. He doesn't need the torch. His thumb finds the letters by itself.)");
+        Say("The visitor", "ANCHOR 06. Crooked.");
+        Say("The visitor", "I always thought I scratched that myself. In the car, the first night. So I'd have something.");
+        Say("You", "Dad did it. With a nail. Four days after. You wouldn't stop kicking.");
+        Say("The visitor", "(his thumb keeps going over it) ...Dad.");
+    } else if (id == "t_reissue") {
+        Say("You", "Do you know what reissue means?");
+        Say("The visitor", "(the radio voice, by itself) Wipe. Age. Reissue.");
+        Say("You", "Same house. Next cycle.");
+        Say("", "(He looks up past you, at the hall ceiling. At the crack in the light fitting.)");
+        Say("The visitor", "There's a crack up there shaped like a Y. I know that crack. How do I know that crack?");
+    } else if (id == "t_dose") {
+        Say("You", "You haven't had your dose.");
+        Say("", "(His hand goes to his coat. To the pen with the needle. It stays there.)");
+        Say("The visitor", "After. They want it after.");
+        Say("You", "That's why you know where I hide. The house is still in your head.");
+        Say("The visitor", "(a long breath out) ...Every spot. I don't know how I know. I just walk there.");
+    } else if (id == "t_last") {
+        Say("You", "This is your last pickup. Finse said so. I was in your car.");
+        Say("The visitor", "(it's almost a laugh) Under the blanket. Of course. I always was too.");
+        Say("The visitor", "Then where is he? The new collector?");
+        Say("", "(You don't say anything. You don't have to.)");
+        Say("The visitor", "(he looks at you for a long time) ...Oh.");
+    }
+    solemn = false;
+    if (toldPieces.size() >= 5) Remember();
+    else VisitorChoice();
+}
+
+void Story::Remember() {
+    solemn = true;
+    remembered = true;
+    Say("", "(Something goes out of his face. The calm. The script. What's left looks about twelve.)");
+    Say("The visitor", "The third stair creaks. Mom hums when she thinks nobody's listening. Dad says copy, no change, into a radio in the shed.");
+    Say("The visitor", "There was a dog. Not this one. A long time before this one.");
+    Say("The visitor", "I lived here.");
+    AddClue("he_remembers");
+    Achieve("He Remembers");
+    // answer 10: the line nobody else hears
+    bool momSees = MomHere() && !momOnFloor, dadSees = DadFree() && !dadOnFloor;
+    if (momSees || dadSees)
+        Say("", std::string("(He takes your collar, gently, and pulls you down until his mouth is at your ear. ") +
+                (momSees && dadSees ? "Mom and Dad are right there." : momSees ? "Mom is right there." : "Dad is right there.") + " They don't hear a word of it.)");
+    else Say("", "(He takes your collar, gently, and pulls you down until his mouth is at your ear. There's nobody left in the house who could hear. He whispers anyway.)");
+    Say("The visitor", "(whispering) I stood where you're standing. He was down here, where I am. Cut lip. Crooked watch.");
+    Say("The visitor", "(whispering) He told me the song, the watch, reissue, the dose, the last pickup. The same five. I didn't believe him either.");
+    Say("The visitor", switchTaken ? "(whispering) You took the box first. Good. So did I." : "(whispering) Always the box first. Always.");
+    if (Knows("grave_05")) Say("The visitor", "(whispering) Zero-five didn't know about the box. That's her out back, by the stream. They had me dig it.");
+    Say("The visitor", "(whispering) Next time you'll sit in a car at that gate for two minutes, breathing like you're counting. You'll look in that window and see a kid in a red sweater, and you'll think: that's not me. That was never me.");
+    Say("The visitor", "(whispering) And one day he opens the door before you knock. One of us always does, in the end.");
+    if (Knows("graduation")) Say("The visitor", "(whispering) They'll say outstanding. They said it to me.");
+    Say("The visitor", "(out loud now, tired) Your move, 06. It was mine once.");
+    if (!switchTaken) {
+        switchTaken = true;
+        Say("", "(He unclips the black box from his belt himself and puts it in your hand. The green light keeps blinking.)");
+        Say("The visitor", "Don't drop it. That's the one thing I got right.");
+    }
+    solemn = false;
+    std::vector<ChoiceOpt> o;
+    // answer 10: the kill only happens with nobody else in the room. Sparing him can happen in front of anyone
+    if (ParentsOut()) o.push_back({"t_kill", hasKnife ? "Finish it." : "Take the gun out of his coat.", false, true});
+    else Say("You", momSees ? "(Not with Mom standing right there. Not in front of her.)" : "(Not with Dad watching. Not in front of him.)");
+    o.push_back({"t_spare", hasKnife ? "Put the knife down." : "Sit down next to him."});
+    Choice("He's waiting. So is the house.", o);
+}
+
+void Story::SameHouseEnding() {
+    // finish it. You take the box, the coat and the job (Appendix C, D2, D4)
+    chase = false;
+    solemn = true;
+    int darkBefore = darkPoints;
+    bool knife = hasKnife;
+    std::string first = toldPieces.empty() ? "" : toldPieces.front();
+    darkPoints = DARK_MAX;
+    tainted = true;
+    FadeFor(0, "");
+    if (knife) Black("This time you remember deciding.");
+    else Black("You take the gun out of his coat. He lets you. He even shows you where the safety is.");
+    Black("He doesn't close his eyes. He watches you the whole time, like he's checking you do it right.");
+    Sound("bang");
+    Black("He doesn't get up. The box in your hand keeps blinking green. Nothing burns behind your ear.");
+    // where they are
+    if (momLocked) Black("Down in the basement, behind the bolt, Mom has stopped knocking. She heard it. She knows which one of you it was.");
+    else if (momBathLocked) Black(momRemorse ? "Behind the bathroom door Mom is humming. The song. Very quietly. She's guessed."
+                                             : "Behind the bathroom door Mom asks who's out there. Nobody answers her. Both answers would be true.");
+    else if (momOnFloor) Black("Mom is still on the floor. She'll wake up to this. Or she won't.");
+    if (shift == Shift::Sister) Black("Upstairs, behind a door, somebody is still singing.");
+    if (dadLocked) Black("Out in the shed Dad has stopped shouting. Through the gap in the boards his torch is pointed at the house. At the door. At you.");
+    else if (dadOnFloor || dadDown) Black("Dad is still on the floor. He's breathing. He'll wake up to this.");
+    Black("You take his coat. It comes down to your ankles. It smells like this house.");
+    Black("You take his watch. The strap goes round your wrist twice. ANCHOR 06, crooked. Your thumb finds it by itself.");
+    Black("You take his radio. It clicks before you've worked out the button.");
+    Black("\"Collector, confirm.\"");
+    Black("\"Confirmed.\"");
+    if (Knows("graduation")) Black("A pause. \"...Outstanding, 06. Come in.\"");
+    else Black("A pause. \"Copy, collector. Come in.\" Nobody asks why your voice is so high.");
+    // Doggo
+    if (doggoDead) Black("Doggo is lying by the door where he fell. You step over him. You'll step over him a lot.");
+    else if (DoggoExists()) Black("Doggo follows you all the way to the gate. You tell him to stay. He stays. He always listened to you.");
+    else if (doggoOut) Black("Somewhere out in the storm a dog barks at the car. He doesn't come any closer.");
+    // how dark you were before this
+    if (darkBefore >= DARK_REVEL) Black("You can't drive. You learn. It takes nine loops. You don't mind loops any more.");
+    else if (darkBefore >= DARK_TAINT) Black("You can't drive. The car can. It knows the road to Finse better than you know the house.");
+    else Black("You sit in his car for a long time with your hands in your lap. Then it starts by itself. Somebody at Finse is driving.");
+    Black("They wiped me. They aged me. They reissued me.");
+    Black("Snow on your shoulders. A black car at a gate. Two minutes, breathing like you're counting.");
+    Black(std::string("You stand at the living room window and look in. A tree. A woman in the kitchen") + (momRemorse ? ", humming" : "") + ". A man by the stove with a newspaper.");
+    Black("You walk up the path. Before you can knock, the door opens.");
+    Black("A small kid in a red sweater. Standing in the door. Just like that.");
+    if (first == "t_hum") Black("He's humming something. You know the tune. You don't know how.");
+    else if (first == "t_watch") Black("\"What's on the back of your watch?\" he asks.");
+    else if (first == "t_reissue") Black("\"Same house?\" he asks. You don't know what that means. You used to.");
+    else if (first == "t_dose") Black("\"Did you take your dose?\" he asks. You did. You took it after.");
+    else if (first == "t_last") Black("\"Is this your last one?\" he asks.");
+    Black("\"...You're supposed to wait for the knock,\" you say.");
+    Narrate(darkBefore >= DARK_TAINT ? "I know every spot he'll hide in. I don't know how I know. I just walk there."
+                                     : "He looks like nobody. He looks like me.");
+    solemn = false;
+    endings.insert("samehouse");
+    lastEnd = "ending:samehouse";
+    Achieve("Same House");
+    Beat e; e.type = BeatType::Ending; e.id = "samehouse"; e.speaker = "TRUE ENDING";
+    e.text = darkBefore >= DARK_TAINT ? "SAME HOUSE\n\nHe took the box, the coat and the job. Next cycle he knocks."
+                                      : "SAME HOUSE\n\nHe took the coat. It fit him eventually.";
+    beats.push_back(e);
+}
+
+void Story::AfterEnding() {
+    // don't finish it. He doesn't take the dose. Now two of you remember
+    chase = false;
+    solemn = true;
+    std::string first = toldPieces.empty() ? "" : toldPieces.front();
+    if (hasKnife) Say("", "(You put the knife down on the floor between you. Nobody picks it up.)");
+    else Say("", "(You sit down on the wet floor next to him. He's shaking. So are you.)");
+    Say("The visitor", "...That's not how it goes.");
+    Say("You", "I know.");
+    Say("", "(He takes the pen out of his coat. The needle. He holds it up between you.)");
+    Say("The visitor", "If I take it, I forget you again. If I don't, I keep the house.");
+    Sound("crack");
+    Say("", "(He snaps it in half.)");
+    Say("The visitor", "After. It's after now.");
+    Say("", "(The radio on his belt clicks.)");
+    Say("Finse", "(on the radio) Collector, confirm.");
+    Say("The visitor", "Negative. Subject not on site.");
+    Say("Finse", "...Collector. Your anchor.");
+    Say("The visitor", "(he looks at you) Anchor's fine. Anchor's right here.");
+    Say("Finse", "(a long pause) ...Hold position. The cycle closes on its own.");
+    if (Knows("graduation")) Say("The visitor", "(to you) Appendix C doesn't have a page for this. I'd have read it.");
+    FadeFor(0, "");
+    // the parents, however you left them
+    if (momLocked) Black("You pull the bolt on the basement door. Mom comes up the stairs, sees him on the floor and stands there for a long time.");
+    else if (momBathLocked) Black("You unlock the bathroom. Mom comes out with her hands up, ready for anything. Not for this.");
+    if (dadLocked) Black("You lift the plank off the shed door. Dad comes in out of the storm and stops in the doorway, snow on his eyebrows.");
+    bool momThere = !momOnFloor, dadThere = !dadDown && !dadOnFloor;
+    if (momThere) {
+        if (momRemorse) Black("Mom kneels down next to him. She says a name. Not yours. Not 06. He closes his eyes when he hears it.");
+        else if (stance == Stance::Dark) Black("Mom looks at him like a coat she gave away a long time ago.");
+        else Black("Mom kneels down next to him. She doesn't say anything. She puts her hand on his hair, the way she does with you.");
+    }
+    if (dadThere) {
+        if (stance == Stance::Befriended || parentsAllied) Black("Dad brings him a chair from the kitchen. Mom puts the kettle on. Like he's been away a long time. Like he's family.");
+        else Black("Dad crouches and turns the man's wrist over. Reads the back of the watch with his thumb. He doesn't say anything. He doesn't have to.");
+    }
+    if (stance == Stance::Dark) Black("Nobody says sorry. Nobody in this house has ever known how.");
+    if (doggoDead) Black("Doggo is lying by the door. The man looks at him for a long time. \"Sorry, boy,\" he says. \"I always am.\"");
+    else if (DoggoExists()) Black("Doggo comes over and lies down against his leg, like he has always done it.");
+    else if (doggoOut) Black("Out in the storm, a dog is barking. Nobody goes to let him in. Not yet.");
+    Sound("bells");
+    Black("17:00. Far away, the bells. Every church in the country.");
+    Black("Your watch beeps. So does his. Two short, one long, at the same time.");
+    Sound("beep");
+    Black("BEEP BEEP.");
+    Black("16:00. Your bed. Your room. Your watch.");
+    Black("Down at the gate there's already a black car. It's early. It's never early.");
+    Black("He's sitting in it with the engine off. He doesn't come in. He watches the house, like he's keeping it.");
+    if (first == "t_hum") Black("Through the snow you can just hear it. He's humming.");
+    else if (first == "t_watch") Black("He has his glove off. His thumb is going over the back of his watch, again and again.");
+    else if (first == "t_reissue") Black("He's looking at your window. Same house. Same cycle. He isn't letting it be the next one.");
+    else if (first == "t_dose") Black("There's a new pen on the dashboard. He doesn't touch it.");
+    else if (first == "t_last") Black("The radio on the dashboard says something. He turns it off.");
+    Black("At 16:22 the phone rings. Mom answers after forty seconds. \"Yes,\" she says. \"Both of them.\"");
+    Narrate(darkPoints >= DARK_REVEL ? "I still know where the knife is. So does he. Neither of us goes to get it."
+            : tainted ? "I'm still what I turned into. He sits out there anyway."
+                      : "Nobody won. Nobody had to.");
+    Narrate("Every hour after that, the car was at the gate at four. He never knocked. There were two of us now who remembered.");
+    solemn = false;
+    endings.insert("after");
+    lastEnd = "ending:after";
+    Achieve("After");
+    Beat e; e.type = BeatType::Ending; e.id = "after"; e.speaker = "TRUE ENDING";
+    e.text = tainted ? "AFTER\n\nHe didn't take the dose. Neither of them went for the knife."
+                     : "AFTER\n\nHe didn't take the dose. Now two of them remember.";
+    beats.push_back(e);
+}
+
+void Story::TiedBells() {
+    // 17:00 and he never got up. You beat him. The hour doesn't care (Noah's answer 5)
+    chase = false;
+    Sound("bells");
+    if (visitorTied) {
+        Say("", "(17:00. Far away, the bells start. He's still on the floor with his hands behind him.)");
+        Say("The visitor", "(almost kind) There they go. You did it. Nobody gets anywhere, but you did it.");
+    } else {
+        Say("", "(17:00. Far away, the bells start. He never got up.)");
+        Say("The visitor", "(from the floor) Time's up. For both of us.");
+    }
+    Say("", "(The radio on his belt clicks.)");
+    Say("Finse", "(on the radio) Collector. Status.");
+    Say("The visitor", visitorTied ? "Restrained. By the subject." : "Down. By the subject.");
+    Say("Finse", "(a pause) ...Noted. Same time next cycle.");
+    if (!toldPieces.empty()) Say("The visitor", "(to you, quietly) I'll have forgotten all of this by four. Tell me again. All of it, next time.");
+    Sound("beep");
+    lastEnd = "tied";
+    Narrate("I beat him. The hour didn't care.");
+    Beat e; e.type = BeatType::EndLoop; beats.push_back(e);
+}
+
 // ============================================================ v0.10 things to ask because you remember
 // The menus got too long for the screen, so everything a memory unlocks sits one step down
 std::vector<ChoiceOpt> Story::MomQuestions() const {
@@ -2608,6 +2882,42 @@ void Story::Choose(const std::string& id, int px, int py) {
         Say("You", "(Run. RUN.)");
         return;   // the chase goes on
     }
+    // ---- v0.17: the true ending
+    if (id == "t_hum" || id == "t_watch" || id == "t_reissue" || id == "t_dose" || id == "t_last") { TellPiece(id); return; }
+    if (id == "t_tie") {
+        visitorTied = true;
+        solemn = true;
+        Say("", "(The tripwire is still hanging off the door frame. You pull it loose.)");
+        Say("", "(He doesn't fight. You go round his wrists three times and pull as hard as you can. Then once more, to be sure.)");
+        Say("The visitor", "(into the floor) Reef knot. Not bad. Somebody taught you that.");
+        Say("You", "(Nobody taught me that.)");
+        AddClue("tied_up");
+        Achieve("Knots");
+        solemn = false;
+        return;   // the hunt goes on without him. The clock doesn't care
+    }
+    if (id == "t_talk") {
+        // vague and cryptic (answer 10). One at a time, in turn
+        std::vector<std::string> l = {
+            "Don't untie me before the bells. Don't untie me after them either.",
+            "There's a hole in the ice out back. Don't look down it. I looked.",
+            "It isn't me you have to get past, 06. It's four o'clock.",
+            "Funny. I always thought this part went the other way round.",
+            "Ask your mother what she hums. ...No. Don't.",
+            Knows("grave_05") ? "Zero-five tied me up too. Better knots." : "Somebody tied me up once. Better knots.",
+            "Same house. You'll see.",
+        };
+        Say("The visitor", l[tiedTalk++ % l.size()]);
+        if (tiedTalk == 3 && HingePieces() < 5) Say("You", "(He knows things. I don't know enough of the right things to ask.)");
+        return;
+    }
+    if (id == "t_wait") {
+        Say("", "(You sit down on the floor by the door, out of his reach. He watches you. You watch him. The storm does the rest.)");
+        t = std::max(t, (float)HOUR - 1.0f);
+        return;   // Tick rings the bells
+    }
+    if (id == "t_kill") { SameHouseEnding(); return; }
+    if (id == "t_spare") { AfterEnding(); return; }
     // ---- collection
     if (id == "c_go") {
         chase = false;

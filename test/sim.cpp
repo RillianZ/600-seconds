@@ -20,6 +20,7 @@ static std::string chasePlan = "caught";
 static void At(int x, int y);
 static bool qteWin = true;
 static std::vector<std::string> pickQueue; // choice ids to prefer, consumed in order
+static std::vector<std::string> trueQueue; // v0.17: the order you tell him the five pieces in
 
 static void Drain() {
     int guard = 0;
@@ -76,6 +77,8 @@ static void Drain() {
                 else if (chasePlan == "taser") s.OnTased();                      // v0.15.2: kited him one time too many
                 else if (chasePlan == "doggodoor") { assert(s.DoggoExists()); s.OnDoggoAtDoor(); s.OnDoggoPutDown(19, 19); assert(s.doggoDead && s.chase); s.OnCaught(); }   // v0.16
                 else if (chasePlan == "empty") { s.momLocked = s.dadLocked = true; s.doggoOut = true; At(9, 5); s.kidHidden = true; }   // v0.15.2: nobody he can reach
+                else if (chasePlan == "tie") { assert(s.visitorDowned); pickQueue = {"t_tie"}; s.Interact("visitor", px, py); }   // v0.17
+                else if (chasePlan == "true") { assert(s.visitorDowned); pickQueue = trueQueue; s.Interact("visitor", px, py); }                // v0.17: queue set by the loop
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
             }
             break;
@@ -145,6 +148,92 @@ static void ShiftFrequencyTest() {
     // config survives a save round trip
     { ShiftConfig a; a.enabled = false; a.chance = 35; a.minGap = 2; a.maxGap = 0; a.firstLoop = 5; a.toiletShare = 30;
       ShiftConfig b; b.Load(a.Save()); assert(!b.enabled && b.chance == 35 && b.minGap == 2 && b.maxGap == 0 && b.firstLoop == 5 && b.toiletShare == 30); }
+}
+
+// v0.17: the true ending in fresh stories. Rules first, then every variation printed so the lines can be read
+static std::vector<Beat> RunTrue(Story& m, std::vector<std::string> picks, bool print, bool* sawKill = nullptr) {
+    std::vector<Beat> out;
+    m.t = 49 * 60 + 59; m.Tick(1.0f, false, 21, 17);
+    for (int g = 0; g < 600 && !m.beats.empty(); ++g) {
+        Beat b = m.beats.front(); m.beats.pop_front(); out.push_back(b);
+        if (print && (b.type == BeatType::Black || b.type == BeatType::Narrate || b.type == BeatType::Ending ||
+                      (b.type == BeatType::Say && m.toldPieces.size() >= 5)))
+            std::printf("    %s%s\n", b.speaker.empty() ? "" : (b.speaker + ": ").c_str(), b.text.c_str());
+        if (b.type == BeatType::Scene && b.id == "chase") m.Interact("visitor", 21, 17);
+        if (b.type == BeatType::Choice) {
+            std::string id = b.choices.front().id;
+            for (auto& c : b.choices) if (c.id == "t_kill" && sawKill) *sawKill = true;
+            bool f = false;
+            for (size_t k = 0; k < picks.size() && !f; ++k) for (auto& c : b.choices) if (c.id == picks[k]) { id = c.id; picks.erase(picks.begin() + k); f = true; break; }
+            m.Choose(id, 21, 17);
+        }
+    }
+    return out;
+}
+static std::string EndingOf(const std::vector<Beat>& v) { for (auto& b : v) if (b.type == BeatType::Ending) return b.id; return ""; }
+static void TrueEndingTest() {
+    std::vector<std::string> five = {"piece_mom", "piece_dad", "piece_reissue", "piece_door", "piece_car"};
+    auto fresh = [&](int dark, bool knife) {
+        Story m; m.loop = 9; m.memory = std::set<std::string>(five.begin(), five.end()); m.memory.insert("loop");
+        m.darkPoints = dark; m.tainted = dark >= DARK_TAINT;
+        m.BeginLoop(); m.beats.clear(); while (m.shift != Shift::None) { m.EndLoop(); m.BeginLoop(); m.beats.clear(); }
+        m.trapsSet = {"marbles", "tripwire"}; m.traps = 2;
+        if (knife) m.Hold(Item::Knife);
+        return m;
+    };
+    std::vector<std::string> all = {"t_hum", "t_watch", "t_reissue", "t_dose", "t_last", "t_spare"};
+    // four pieces is not enough: no options at all
+    { Story m = fresh(0, false); m.memory.erase("piece_car"); bool any = false;
+      m.t = 49 * 60 + 59; m.Tick(1.0f, false, 21, 17);
+      for (int g = 0; g < 300 && !m.beats.empty(); ++g) { Beat b = m.beats.front(); m.beats.pop_front();
+        if (b.type == BeatType::Scene && b.id == "chase") { m.Interact("visitor", 21, 17); }
+        if (b.type == BeatType::Choice) { for (auto& c : b.choices) if (c.id.rfind("t_", 0) == 0) any = true; m.Choose("none", 21, 17); } }
+      assert(!any); }
+    // he stays down once you start, and the bells take it if you walk away
+    { Story m = fresh(0, false); m.t = 49 * 60 + 59; m.Tick(1.0f, false, 21, 17); m.beats.clear();
+      m.Choose("t_dose", 21, 17); m.beats.clear(); assert(m.HoldDown());
+      m.OnVisitorUp(); assert(m.visitorDowned);
+      m.t = Story::HOUR - 1; m.Tick(1.0f, false, 21, 17);
+      bool loopEnd = false; for (auto& b : m.beats) if (b.type == BeatType::EndLoop) loopEnd = true;
+      assert(loopEnd && m.threats == 0 && !m.chase); }
+    // parents in the room: no kill option. Both out: there is one
+    { Story m = fresh(0, true); bool kill = false; auto v = RunTrue(m, all, false, &kill); assert(!kill && EndingOf(v) == "after"); }
+    { Story m = fresh(0, true); m.momLocked = m.dadLocked = true; bool kill = false; auto v = RunTrue(m, all, false, &kill); assert(kill && EndingOf(v) == "after"); }
+    // tied: riddles, then the bells end the loop (not an ending)
+    { Story m = fresh(0, false); m.memory.erase("piece_car"); m.trapsSet.insert("paint"); m.traps = 3;
+      m.t = 49 * 60 + 59; m.Tick(1.0f, false, 21, 17); m.beats.clear();
+      m.Choose("t_tie", 21, 17); assert(m.visitorTied && m.HoldDown()); m.beats.clear();
+      for (int i = 0; i < 3; ++i) m.Choose("t_talk", 21, 17);
+      int said = 0; for (auto& b : m.beats) if (b.type == BeatType::Say && b.speaker == "The visitor") said++;
+      assert(said == 3 && m.tiedTalk == 3); m.beats.clear();
+      m.Choose("t_wait", 21, 17); m.Tick(1.0f, false, 21, 17);
+      bool loopEnd = false, restrained = false;
+      for (auto& b : m.beats) { if (b.type == BeatType::EndLoop) loopEnd = true; if (b.text.find("Restrained") != std::string::npos) restrained = true; }
+      assert(loopEnd && restrained && m.endings.empty()); }
+    // two traps is not enough to tie him
+    { Story m = fresh(0, false); m.t = 49 * 60 + 59; m.Tick(1.0f, false, 21, 17); m.beats.clear();
+      m.Interact("visitor", 21, 17); bool tie = false;
+      for (auto& b : m.beats) if (b.type == BeatType::Choice) for (auto& c : b.choices) if (c.id == "t_tie") tie = true;
+      assert(!tie); }
+    std::puts("  rules: five pieces needed, he stays down once you start, no kill in front of them, tie needs all three traps");
+    struct V { const char* name; int dark; bool knife; bool mom, bath, dad, remorse, grad, doggoOut, stay; std::vector<std::string> picks; const char* want; };
+    std::vector<V> vs = {
+        {"KILL, clean kid, his gun, Mom in the bath humming, Dad in the shed, hum first", 0, false, false, true, true, true, false, false, false, {"t_hum", "t_watch", "t_reissue", "t_dose", "t_last", "t_kill"}, "samehouse"},
+        {"KILL, tainted, knife, Mom bolted downstairs, Appendix C read, Doggo out, dose first", 9, true, true, false, true, false, true, true, false, {"t_dose", "t_hum", "t_watch", "t_reissue", "t_last", "t_kill"}, "samehouse"},
+        {"KILL, as dark as it gets, knife, Doggo shot at the door, watch first", 14, true, true, false, true, false, true, false, false, {"t_watch", "t_hum", "t_reissue", "t_dose", "t_last", "t_kill"}, "samehouse"},
+        {"SPARE, clean kid, parents right there, Mom hummed back to, Doggo stayed, hum first", 0, false, false, false, false, true, false, false, true, {"t_hum", "t_watch", "t_reissue", "t_dose", "t_last", "t_spare"}, "after"},
+        {"SPARE, tainted, knife, both locked away, Appendix C, reissue first", 9, true, true, false, true, false, true, false, false, {"t_reissue", "t_hum", "t_watch", "t_dose", "t_last", "t_spare"}, "after"},
+    };
+    for (auto& v : vs) {
+        Story m = fresh(v.dark, v.knife);
+        m.momLocked = v.mom; m.momBathLocked = v.bath; m.dadLocked = v.dad; m.momRemorse = v.remorse; m.doggoOut = v.doggoOut; m.doggoStay = v.stay;
+        if (v.grad) m.memory.insert("graduation");
+        m.memory.insert("grave_05");
+        std::printf("  --- %s\n", v.name);
+        auto out = RunTrue(m, v.picks, true);
+        assert(EndingOf(out) == v.want);
+        assert(m.endings.count(v.want) && m.Knows("he_remembers"));
+    }
 }
 
 static bool MenuHas(Story& st, const std::string& who, const std::string& opt) {
@@ -732,6 +821,26 @@ int main(int argc, char** argv) {
     CleanLoop();
     FinishLoop("empty");
     assert(s.Knows("nobody_left") && s.endings.count("empty") && s.achievements.count("Nobody Left"));
+
+    // v0.17: answer 10 and the true ending (branches map, section 6)
+    assert(s.HingePieces() == 5);
+    CleanLoop();
+    Header("LOOP 17a: all three traps, tie him up with the tripwire, riddles until the bells");
+    s.trapsSet = {"marbles", "tripwire", "paint"}; s.traps = 3;
+    { int L = s.loop; FinishLoop("tie"); assert(s.loop != L && s.Knows("tied_up") && s.achievements.count("Knots")); }
+    CleanLoop();
+    Header("LOOP 17b: two traps, Mom and Dad right there. Tell him all five (last pickup first), then spare him");
+    s.trapsSet = {"marbles", "tripwire"}; s.traps = 2;
+    trueQueue = {"t_last", "t_hum", "t_watch", "t_reissue", "t_dose", "t_spare"};
+    FinishLoop("true");
+    assert(s.Knows("he_remembers") && s.endings.count("after") && endingsSeen.back() == "after");
+    CleanLoop();
+    Header("LOOP 17c: knife, Mom bolted in the basement, Dad barred in the shed. Tell him all five, then finish it");
+    s.trapsSet = {"marbles", "tripwire"}; s.traps = 2; s.Hold(Item::Knife); s.momLocked = s.dadLocked = true;
+    trueQueue = {"t_hum", "t_watch", "t_reissue", "t_dose", "t_last", "t_kill"};
+    FinishLoop("true");
+    assert(s.endings.count("samehouse") && endingsSeen.back() == "samehouse" && s.tainted && s.darkPoints == DARK_MAX);
+    TrueEndingTest();
 
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {
