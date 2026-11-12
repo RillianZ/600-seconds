@@ -2,6 +2,8 @@
 // and checks that every memory entry and every ending can be reached.
 // Build: g++ -std=c++17 -Isrc test/sim.cpp src/game/Story.cpp -o sim && ./sim
 #include "game/Story.h"
+#include "game/Schedule.h"   // v0.20 systems: gEarlyKnock
+#include "game/Links.h"      // v0.20 systems: the rumor map
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -327,6 +329,7 @@ static void ItemTest() {
 
 int main(int argc, char** argv) {
     verbose = argc > 1;
+    gEarlyKnock = false;   // v0.20 systems: the older loops are timed for a 16:50 knock. The early knock has its own loops
     ShiftFrequencyTest();
     ItemTest();
     AttitudeTest();
@@ -1204,6 +1207,109 @@ int main(int argc, char** argv) {
         int L = s.loop;
         At(14, 4); Use("mirror", {"kn_mirror", "kn_mirror2"});
         assert(s.loop != L && s.Knows("no_way_out"));
+    }
+
+    // v0.20 systems: fuller parent days, the front door fight, nobody home, the early knock, doors in the hunt
+    Header("v0.20 systems: where Mom and Dad are, hour by hour");
+    {
+        Story d; d.memory = {"loop"}; d.loop = 3; d.BeginLoop(); d.beats.clear();
+        d.t = 9 * 60;           assert(d.Dad().x == 35 && d.Dad().y == 8);                         // the shed (hinge B, d_help)
+        d.t = 15 * 60 + 30;     assert(d.Mom().x == 20 && d.Mom().y == 16 && d.Dad().x == 22 && d.Dad().y == 16);   // Kaptein Fjord
+        assert(d.world.RoomAt(d.Mom().x, d.Mom().y) == Room::LivingRoom && !d.MomHums());
+        d.t = 22 * 60;          assert(d.Mom().x == 4 && d.Mom().y == 15);                          // the phone
+        d.t = 31 * 60;          assert(d.Mom().y == 40);                                            // the basement
+        d.t = 36 * 60 + 30;     assert(d.Dad().x == 28 && d.Dad().y == 25);                         // firewood
+        d.t = 40 * 60 + 50;     assert(d.world.RoomAt(d.Mom().x, d.Mom().y) == Room::Kitchen && d.world.RoomAt(d.Dad().x, d.Dad().y) == Room::Kitchen);   // the snack
+        d.t = 44 * 60;          assert(d.Dad().x == 11 && d.Dad().y == 26);                         // the flagpole
+        d.t = 47 * 60;          assert(d.MomInBath() && d.Mom().x == 13 && d.Mom().y == 6);         // hinge A
+        // the TV at 16:15: be in the living room and they sit down with you
+        Story v; v.memory = {"loop"}; v.loop = 3; v.BeginLoop(); v.beats.clear();
+        v.t = 14 * 60 + 58; v.Tick(1.0f, false, 21, 17);
+        bool shh = false; for (auto& b : v.beats) if (b.type == BeatType::Bubble && b.speaker == "Mom" && b.text.find("Kaptein Fjord") != std::string::npos) shh = true;
+        assert(shh && v.SawEvent("tv15"));
+        std::puts("  shed 16:09, couch 16:15, phone 16:22, basement 16:31, firewood 16:36, lefse 16:40, flagpole 16:44, bathroom 16:47");
+    }
+    Header("v0.20 systems: they fight you on the front door");
+    {
+        Story f; f.memory = {"loop"}; f.loop = 3; f.BeginLoop(); f.beats.clear();
+        f.t = 3 * 60;
+        auto lockIt = [&]() { f.Choose("f_lock", 20, 19); f.beats.clear(); };
+        auto until = [&](float secs) { float end = f.t + secs; while (f.t < end && f.frontLocked) f.Tick(0.2f, false, 20, 19); f.beats.clear(); };
+        lockIt(); until(80); assert(f.frontLocked); until(30); assert(!f.frontLocked && f.fortressFights == 1);
+        lockIt(); until(100); assert(!f.frontLocked && f.fortressFights == 2 && f.mood == -1);
+        lockIt(); until(20); assert(f.frontLocked); until(20); assert(!f.frontLocked && f.fortressFights == 3);   // she watches it now: 30 seconds
+        lockIt(); until(40); assert(f.fortressFights == 4 && f.grounded);
+        // Mom in the basement and Dad in the shed: nobody unlocks it
+        Story e; e.memory = {"loop"}; e.loop = 3; e.BeginLoop(); e.beats.clear();
+        e.momLocked = e.dadLocked = true; e.t = 10 * 60; e.Choose("f_lock", 20, 19); e.beats.clear();
+        for (int i = 0; i < 100; ++i) e.Tick(1.0f, false, 20, 19);
+        assert(e.frontLocked && e.fortressFights == 0 && e.NobodyToOpen());
+        std::puts("  90 seconds, 90 and a scolding, then 30 seconds, then grounded. Nobody home: it stays locked");
+    }
+    CleanLoop();
+    Header("v0.20 systems LOOP: Dad barred, Mom locked in the bathroom, front door locked. He talks through the door, then your window");
+    {
+        At(10, 26); Use("flag", {"fl_key"});
+        At(34, 11); WaitUntil(9); Use("sheddoor", {"s_bar"});
+        At(13, 10); WaitUntil(47);
+        s.momRoomNow = Room::Bathroom;
+        Use("door_bath", {"bath_lock"});
+        assert(s.momBathLocked && s.dadLocked);
+        At(20, 19); Use("frontdoor", {"f_lock"});
+        assert(s.frontLocked);
+        WaitUntil(49); toKnock();
+        assert(s.nobodyHome && s.huntStart == "bath" && s.windowBanged && s.Knows("nobody_home") && s.Knows("fortress"));
+        assert(s.Visitor().x == 20 && s.Visitor().y == 21);   // on the step while he talks
+        qteWin = false; FinishLoop("caught"); qteWin = true;  // the trunk with every memory is LOOP 10's job
+    }
+    CleanLoop();
+    Header("v0.20 systems LOOP: dark enough and he comes at 16:48. The car at 16:41. Take his key and he comes sooner still");
+    {
+        gEarlyKnock = true;
+        assert(s.tainted && s.darkPoints >= DARK_EARLY);
+        bool told = s.SawEvent("dark_early");
+        At(20, 29); WaitUntil(1);
+        assert(s.visitorTime == 48 * 60);
+        WaitUntil(41);
+        assert(s.CarHere() && s.SawEvent("dark_early"));
+        (void)told;
+        WaitUntil(42);
+        assert(s.CarEmpty());
+        Use("car", {"car_key", "ck_pocket"});
+        assert(s.carKey == "pocket");
+        int was = s.visitorTime;
+        WaitUntil(44); toKnock();   // he finds the car dead at 16:45 and walks straight up
+        assert(s.collection && s.visitorTime < was && s.t < 46 * 60);
+        FinishLoop("caught");
+        // the narrator says it once, ever
+        Story n; n.LoadSave(s.SaveString()); n.loop = 3; n.BeginLoop(); n.beats.clear();
+        n.t = 40 * 60; n.Tick(1.0f, false, 5, 5);
+        for (auto& b : n.beats) assert(!(b.type == BeatType::Narrate && b.text.find("came early") != std::string::npos));
+        assert(n.visitorTime == 48 * 60);
+        // not dark enough: 16:50 as always
+        Story c; c.memory = {"loop"}; c.loop = 3; c.darkPoints = DARK_EARLY - 1; c.tainted = true; c.BeginLoop(); c.beats.clear();
+        c.Tick(1.0f, false, 5, 5); assert(c.visitorTime == 50 * 60);
+        gEarlyKnock = false;
+    }
+    Header("v0.20 systems: he hears doors in the hunt");
+    {
+        Story h; h.memory = {"loop"}; h.loop = 3; h.BeginLoop(); h.beats.clear(); h.collection = h.chase = true; h.t = 51 * 60;
+        h.OnHeard("slam");
+        bool said = false; for (auto& b : h.beats) if (b.type == BeatType::Bubble && b.speaker == "The visitor") said = true;
+        assert(said && h.Knows("he_hears"));
+        h.beats.clear(); h.OnHeard("slam"); for (auto& b : h.beats) assert(b.type != BeatType::Bubble);   // once is enough
+        std::puts("  a slammed door: he turns, and says so once");
+    }
+    Header("v0.20 systems: the rumor map only links memories that exist, one card per spot");
+    {
+        std::set<std::string> ids; for (auto& m : AllMemories()) ids.insert(m.id);
+        std::set<std::string> nodes; std::set<int> spots;
+        for (auto& r : AllRumorNodes()) {
+            assert(ids.count(r.id) && r.col >= 0 && r.col < 5 && r.row >= 0);
+            assert(nodes.insert(r.id).second && spots.insert(r.row * 5 + r.col).second);
+        }
+        for (auto& l : AllRumorLinks()) assert(nodes.count(l.a) && nodes.count(l.b));
+        std::printf("  %zu cards, %zu lines\n", AllRumorNodes().size(), AllRumorLinks().size());
     }
 
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");

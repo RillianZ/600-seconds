@@ -39,6 +39,10 @@
 //   title | recap       go to the title screen | open the memory recap (v0.20 sound)
 //   jukebox             open the debug jukebox (v0.20 sound)
 //   ending ID           show that ending card now (v0.20 sound)
+//   journal PAGE | jscroll N | unjournal   open the memory log on a page (a number, or rumors), pan it (v0.20 systems)
+//   allmem | forget ID  know every memory | forget one
+//   lockfront           the front door is locked
+//   state               print the clock, the front door and where the parents are to stderr
 //   quit
 #include <fstream>
 #include <sstream>
@@ -113,7 +117,6 @@ static void ShotsStep() {
         // v0.20 story: shift fourth|unit|sister|none (this loop's reality), prevend X (how the last loop ended, for the TV)
         else if (c == "shift") { std::string w; ss >> w; story.shift = w == "fourth" ? Shift::Fourth : w == "unit" ? Shift::NextUnit : w == "sister" ? Shift::Sister : Shift::None; }
         else if (c == "prevend") { ss >> story.prevEnd; }
-        else if (c == "journal") { ss >> journalTopic; journalOpen = journalTopic >= 0; journalScroll = 0; }   // tab number, -1 closes
         else if (c == "chase") { vmode = VMode::Chase; vLostT = 0; vLastSeen = player.pos; }
         else if (c == "skip") { story.beats.clear(); beatActive = false; }
         else if (c == "hold" || c == "press") { std::string k; int n = 1; ss >> k >> n; shotHoldKey = ShotKey(k); shotHoldN = c == "press" ? 1 : n; return; }
@@ -138,6 +141,14 @@ static void ShotsStep() {
         else if (c == "title") { screen = Screen::Title; story.beats.clear(); beatActive = false; }
         else if (c == "recap") { recapList = { "phone_mom" }; recapOpen = true; recapT = 0; recapShown = 0; }
         else if (c == "ending") { recapOpen = false; std::string id; ss >> id; Beat e; e.type = BeatType::Ending; e.id = id; e.speaker = "ENDING"; e.text = "TEST\n\n" + id; story.beats.clear(); story.beats.push_back(e); beatActive = false; StartNextBeat(); }
+        // v0.20 systems: journal PAGE (a number, or rumors), jscroll N, allmem, forget ID, lockfront
+        else if (c == "journal") { std::string pg; ss >> pg; journalOpen = true; journalScroll = 0; journalTopic = pg == "rumors" ? JournalTabs() - 1 : std::atoi(pg.c_str()); }
+        else if (c == "jscroll") { ss >> journalScroll; }
+        else if (c == "unjournal") { journalOpen = false; }
+        else if (c == "allmem") { story.DebugAllMemories(); }
+        else if (c == "forget") { std::string id; ss >> id; story.memory.erase(id); }
+        else if (c == "lockfront") { story.frontLocked = true; story.frontLockedAt = story.t; story.closedDoors.insert(20 * World::W + 20); }
+        else if (c == "state") { fprintf(stderr, "STATE t=%.0f front=%d mom=%d dad=%d nobody=%d coll=%d\n", story.t, story.frontLocked, story.momLocked, story.dadLocked, story.nobodyHome, story.collection); }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

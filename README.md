@@ -48,6 +48,8 @@ src/game/World.h     map, rooms, objects, windows (plain C++). Rows go from Worl
 src/game/Story.h/.cpp all rules: clock, events, choices, memory log, saves (plain C++)
 src/game/StoryMore.inc v0.20 story lines: endings that teach, the watch, questions, TV, shifts, predictions (included by Story.cpp)
 src/game/Knife.inc   the kitchen knife: clean jobs, darker jobs, the mirror (included at the end of Story.cpp)
+src/game/Schedule.h  where Mom and Dad are hour by hour, and when he comes early (data)
+src/game/Links.h     the rumor map in the memory log: which memories belong together (data)
 src/audio/Soundtrack.h/.cpp every song, written as code (plain C++)
 src/audio/SfxV20.inc  v0.20 sound effects made in code (power cut, locks, phone, tape, trunk, kicks) and sounds placed in the house
 src/audio/MusicFiles.inc v0.20: assets/music/<name>.ogg plays instead of a code track, if the file is there

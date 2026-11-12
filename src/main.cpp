@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <queue>
+#include <set>   // v0.20 systems
 
 #if defined(PLATFORM_WEB)
 #include <emscripten/emscripten.h>
@@ -818,6 +819,7 @@ static void StartSearch(bool dadRan) {
         if (story.huntStart == "bath") { vGraceWait = 5.0f; visitor.dir = 1; }
         else if (story.huntStart == "shed") { vGraceWait = 1.5f; visitor.dir = 1; }
         else if (story.huntStart == "door") { vGraceWait = 4.0f; visitor.dir = 1; }   // v0.14: hinge D. You opened it. He stands there counting rooms
+        else if (story.huntStart == "back") { vGraceWait = 3.0f; visitor.dir = 0; }   // v0.20 systems: he came in through your window, and shakes off the snow
     }
 }
 static void VisitorBark(const char* const* lines, int n) {
@@ -1013,6 +1015,7 @@ static void UpdateBeat(float dt) {
             // v0.13: the hinges. A blink of black while he walks to Mom's door, or out to the shed
             if (cur.id == "hinge_bath") { Snap(visitor, 13, 10); visitor.dir = 1; }
             if (cur.id == "hinge_shed") { Snap(visitor, 34, 11); visitor.dir = 1; }
+            if (cur.id == "nobody_home") { Snap(visitor, 6, 4); visitor.dir = 0; }   // v0.20 systems: in through your window
             if (story.threats != lastThreats) {
                 // v0.7: the blink of black hides him walking back to the living room
                 lastThreats = story.threats;
@@ -1433,7 +1436,7 @@ static void DrawChaseBanner() {
         else if (vmode == VMode::Investigate) h = trailFollow ? "He found your trail out back. He's following it. Go the other way." : "He heard something. He's going to look.";
         else if (vDoorT > 0 && vDoorBar) h = "He's at the furniture. It won't hold for long.";
         else if (winded) h = "Out of breath. You can't run yet.";
-        else if (vmode == VMode::Grace) h = story.huntStart == "door" ? "He's counting the rooms. Go. Now." : "He's coming back in. Get out of sight.";
+        else if (vmode == VMode::Grace) h = story.huntStart == "door" ? "He's counting the rooms. Go. Now." : story.huntStart == "back" ? "He's in your room. Get out of there." : "He's coming back in. Get out of sight.";   // v0.20 systems: back
         else if (vmode == VMode::Chase) h = "HE SEES YOU. Run (Shift). Break line of sight.";
         else if (vmode == VMode::Lost) h = "He lost you. Keep moving.";
         else if (story.threats > 0) h = "Come out and face him (E). Or don't.";
@@ -1534,7 +1537,70 @@ static void DrawHUD() {
 }
 
 // v0.10: the log has three more pages. Tab 0 is the hour as a timeline, then the topics, the endings, the awards
-static int JournalTabs() { return (int)AllTopics().size() + 3; }
+static int JournalTabs() { return (int)AllTopics().size() + 4; }   // v0.20 systems: + the rumor map, after Awards
+
+// ============================================================ v0.20 systems: T-092 the rumor map
+// Memories as cards, lines between the ones that belong together (src/game/Links.h).
+// Found: the title. Unknown but linked to one you have: "?". The rest stays hidden. UP/DOWN pans
+#include "game/Links.h"
+static bool RumorShown(const std::string& id) {
+    if (story.Knows(id)) return true;
+    for (auto& l : AllRumorLinks()) if ((id == l.a && story.Knows(l.b)) || (id == l.b && story.Knows(l.a))) return true;
+    return false;
+}
+static int RumorsFound() { int n = 0; for (auto& r : AllRumorNodes()) n += story.Knows(r.id) ? 1 : 0; return n; }
+static void DrawRumors(float top, float bottom) {
+    const float colW = 92, rowH = 30, cardW = 78, cardH = 18, left = 20;
+    const Color teal = { 120, 200, 220, 255 }, dim = { 80, 80, 92, 255 };
+    int rows = 0, firstRow = 99, lastRow = -1;
+    for (auto& r : AllRumorNodes()) { rows = std::max(rows, r.row + 1); if (RumorShown(r.id)) { firstRow = std::min(firstRow, r.row); lastRow = std::max(lastRow, r.row); } }
+    if (lastRow < 0) {
+        const char* l = "Nothing to connect yet. Remember something first.";
+        UIText(l, VW / 2.0f - UIMeasure(l, 8) / 2, 120, 8, dim);
+        return;
+    }
+    int visible = (int)((bottom - top) / rowH);
+    int maxScroll = std::max(0, lastRow + 1 - visible);
+    journalScroll = std::max(0, std::min(journalScroll, maxScroll));
+    auto pos = [&](const RumorNode& r) { return Vector2{ left + r.col * colW, top + 2 + (r.row - journalScroll) * rowH }; };
+    auto find = [&](const char* id) -> const RumorNode* { for (auto& r : AllRumorNodes()) if (std::strcmp(r.id, id) == 0) return &r; return nullptr; };
+    auto title = [&](const std::string& id) -> std::string { for (auto& m : AllMemories()) if (m.id == id) return m.title; return id; };
+    BeginScissorMode(0, (int)(top * US), SW, (int)((bottom - top) * US));
+    // the lines first, so the cards sit on top
+    for (auto& l : AllRumorLinks()) {
+        const RumorNode* a = find(l.a); const RumorNode* b = find(l.b);
+        if (!a || !b || !RumorShown(a->id) || !RumorShown(b->id)) continue;
+        bool both = story.Knows(a->id) && story.Knows(b->id);
+        Vector2 pa = pos(*a), pb = pos(*b);
+        pa.x += cardW / 2; pa.y += cardH / 2; pb.x += cardW / 2; pb.y += cardH / 2;
+        {   // from edge to edge, so the part between the cards is all you see, and it's long enough to read
+            float dx = pb.x - pa.x, dy = pb.y - pa.y;
+            float k = std::min(dx != 0 ? (cardW / 2) / std::fabs(dx) : 1e9f, dy != 0 ? (cardH / 2) / std::fabs(dy) : 1e9f);
+            pa.x += dx * k; pa.y += dy * k; pb.x -= dx * k; pb.y -= dy * k;
+        }
+        DrawLineEx({ pa.x * US, pa.y * US }, { pb.x * US, pb.y * US }, (both ? 1.4f : 0.9f) * US, both ? Fade(teal, 0.75f) : Fade(dim, 0.8f));
+    }
+    for (auto& r : AllRumorNodes()) {
+        if (!RumorShown(r.id)) continue;
+        Vector2 p = pos(r);
+        if (p.y > bottom || p.y + cardH < top) continue;
+        bool known = story.Knows(r.id);
+        bool fresh = known && std::find(story.loopNew.begin(), story.loopNew.end(), std::string(r.id)) != story.loopNew.end();
+        Panel(p.x, p.y, cardW, cardH, known ? Color{ 30, 26, 40, 255 } : Color{ 16, 16, 20, 255 },
+              known ? (fresh ? Color{ 255, 210, 90, 255 } : Color{ 120, 100, 170, 255 }) : Color{ 50, 50, 60, 255 });
+        if (known) {
+            auto lines = Wrap(title(r.id), cardW - 6, 6, false);
+            float ly = p.y + (lines.size() > 1 ? 2.0f : 5.6f);
+            for (size_t i = 0; i < lines.size() && i < 2; ++i) { UIText(lines[i].c_str(), p.x + 3, ly, 6, WHITE); ly += 7.0f; }
+        } else UIText("?", p.x + cardW / 2 - UIMeasure("?", 9) / 2, p.y + 3.5f, 9, dim);
+    }
+    EndScissorMode();
+    (void)rows; (void)firstRow;
+    std::string count = std::to_string(RumorsFound()) + " of " + std::to_string(AllRumorNodes().size()) + " on the map";
+    UIText(count.c_str(), VW - 16 - UIMeasure(count.c_str(), 6.5f), bottom + 1, 6.5f, Fade(WHITE, 0.45f));
+    if (journalScroll > 0) UIText("^ more", VW - 60, top - 9, 7, Fade(WHITE, 0.6f));
+    if (journalScroll < maxScroll) UIText("v more", 16, bottom + 1, 7, Fade(WHITE, 0.6f));
+}
 
 static void DrawTimeline() {
     const Color ice = { 150, 210, 230, 255 }, dim = { 86, 88, 100, 255 };
@@ -1576,18 +1642,19 @@ static void DrawJournal() {
                       "   awards " + std::to_string(story.achievements.size()) + "/" + std::to_string(AllAchievements().size());
     UIText(pct.c_str(), VW - 16 - UIMeasure(pct.c_str(), 8), 16, 8, WHITE);
     auto& topics = AllTopics();
-    const int N = (int)topics.size(), nTabs = JournalTabs(), tabEnd = N + 1, tabAwards = N + 2;
+    const int N = (int)topics.size(), nTabs = JournalTabs(), tabEnd = N + 1, tabAwards = N + 2, tabRumors = N + 3;   // v0.20 systems: rumors
     const Color teal = { 120, 200, 220, 255 };
     float tx = 16;
     for (int i = 0; i < nTabs; ++i) {
-        std::string name = i == 0 ? "Timeline" : i <= N ? topics[i - 1] : i == tabEnd ? "Endings" : "Awards";
+        std::string name = i == 0 ? "Timeline" : i <= N ? topics[i - 1] : i == tabEnd ? "Endings" : i == tabRumors ? "Rumors" : "Awards";
         if (name.rfind("The ", 0) == 0) { name = name.substr(4); name[0] = (char)std::toupper((unsigned char)name[0]); }
         float w = UIMeasure(name.c_str(), 6.5f) + 7;
-        bool sel = i == journalTopic, gold = i >= tabEnd;
+        bool sel = i == journalTopic, gold = i >= tabEnd && i != tabRumors;
         int found = 0;
         if (i == 0) { for (auto& e : AllTimeline()) if (story.KnowsEvent(e.id)) found++; }
         else if (i == tabEnd) found = (int)story.endings.size();
         else if (i == tabAwards) found = (int)story.achievements.size();
+        else if (i == tabRumors) found = RumorsFound();
         else for (auto& e : AllMemories()) if (e.topic == topics[i - 1] && story.Knows(e.id)) found++;
         Color lit = gold ? GOLD : i == 0 ? teal : Color{ 190, 150, 255, 255 };
         Color fill = sel ? (gold ? Color{ 90, 74, 30, 255 } : i == 0 ? Color{ 28, 70, 84, 255 } : Color{ 70, 50, 110, 255 }) : Color{ 25, 22, 35, 255 };
@@ -1600,6 +1667,12 @@ static void DrawJournal() {
         DrawTimeline();
         const char* help = touchMode ? "What I've watched happen. A ? is still worth being around for.    tap: close"
                                      : "What I've watched happen. A ? is still worth being around for.    LEFT/RIGHT page    J or ESC close";
+        UIText(help, 16, VH - 14, 7, Fade(WHITE, 0.5f));
+        return;
+    }
+    if (journalTopic == tabRumors) {
+        DrawRumors(top, bottom);
+        const char* help = touchMode ? "What belongs together.    D-pad: page / pan    tap: close" : "What belongs together.    LEFT/RIGHT page    UP/DOWN pan    J or ESC close";
         UIText(help, 16, VH - 14, 7, Fade(WHITE, 0.5f));
         return;
     }
@@ -2630,7 +2703,7 @@ static void UpdateDrawFrame() {
         UpdateRecap(dt);
     } else if (journalOpen) {
         if (IsKeyPressed(KEY_ESCAPE)) journalOpen = false;
-        int n = (int)AllTopics().size() + 3;   // Timeline + topics + Endings + Awards
+        int n = JournalTabs();   // Timeline + topics + Endings + Awards + Rumors (v0.20 systems)
         if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) { journalTopic = (journalTopic + 1) % n; journalScroll = 0; }
         if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A)) { journalTopic = (journalTopic + n - 1) % n; journalScroll = 0; }
         if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S)) journalScroll++;
@@ -2872,6 +2945,11 @@ static void UpdateDrawFrame() {
                 }
             }
         }
+        // v0.20 systems: once they get there they look at what they're doing: the TV, the stove, the tree (Schedule.h)
+        if (!story.collection) {
+            if (ms.face >= 0 && !momTalking && TX(mom.pos.x) == ms.x && TX(mom.pos.y) == ms.y) mom.dir = ms.face;
+            if (ds.face >= 0 && !dadTalking && scene == SceneMode::None && TX(dad.pos.x) == ds.x && TX(dad.pos.y) == ds.y) dad.dir = ds.face;
+        }
         if (story.collection && !beatActive && (story.dadOnFloor || story.momOnFloor) && scene == SceneMode::Chase) {
             momSobT -= dt;
             if (momSobT <= 0 && story.MomHere()) { AddBubble("Mom", story.momOnFloor ? "*crying, very quietly*" : GetRandomValue(0, 1) ? "*sobbing*" : "Please wake up. Please.", 2.0f); momSobT = (float)GetRandomValue(5, 8); }
@@ -3063,6 +3141,33 @@ static void UpdateDrawFrame() {
                             float dx = player.pos.x - visitor.pos.x, dy = player.pos.y - visitor.pos.y;
                             visitor.dir = std::fabs(dx) > std::fabs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 0 : 1);
                             if (!LineOfSight(visitor.pos, player.pos) && vmode != VMode::Investigate) hear(player.pos, 1.0f);
+                        }
+                    }
+                    // ---- v0.20 systems: T-088. Doors you open, shut or slam carry through the house like running feet
+                    {
+                        static std::set<int> doorWas; static int doorLoop = -1; static float ranT = 9;
+                        ranT = kidRunning ? 0 : ranT + dt;
+                        if (doorLoop != story.loop) { doorWas = story.closedDoors; doorLoop = story.loop; }
+                        if (doorWas != story.closedDoors) {
+                            for (auto& d : AllDoors()) {
+                                int k = d.y * World::W + d.x;
+                                bool was = doorWas.count(k) > 0, shut = story.closedDoors.count(k) > 0;
+                                if (was == shut || story.DoorBroken(d.x, d.y)) continue;
+                                Vector2 at = TileCenter(d.x, d.y);
+                                auto far = [&](const Actor& a) { return !a.visible || std::hypot(a.pos.x - at.x, a.pos.y - at.y) > TS * 2.5f; };
+                                bool mine = std::hypot(player.pos.x - at.x, player.pos.y - at.y) < TS * 1.8f && far(visitor) && far(mom) && far(dad);
+                                if (!mine) continue;
+                                bool slam = shut && ranT < 0.6f;
+                                float range = TS * (slam ? 14.0f : shut ? 8.0f : 6.0f);
+                                AddRing(at, 1);
+                                if (slam) Play("thud");
+                                if (!busy && !visitorBlind && std::hypot(visitor.pos.x - at.x, visitor.pos.y - at.y) < range) {
+                                    bool first = vmode != VMode::Investigate;
+                                    hear(at, slam ? 1.6f : 1.2f);
+                                    if (first) { story.OnHeard(slam ? "slam" : shut ? "door_shut" : "door_open"); StartNextBeat(); }
+                                }
+                            }
+                            doorWas = story.closedDoors;
                         }
                     }
                     // ---- holding your breath in a hiding spot

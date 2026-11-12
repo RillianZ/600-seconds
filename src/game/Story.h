@@ -66,6 +66,7 @@ struct NpcState {
     int x = 0, y = 0;
     bool visible = true;
     bool facingWall = false;
+    int face = -1;   // v0.20 systems: which way they look once they get there (-1 = don't care)
 };
 
 enum class Shift { None, Toilet45, NoDoggo, EarlyStorm, Sister, Fourth, NextUnit };   // v0.20 story: Fourth, NextUnit
@@ -288,6 +289,12 @@ public:
     void MirrorEnd();
     void BladeCheck();
     int KnifeNeeded() const { return tainted ? 2 : KnowsKnifeJob() ? 2 : 5; }
+    // v0.20 systems per loop
+    int fortressFights = 0;                    // T-083: how many times a parent unlocked the front door after you
+    bool nobodyHome = false;                   // T-083: locked, and nobody left to open it. He came round the back
+    bool NobodyToOpen() const;                 // front door locked, Mom and Dad both shut away somewhere
+    bool DarkEarly() const;                    // T-086: dark enough that he comes at 16:48
+    void NobodyHome();                         // T-083: the scene at the knock
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
