@@ -48,6 +48,7 @@
 //   journal TAB | newmem ID   the log open on a tab | a memory found this loop
 //   luse ID | lchoose ID   use / choose with the close-up hook
 //   ending ID | att mom|dad cold|scared|broken | say WHO TEXT   (WHO with _ for spaces, e.g. The_visitor)
+//   see ID | climbwin [WIN]   a timeline event seen | climb through a window now, yours by default (v0.20.1 hunt-systems)
 //   quit
 #include <fstream>
 #include <sstream>
@@ -166,6 +167,9 @@ static void ShotsStep() {
         else if (c == "ending") { std::string id; ss >> id; Beat e; e.type = BeatType::Ending; e.id = id; e.speaker = "ENDING"; for (auto& en : AllEndings()) if (en.id == id) e.text = en.title + "\n\n" + en.hint; story.beats.clear(); beatActive = false; story.beats.push_back(e); StartNextBeat(); }
         else if (c == "att") { std::string w, v; ss >> w >> v; Attitude a = v == "cold" ? Attitude::Cold : v == "scared" ? Attitude::Scared : v == "broken" ? Attitude::Broken : Attitude::Normal; if (w == "mom") story.momAtt = a; else story.dadAtt = a; }
         else if (c == "say") { std::string who, rest; ss >> who; std::getline(ss, rest); for (auto& ch : who) if (ch == '_') ch = ' '; Beat b; b.type = BeatType::Say; b.speaker = who; b.text = rest; story.beats.clear(); beatActive = false; story.beats.push_back(b); StartNextBeat(); typed = 1e9f; }
+        // v0.20.1 hunt-systems: see ID = a timeline event you watched happen. climbwin = start the climb out of your window (as the story does)
+        else if (c == "see") { std::string id; ss >> id; story.seenEvents.insert(id); }
+        else if (c == "climbwin") { std::string w = "window"; ss >> w; Beat b; b.type = BeatType::Scene; b.id = "climb:" + w; story.beats.push_back(b); StartNextBeat(); }
         else if (c == "quit") { CloseWindow(); exit(0); }
     }
 }

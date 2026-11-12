@@ -580,10 +580,12 @@ static void DrawWorld(Camera2D cam) {
         } break;
         case 2: {
             Look ml = LookMom();
+            if (CouchSits(*d.a)) break;   // v0.20.1 hunt-systems: on the couch, drawn with it
             if (story.momOnFloor) DrawPersonDown(*d.a, ml, true); else DrawPerson(*d.a, ml);
         } break;
         case 3: {
             Look dl = LookDad();
+            if (CouchSits(*d.a)) break;   // v0.20.1 hunt-systems: on the couch, drawn with it
             if (story.dadOnFloor && scene != SceneMode::DadRuns) DrawPersonDown(*d.a, dl, false); else DrawPerson(*d.a, dl);
         } break;
         case 4: if (story.doggoDead && doggoShownDead) DrawDoggoDead(*d.a); else DrawDoggo(*d.a); break;

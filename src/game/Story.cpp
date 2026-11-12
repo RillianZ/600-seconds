@@ -1902,8 +1902,8 @@ void Story::DarkOpensDoor() {
     std::string who = DarkOpener();
     bool mom = who == "Mom";
     Say("", "(Nobody opens. The handle turns. Locked.)");
-    Say("", mom ? "(Then Mom's slippers in the hall. She doesn't hurry. She turns the lock herself.)"
-                : "(Then Dad's boots in the hall. He turns the lock himself. He doesn't look at you.)");
+    Say("", mom ? "(Then Mom's slippers on the floorboards. She doesn't hurry. She turns the lock herself.)"
+                : "(Then Dad's boots on the floorboards. He turns the lock himself. He doesn't look at you.)");
     Sound("lock");
     frontLocked = false; frontOpened = true;
     if (mom) Say("Mom", "(opening the door) Sorry. He locked it. Come in. Please. Just take him.");
