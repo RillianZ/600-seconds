@@ -2,6 +2,43 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.19.0
+New branch `claude-batch-v0.19-before-knock`, on top of v0.18.0 (`claude-batch-v0.18-parents`). Expansion 4 of the branches map: before the knock. The fifty minutes before he comes are now a place to set the stage, and each thing you set up pays off in the hunt. Each one also has one thing you only hear because you did it. The story test now has 86 memories and 13 endings. Every new line is Claude's, for Noah to react to.
+
+**Barricade a door**
+- In your room, the bathroom or Mom and Dad's room, before he comes: push the furniture against the door (5 min). Your chest of drawers, the laundry cabinet, Dad's dresser.
+- Nobody gets through it with a key. Not Mom, not Dad. He has to break it, and that takes him about seven seconds of noise instead of one and a half. Your way out is the window.
+- From the inside you can pull it away again (1 min). From the outside nothing moves.
+- When he breaks through your door, and you're close enough to hear: new memory New hinges. Achievement Not Through Here.
+- Mom and Dad in the Dark stance can't get in either. If you're in there, they walk up to the door, rattle it and tell him. He comes and takes the door with him.
+- If you're behind your own barricade at the knock, Mom tells him at the door.
+
+**His car key**
+- While he's at the window, his engine is running and nobody is in the car. New option: reach in, turn it off, take the key. The headlights go out.
+- Then: throw it into the snow, hide it in the woodpile, or keep it in your pocket. Achievement No Ride Home.
+- He finds out when he gets back to the car. He doesn't sit and wait for his minute, he comes straight up. At the door: "Somebody turned my engine off."
+- In the snow: when he catches you there's no trunk. You wait in his dead car together for a plough that never comes. New memory Hand-me-downs.
+- In the woodpile: he walks straight to it on the way down. In your pocket: he holds out his hand.
+- False Hope and The Handlers change with it too (the spare under the sun visor, the woodpile, your pocket).
+
+**Tracks out the back**
+- The gap in the back fence has a new option: walk tracks out onto the vidda and come back in your own steps (3 min).
+- Too early and the storm fills them in before he comes (the narrator tells you how long it had). Finished no more than six minutes before the knock (three in the early storm), they hold.
+- In the hunt he follows them all the way out to the gap, a long walk. Achievement Breadcrumbs. Then he searches the backyard.
+- If he gets you after that, he tells you what he did once, for real. New memory Thirty kilometres.
+
+**Traps at other doors**
+- Each trap has a second place now, instead of the front step: marbles in your own doorway (3 min), the tripwire across the living room door (5 min), the paint can over the shed door (5 min). Same darkness as before.
+- In the hunt they wait for him. Marbles put him on the floor for 3 seconds, the tripwire for 4.5, the paint can blinds him for 4. Achievement House Rules.
+- The tripwire is tied with Dad's knot. Close enough to hear him on the floor: new memory Dad's knot.
+- The three traps on the front step (and tying him up) work as before. A trap can only be in one place.
+
+**Smaller**
+- All four new memories: achievement Stage Manager.
+- New lines under the hunt title while he's on your trail and while he's working on the furniture.
+- On the floor after a trap you now only see him if you could, like the rest of the hunt.
+- Screenshot runner: `bar`, `itrap`, `carkey`, `tracks`, `goto`, `blind`.
+
 ## What's in v0.18.0
 New branch `claude-batch-v0.18-parents`, on top of v0.17.0 (`claude-batch-v0.17-true-ending`). Expansion 3 of the branches map: whose side are Mom and Dad on. Plus Noah's answer 7: beating him plays out differently depending on who was on your side. The story test now has 82 memories and 13 endings. Every new line is Claude's, for Noah to react to.
 

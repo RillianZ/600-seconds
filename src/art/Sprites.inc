@@ -29,6 +29,11 @@ static void DrawObj(const Obj& o, Vector2 jit) {
         R(ox, oy, w, 1, Shade(c, 24)); R(ox, oy + 1, 1, h - 1, Shade(c, 10));
         R(ox + w - 1, oy + 1, 1, h - 1, Shade(c, -20)); R(ox, oy + h - 1, w, 1, Shade(c, -28));
     };
+    if (id == "gap") {   // v0.19: where the back fence is down. A snapped post, and the snow beyond is just white
+        R(-10, -14, 3, 9, Color{ 92, 70, 52, 255 }); R(-10, -14, 3, 1, Color{ 250, 252, 255, 255 }); R(-9, -6, 6, 2, Color{ 110, 84, 60, 255 });
+        R(34, -14, 3, 9, Color{ 92, 70, 52, 255 }); R(34, -14, 3, 1, Color{ 250, 252, 255, 255 });
+        return;
+    }
     static const char* flat[] = { "toys", "window", "mirror", "calendar", "frontdoor", "sheddoor", "rope", "stairs", "gate", "basement", "screens", "fliptendo",
                                   "door_kid", "door_bath", "door_parents", "door_kitchen", "door_living", "door_kl", "album", "win_bath", "win_parents" };
     bool isFlat = false;
@@ -545,11 +550,13 @@ static void DrawCar() {
     R(-1, 1, 30, 22, kInk); R(1, -1, 26, 3, kInk);
     R(0, 2, 28, 20, Color{ 26, 28, 36, 255 }); R(2, 0, 24, 3, Color{ 26, 28, 36, 255 });
     R(0, 2, 28, 1, Color{ 60, 64, 78, 255 }); R(0, 3, 1, 18, Color{ 44, 48, 60, 255 }); R(27, 3, 1, 18, Color{ 12, 12, 18, 255 });
-    R(3, 0, 5, 2, Color{ 255, 246, 200, 255 }); R(20, 0, 5, 2, Color{ 255, 246, 200, 255 }); R(10, 0, 8, 2, Color{ 60, 64, 76, 255 });      // lamps and grille
+    Color lamp = story.EngineOn() ? Color{ 255, 246, 200, 255 } : Color{ 92, 96, 108, 255 };   // v0.19: you took the key. Dark lamps
+    R(3, 0, 5, 2, lamp); R(20, 0, 5, 2, lamp); R(10, 0, 8, 2, Color{ 60, 64, 76, 255 });      // lamps and grille
     R(3, 5, 22, 5, Color{ 50, 64, 92, 255 }); R(3, 5, 22, 1, Color{ 96, 116, 150, 255 }); R(5, 6, 5, 1, Fade(WHITE, 0.3f));                 // windscreen
     R(14, 5, 1, 5, Color{ 26, 28, 36, 255 });
     R(2, 10, 24, 6, Color{ 244, 248, 254, 255 }); R(2, 15, 24, 1, Color{ 190, 204, 234, 255 }); R(4, 9, 8, 1, Color{ 244, 248, 254, 255 }); // snow on the roof
-    R(3, 17, 22, 3, Color{ 40, 50, 74, 255 }); R(1, 20, 4, 2, Color{ 200, 30, 36, 255 }); R(23, 20, 4, 2, Color{ 200, 30, 36, 255 });       // rear window, tail lamps
+    Color tail = story.EngineOn() ? Color{ 200, 30, 36, 255 } : Color{ 96, 40, 44, 255 };
+    R(3, 17, 22, 3, Color{ 40, 50, 74, 255 }); R(1, 20, 4, 2, tail); R(23, 20, 4, 2, tail);       // rear window, tail lamps
     R(-2, 6, 2, 3, Color{ 26, 28, 36, 255 }); R(28, 6, 2, 3, Color{ 26, 28, 36, 255 });                                                    // mirrors
     R(-1, 4, 2, 5, kInk); R(27, 4, 2, 5, kInk); R(-1, 15, 2, 5, kInk); R(27, 15, 2, 5, kInk);                                              // wheels
     R(10, 21, 8, 1, Color{ 226, 226, 230, 255 });

@@ -92,6 +92,16 @@ static void Drain() {
                            assert(offered); s.beats.pop_back(); s.Choose("c_tase", px, py);
                            assert(s.visitorDowned && !s.hasTaser && s.chase); pickQueue = {"c_go"}; s.Interact("visitor", px, py); }
                 }
+                else if (chasePlan == "stage") {
+                    // v0.19: everything you set up before he came, paying off in one hunt
+                    assert(s.falseTracks && s.Barricaded(6, 9) && s.innerTraps.count("tripwire") && s.carKey == "snow");
+                    s.OnFalseTrail(false); s.OnFalseTrail(true); assert(s.falseTrailWalked);
+                    s.OnInnerTrap("tripwire", true); assert(!s.innerTraps.count("tripwire") && s.Knows("his_knot"));
+                    s.OpenDoor(6, 9); assert(s.DoorLocked(6, 9));          // keys don't move furniture
+                    s.OnBarricadeHit(6, 9); s.BreakDoor(6, 9); s.OnBarricadeBroken(6, 9, true);
+                    assert(!s.Barricaded(6, 9) && s.DoorBroken(6, 9) && s.Knows("new_hinges"));
+                    s.OnCaught();
+                }
                 else if (chasePlan == "true") { assert(s.visitorDowned); pickQueue = trueQueue; s.Interact("visitor", px, py); }                // v0.17: queue set by the loop
                 else { pickQueue.insert(pickQueue.begin(), chasePlan); s.Interact("visitor", px, py); }
             }
@@ -899,6 +909,55 @@ int main(int argc, char** argv) {
     s.trapsSet = {"marbles", "tripwire"}; s.traps = 2;
     FinishLoop("c_help");
     assert(s.Knows("last_toll") && endingsSeen.back() == "lasttoll");
+
+    // v0.19: before the knock (branches map, section 4)
+    CleanLoop();
+    Header("LOOP 19a: barricade your door, tripwire at the living room door, his key in the snow, tracks out the back");
+    {
+        At(6, 6); Use("door_kid", {"bar_push:door_kid"});
+        assert(s.Barricaded(6, 9) && s.DoorClosed(6, 9));
+        At(6, 6); Use("door_kid", {"none"});                                    // from inside you can still pull it away (not now)
+        At(32, 8); Use("rope", {"a_tripwire_in"});
+        assert(s.innerTraps.count("tripwire") && !s.trapsSet.count("tripwire") && s.traps == 0);
+        WaitUntil(43);
+        s.t = 43 * 60 + 50;
+        At(20, 29); Use("car", {"car_key", "ck_snow"});
+        assert(s.carKey == "snow" && !s.EngineOn() && s.achievements.count("No Ride Home"));
+        At(29, -24); Use("gap", {"tk_walk"});
+        assert(s.falseTracksAt > 0);
+    }
+    FinishLoop("stage");
+    assert(s.Knows("thirty") && s.Knows("hand_me_down") && s.achievements.count("Stage Manager") && s.achievements.count("Breadcrumbs"));
+    Header("Before the knock: the storm eats an early trail, and the other two places for his key");
+    {
+        Story k; k.memory = {"loop", "visitor_time"}; k.loop = 5;
+        k.BeginLoop(); k.beats.clear(); while (k.shift != Shift::None) { k.EndLoop(); k.BeginLoop(); k.beats.clear(); }
+        k.t = 20 * 60; k.Choose("tk_walk", 29, -24); k.beats.clear();
+        k.t = 49 * 60 + 59; k.Tick(1.0f, false, 21, 17);
+        bool told = false; for (auto& b : k.beats) if (b.type == BeatType::Narrate && b.text.find("tracks out back") != std::string::npos) told = true;
+        assert(!k.falseTracks && told);
+        for (const char* where : {"pocket", "woodpile"}) {
+            Story c; c.memory = {"loop", "visitor_time"}; c.loop = 5;
+            c.BeginLoop(); c.beats.clear(); while (c.shift != Shift::None) { c.EndLoop(); c.BeginLoop(); c.beats.clear(); }
+            c.t = 43 * 60 + 50; c.Interact("car", 20, 29);
+            bool offered = false; for (auto& o : c.beats.back().choices) if (o.id == "car_key") offered = true;
+            assert(offered); c.beats.clear();
+            c.Choose("car_key", 20, 29); c.beats.clear(); c.Choose(std::string(where) == "pocket" ? "ck_pocket" : "ck_wood", 20, 29); c.beats.clear();
+            int knockBefore = c.visitorTime;
+            while (!c.collection) { c.Tick(0.5f, false, 21, 17); while (!c.beats.empty() && c.beats.front().type != BeatType::Scene) c.beats.pop_front(); }
+            assert(c.visitorTime < knockBefore);                               // he finds a dead car and comes straight up
+            c.beats.clear(); c.chase = true; c.OnCaught();
+            bool line = false; for (auto& b : c.beats) if (b.type == BeatType::Black && b.text.find(std::string(where) == "pocket" ? "holds out his hand" : "woodpile") != std::string::npos) line = true;
+            assert(line);
+        }
+        // the other two inside traps: marbles at your door, the paint can over the shed door
+        Story m; m.memory = {"loop", "visitor_time"}; m.loop = 5; m.darkPoints = 4;
+        m.BeginLoop(); m.beats.clear(); while (m.shift != Shift::None) { m.EndLoop(); m.BeginLoop(); m.beats.clear(); }
+        m.Choose("a_marbles_in", 3, 7); m.Choose("a_paint_in", 36, 9); m.beats.clear();
+        assert(m.InnerTrapAt(6, 9) == "marbles" && m.InnerTrapAt(34, 10) == "paint" && m.InnerTrapAt(20, 12).empty());
+        m.Choose("a_marbles", 3, 7); assert(!m.trapsSet.count("marbles"));   // one jar, one place
+        std::puts("  early trail filled in, key in the pocket and the woodpile, inside traps placed");
+    }
 
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {

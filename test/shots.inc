@@ -26,6 +26,12 @@
 //   turn mom|dad|both   that parent is on your side (v0.18)
 //   darkact             something dark this loop, so they meet him in the Dark stance (v0.18)
 //   chase               he sees you right now (v0.18)
+//   bar DOOR            furniture against that door (v0.19)
+//   itrap NAME          an inside trap: marbles (your door), tripwire (living room door), paint (shed door)
+//   carkey WHERE        his car key is: pocket, snow or woodpile
+//   tracks              your fake trail out the back held (set before "hunt")
+//   goto X Y            send him to look at a tile (he walks there, kicking doors on the way)
+//   blind               he can't see you (to watch him from close by)
 //   quit
 #include <fstream>
 #include <sstream>
@@ -91,6 +97,12 @@ static void ShotsStep() {
         else if (c == "chores") { story.fed = story.trashDone = story.roomClean = story.dishesDone = story.firewoodDone = true; }   // v0.18
         else if (c == "turn") { std::string w; ss >> w; if (w != "dad") story.momTurned = true; if (w != "mom") story.dadTurned = true; story.parentsAllied = story.momTurned && story.dadTurned; }
         else if (c == "darkact") { story.darkThisLoop = 1; }
+        else if (c == "bar") { std::string id; ss >> id; if (auto d = DoorById(id)) { int k = d->y * World::W + d->x; story.barricades.insert(k); story.closedDoors.insert(k); } }   // v0.19
+        else if (c == "itrap") { std::string t; ss >> t; story.innerTraps.insert(t); }
+        else if (c == "carkey") { ss >> story.carKey; }
+        else if (c == "tracks") { story.falseTracks = true; }
+        else if (c == "goto") { int x, y; ss >> x >> y; vmode = VMode::Investigate; vNoise = TileCenter(x, y); vNoiseWait = 1.5f; vNoiseT = -30; vPause = 0; vHunchSearch = true; }
+        else if (c == "blind") { visitorBlind = true; }
         else if (c == "chase") { vmode = VMode::Chase; vLostT = 0; vLastSeen = player.pos; }
         else if (c == "skip") { story.beats.clear(); beatActive = false; }
         else if (c == "hold" || c == "press") { std::string k; int n = 1; ss >> k >> n; shotHoldKey = ShotKey(k); shotHoldN = c == "press" ? 1 : n; return; }

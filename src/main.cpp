@@ -108,7 +108,7 @@ static float barkT = 0;        // instability barking
 static std::string barkText;
 static bool hasSave = false;
 static bool debugMode = false;
-static const char* kVersion = "v0.18.0";
+static const char* kVersion = "v0.19.0";
 static float hardResetArm = 0;     // debug: press Shift+R twice to wipe everything   // ?debug in the URL: 8 = +5 min, 9 = jump to 16:49
 static float interactCooldown = 0; // stops a confirm key from also re-triggering the thing you just used
 
@@ -120,6 +120,10 @@ static bool hidden = false;
 static float hideT = 0;
 static Vector2 hidePos{};
 static float downedT = 0;
+static bool innerFall = false;          // v0.19: one of the inside traps put him on the floor (not the "downed" you can tie)
+static bool vDoorBar = false;           // v0.19: the door he's working on has furniture behind it
+static bool trailOn = false, trailFollow = false;   // v0.19: your fake trail out the back, and him on it
+static float vBreathT = 0;              // v0.19: through the furniture, he stands in the doorway and gets his breath back
 static bool wasCollection = false;
 static float qteBar = 0;
 
@@ -152,7 +156,8 @@ static void ResetHunt() {
 // v0.18: whose side are they on. Parents who look for you (Dark: with him. The Handlers: instead of him),
 // and the one parent who knows, waiting for him to get close to you
 struct PHunt { int visited = 0; std::vector<int> spots; std::vector<Vector2> path; size_t pathI = 0;
-               float pause = 0, seeCD = 0, callT = 5, startT = 0; int spotObj = -1; bool chasing = false; Vector2 last{}; };
+               float pause = 0, seeCD = 0, callT = 5, startT = 0; int spotObj = -1; bool chasing = false; Vector2 last{};
+               int tellX = -1; };   // v0.19: walking up to a barricaded door. At the door they tell him, if you're in there
 static PHunt pMom, pDad;
 static Vector2 momFell{ -1, -1 }, dadFell{ -1, -1 };   // where they went down in the fight. They stay there
 static std::string defWho;                              // the parent fighting him right now
@@ -501,6 +506,7 @@ static Vector2 NextStep(Vector2 from, int tx, int ty, bool basement) {
             bool ok = story.world.Walkable(nx, ny, basement) || (nx == fx && ny == fy);
             if (ok && gMover == 2 && story.DoorClosed(nx, ny) && !(nx == fx && ny == fy)) ok = false;   // Doggo can't open doors
             if (ok && gMover == 1 && story.world.tiles[ny][nx] == Tile::ChainGap) ok = false;          // v0.15: a kid fits through the torn fence. He doesn't
+            if (ok && gMover != 1 && story.Barricaded(nx, ny) && !(nx == fx && ny == fy)) ok = false;   // v0.19: keys don't move a chest of drawers. He does
             if (!ok) continue;
             dist[ny][nx] = dist[y][x] + 1;
             q.push({ nx, ny });
@@ -749,6 +755,19 @@ static void StartSearch(bool dadRan) {
     vSweep = 0; vPause = 0; vLostT = 0; vBarkT = 5; vSpotCooldown = 0; vSpotObj = -1;
     vHunchT = 18; vHunches = 0; vHunchSearch = false;
     vJukes = 0; vTaserT = vTaserCD = vNoReachT = vPathCD = 0; vCantReach = false;
+    innerFall = false; vDoorBar = false; trailFollow = false; vBreathT = 0;
+    // v0.19: your fake trail is still out there. Lay it down where he'll see it: from the back wall to the gap and out
+    trailOn = story.falseTracks && !story.handlers;
+    if (trailOn) {
+        Vector2 p = TileCenter(16, 1), end = TileCenter(29, -26);
+        int side = 0;
+        for (int i = 0; i < 400 && std::hypot(p.x - end.x, p.y - end.y) > 4; ++i) {
+            Vector2 n = NextStep(p, 29, -26, false);
+            if (std::hypot(n.x - p.x, n.y - p.y) < 0.5f) break;
+            for (int k = 1; k <= 3; ++k) { side = 1 - side; prints.push_back({ { p.x + (n.x - p.x) * k / 3.0f, p.y + (n.y - p.y) * k / 3.0f + 6 }, 60.0f, 0, side }); }
+            p = n;
+        }
+    }
     // v0.16: unless he stays, is out, or is shut in somewhere, Doggo goes to the door
     doggoGuard = (story.DoggoExists() && !story.doggoStay && !story.Tutorial() && !story.handlers) ? 1 : 0; doggoGuardT = 6.0f; doggoStuckT = 0;
     ResetHunt();
@@ -1377,7 +1396,8 @@ static void DrawChaseBanner() {
                         story.world.RoomAt(story.world.objs[vSpotObj].x, story.world.objs[vSpotObj].y) == story.world.RoomAt(TX(hidePos.x), TX(hidePos.y)));
             h = gasped ? "You gasped." : holdingBreath ? "Holding it." : near || breathHeardT > 0 ? "He's close. HOLD YOUR BREATH." : "Stay still. Listen.";
         }
-        else if (vmode == VMode::Investigate) h = "He heard something. He's going to look.";
+        else if (vmode == VMode::Investigate) h = trailFollow ? "He found your trail out back. He's following it. Go the other way." : "He heard something. He's going to look.";
+        else if (vDoorT > 0 && vDoorBar) h = "He's at the furniture. It won't hold for long.";
         else if (winded) h = "Out of breath. You can't run yet.";
         else if (vmode == VMode::Grace) h = story.huntStart == "door" ? "He's counting the rooms. Go. Now." : "He's coming back in. Get out of sight.";
         else if (vmode == VMode::Chase) h = "HE SEES YOU. Run (Shift). Break line of sight.";
@@ -2314,14 +2334,30 @@ static bool HuntWith(Actor& a, PHunt& h, const char* who, float dt) {
         return false;
     }
     if (h.pathI < h.path.size()) {
-        if (std::hypot(a.pos.x - h.path[h.pathI].x, a.pos.y - h.path[h.pathI].y) < 2) { ++h.pathI; h.pause = 0.6f; }
+        if (std::hypot(a.pos.x - h.path[h.pathI].x, a.pos.y - h.path[h.pathI].y) < 2) {
+            ++h.pathI; h.pause = 0.6f;
+            if (h.tellX >= 0) {
+                // v0.19: at the barricaded door. If you're in there, they tell him, and he takes the door with him
+                int bx = h.tellX; h.tellX = -1; h.pause = 1.5f; a.dir = 1;
+                if (story.Barricaded(bx, 9) && story.world.RoomAt(TX(player.pos.x), TX(player.pos.y)) == Story::BarricadeRoom(bx, 9)) {
+                    story.OnBarricadeTold(who); StartNextBeat(); SendVisitor(TileCenter(bx, 7), false);
+                }
+            }
+        }
         else ParentWalk(a, h.path[h.pathI], walk, dt, 0);
         return false;
     }
     if (!h.spots.empty()) { h.spotObj = h.spots.front(); h.spots.erase(h.spots.begin()); return false; }
     const Room* rooms = dadMode ? kDadRooms : kMomRooms;
     int n = dadMode ? (int)(sizeof(kDadRooms) / sizeof(Room)) : (int)(sizeof(kMomRooms) / sizeof(Room));
-    ParentPlan(h, rooms[h.visited++ % n], a.pos);
+    Room nr = rooms[h.visited++ % n];
+    int bx = nr == Room::KidsRoom ? 6 : nr == Room::Bathroom ? 13 : nr == Room::ParentsRoom ? 22 : -1;
+    if (bx >= 0 && story.Barricaded(bx, 9)) {
+        // v0.19: furniture against the door. They can't get in. If you're in there, they tell him
+        h.path.assign(1, TileCenter(bx, 10)); h.pathI = 0; h.spots.clear(); h.spotObj = -1; h.tellX = bx;
+        return false;
+    }
+    ParentPlan(h, nr, a.pos);
     return false;
 }
 // the whole family, once a frame during the hunt. True if the hunt stopped
@@ -2705,6 +2741,7 @@ static void UpdateDrawFrame() {
                 if (!story.world.InBounds(x, y) || story.world.tiles[y][x] != Tile::Door || !story.DoorClosed(x, y)) continue;
                 if (x == 6 && y == 9 && story.grounded) continue;   // your door stays locked while you're grounded
                 if (x == 13 && y == 9 && story.momBathLocked) continue;   // v0.13: the key is on your side
+                if (story.Barricaded(x, y)) continue;                      // v0.19: furniture. Their keys don't help
                 if (hd.x >= 0 && (hd.x != x || hd.y != y)) restore();
                 hd.x = x; hd.y = y; hd.locked = story.DoorLocked(x, y);
                 story.OpenDoor(x, y);
@@ -2774,8 +2811,19 @@ static void UpdateDrawFrame() {
         auto visitorStep = [&](int tx, int ty, float sp, float stop) -> bool {
             if (vDoorT > 0) {
                 vDoorT -= dt;
-                if (std::fmod(vDoorT, 0.5f) < dt) Play("thud");
-                if (vDoorT <= 0) { Play("crack"); story.BreakDoor(vDoorX, vDoorY); AddBubble("The visitor", "There we go.", 1.4f); }
+                if (std::fmod(vDoorT, 0.5f) < dt) { Play("thud"); if (vDoorBar) AddRing(TileCenter(vDoorX, vDoorY), 0); }
+                if (vDoorT <= 0) {
+                    Play("crack");
+                    if (vDoorBar) {
+                        // v0.19: through the furniture. Near enough and you hear what he says
+                        Room br = Story::BarricadeRoom(vDoorX, vDoorY);
+                        bool kidNear = story.world.RoomAt(TX(player.pos.x), TX(player.pos.y)) == br ||
+                                       std::hypot(player.pos.x - visitor.pos.x, player.pos.y - visitor.pos.y) < TS * 10;
+                        story.BreakDoor(vDoorX, vDoorY);
+                        story.OnBarricadeBroken(vDoorX, vDoorY, kidNear); StartNextBeat();
+                        vDoorBar = false; vBreathT = 2.4f;
+                    } else { story.BreakDoor(vDoorX, vDoorY); AddBubble("The visitor", "There we go.", 1.4f); }
+                }
                 visitor.anim = 0;
                 return true;
             }
@@ -2799,8 +2847,10 @@ static void UpdateDrawFrame() {
             if (story.world.InBounds(sx, sy) && story.world.tiles[sy][sx] == Tile::Door && story.DoorClosed(sx, sy) &&
                 std::hypot(st.x - visitor.pos.x, st.y - visitor.pos.y) < TS + 3) {
                 if (story.DoorLocked(sx, sy)) {
-                    vDoorT = 1.6f; vDoorX = sx; vDoorY = sy; Play("thud");
-                    AddBubble("The visitor", GetRandomValue(0, 1) ? "Locked? Really?" : "Knock knock, 06.", 1.6f);
+                    vDoorBar = story.Barricaded(sx, sy);
+                    vDoorT = vDoorBar ? 7.0f : 1.6f; vDoorX = sx; vDoorY = sy; Play("thud");   // v0.19: furniture takes him a while
+                    if (vDoorBar) { story.OnBarricadeHit(sx, sy); StartNextBeat(); }
+                    else AddBubble("The visitor", GetRandomValue(0, 1) ? "Locked? Really?" : "Knock knock, 06.", 1.6f);
                     gMover = 0;
                     return true;
                 }
@@ -2849,11 +2899,32 @@ static void UpdateDrawFrame() {
                     story.visitorStun -= dt;
                     visitor.dir = (int)(globalT * 6) % 4;
                 } else if (downedT > 0) {
+                    { Vector2 eye = hidden ? hidePos : player.pos;   // v0.19: on the floor you still only see him if you could
+                      if (std::hypot(visitor.pos.x - eye.x, visitor.pos.y - eye.y) < TS * 2.2f || LineOfSight(eye, visitor.pos)) vShowT = 0.3f; else vShowT -= dt; }
                     if (story.HoldDown()) downedT = std::max(downedT, 0.5f);   // v0.17: tied, or listening. He isn't getting up
                     downedT -= dt;
                     visitor.dir = 0;
                     if (downedT <= 0 && story.visitorDowned) { story.OnVisitorUp(); StartNextBeat(); vmode = VMode::Search; PickNextRoom(); }
+                    if (downedT <= 0 && innerFall) { innerFall = false; AddBubble("The visitor", "(getting up) ...Okay.", 1.2f); if (vmode == VMode::Chase) { vmode = VMode::Lost; vPause = 1.0f; } }
+                } else if (vBreathT > 0) {
+                    // v0.19: out of breath in the doorway. You get to hear him, and a head start
+                    vBreathT -= dt; visitor.anim = 0;
+                    { Vector2 eye = hidden ? hidePos : player.pos;
+                      if (std::hypot(visitor.pos.x - eye.x, visitor.pos.y - eye.y) < TS * 2.2f || LineOfSight(eye, visitor.pos)) vShowT = 0.3f; else vShowT -= dt; }
+                    if (vBreathT <= 0) vSpotCooldown = 6;   // the line stays up. No "There you are" on top of it
                 } else {
+                    // v0.19: the inside traps. He walks into the doorway and it's waiting for him
+                    {
+                        std::string tr = story.InnerTrapAt(TX(visitor.pos.x), TX(visitor.pos.y));
+                        if (!tr.empty()) {
+                            bool kidNear = std::hypot(player.pos.x - visitor.pos.x, player.pos.y - visitor.pos.y) < TS * 12;
+                            story.OnInnerTrap(tr, kidNear); StartNextBeat();
+                            Play(tr == "paint" ? "bang" : "crack"); AddRing(visitor.pos, 0);
+                            if (tr == "paint") story.visitorStun = 4.0f;
+                            else { downedT = tr == "marbles" ? 3.0f : 4.5f; innerFall = true; visitor.dir = 0; }
+                            goto chaseDone;
+                        }
+                    }
                     bool sees = VisitorSeesKid();
                     if (sees && seenFar) { story.OnLitUp(); StartNextBeat(); }
                     // ---- v0.15.2: the taser. He stops, aims, and if he still sees you he fires
@@ -2983,7 +3054,13 @@ static void UpdateDrawFrame() {
                         if (goTo(vGraceGoal, 34, 0)) {
                             vGraceWait -= dt;
                             if (doggoGuard == 2) vGraceWait = std::max(vGraceWait, 0.5f);   // v0.16: busy with the dog
-                            if (vGraceWait <= 0) { vmode = VMode::Search; PickNextRoom(); }
+                            if (vGraceWait <= 0 && trailOn) {
+                                // v0.19: your tracks out the back. He goes all the way out to where they end
+                                trailOn = false; trailFollow = true;
+                                story.OnFalseTrail(false); StartNextBeat();
+                                vmode = VMode::Investigate; vNoise = TileCenter(29, -24); vNoiseWait = 2.5f; vNoiseT = -60; vPause = 0; vHunchSearch = true;
+                            }
+                            else if (vGraceWait <= 0) { vmode = VMode::Search; PickNextRoom(); }
                         }
                         break;
                     case VMode::Chase:
@@ -3032,7 +3109,13 @@ static void UpdateDrawFrame() {
                                 if (ri >= 0) { vSure = !vHunchSearch; PlanRoom(ri); } else PickNextRoom();
                                 vHunchSearch = false;
                             }
-                        } else if (goTo(vNoise, searchSp * 1.7f, 4) || vNoiseT > 8) vPause = vNoiseWait;
+                        } else if (goTo(vNoise, searchSp * 1.7f, 4) || vNoiseT > 8) {
+                            vPause = vNoiseWait;
+                            if (trailFollow && std::hypot(visitor.pos.x - TileCenter(29, -24).x, visitor.pos.y - TileCenter(29, -24).y) < 40) {
+                                trailFollow = false; story.OnFalseTrail(true); StartNextBeat();
+                                for (auto& p : prints) if (p.who == 0 && p.t >= 60) p.t = std::max(p.t, 101.0f);   // he's read that trail. He won't walk it twice
+                            }
+                        }
                         break;
                     case VMode::Search:
                         // v0.12: indoors he reads the wet prints you bring in from the snow

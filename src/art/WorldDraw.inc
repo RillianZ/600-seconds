@@ -149,6 +149,29 @@ static void DrawTileFx(int x, int y) {
             // open: the door leaf stands against the frame
             if (horiz) { DrawRectangle(px + 2, py + 1, 2, TS - 3, Color{ 128, 86, 54, 255 }); DrawRectangle(px + 2, py + 1, 1, TS - 3, Color{ 160, 114, 74, 255 }); }
         }
+        // v0.19: furniture pushed against it from the room side (the room is north of the door)
+        if (story.Barricaded(x, y)) {
+            Room br = Story::BarricadeRoom(x, y);
+            Color body = br == Room::KidsRoom ? Color{ 92, 132, 196, 255 } : br == Room::Bathroom ? Color{ 226, 228, 222, 255 } : Color{ 104, 70, 46, 255 };
+            int bx = px + 1, by = py - 8, bw = TS - 2, bh = 14;
+            DrawRectangle(bx - 1, by - 1, bw + 2, bh + 2, Mix(body, kInk, 0.72f));
+            DrawRectangle(bx, by, bw, bh, body);
+            DrawRectangle(bx, by, bw, 2, Shade(body, 26));
+            for (int k = 0; k < 3; ++k) {
+                DrawRectangle(bx + 1, by + 3 + k * 4, bw - 2, 1, Shade(body, -34));
+                DrawRectangle(bx + bw / 2 - 1, by + 4 + k * 4, 2, 1, br == Room::Bathroom ? Color{ 150, 154, 160, 255 } : Color{ 226, 200, 110, 255 });
+            }
+            DrawRectangle(bx + bw - 1, by + 1, 1, bh - 1, Shade(body, -22));
+            if (br == Room::Bathroom) { DrawRectangle(bx + 2, by - 3, 6, 3, Color{ 120, 170, 210, 255 }); DrawRectangle(bx + 8, by - 2, 5, 2, Color{ 236, 150, 160, 255 }); }   // towels on top
+            if (br == Room::KidsRoom) { DrawRectangle(bx + 3, by - 3, 3, 3, Color{ 230, 60, 60, 255 }); DrawRectangle(bx + 9, by - 2, 4, 2, Color{ 250, 220, 90, 255 }); }      // toys on top
+        }
+        // v0.19: the inside traps, waiting in their doorways
+        {
+            std::string tr = story.InnerTrapAt(x, y);
+            if (tr == "marbles") for (int k = 0; k < 7; ++k) { int mx = px + 1 + (k * 5) % 13, my = py + 3 + (k * 7) % 11; DrawRectangle(mx, my, 2, 2, k % 2 ? Color{ 230, 60, 60, 255 } : Color{ 110, 180, 240, 255 }); DrawRectangle(mx, my, 1, 1, WHITE); }
+            if (tr == "tripwire") { DrawRectangle(px - 1, py + 11, TS + 2, 1, Color{ 236, 236, 216, 255 }); DrawRectangle(px - 1, py + 12, TS + 2, 1, Fade(BLACK, 0.25f)); DrawRectangle(px - 1, py + 10, 2, 3, Color{ 150, 120, 80, 255 }); DrawRectangle(px + TS - 1, py + 10, 2, 3, Color{ 150, 120, 80, 255 }); }
+            if (tr == "paint") { DrawRectangle(px + 7, py - 1, 1, 3, GRAY); DrawRectangle(px + 3, py + 2, 10, 9, kInk); DrawRectangle(px + 4, py + 3, 8, 7, Color{ 224, 60, 60, 255 }); DrawRectangle(px + 4, py + 3, 8, 2, Color{ 244, 110, 100, 255 }); DrawRectangle(px + 5, py + 10, 2, 2, Color{ 224, 60, 60, 255 }); }   // hanging in front of the door
+        }
     } break;
     case Tile::BasementDoor:
         if (story.BasementOpen()) {
@@ -347,7 +370,7 @@ static void BuildLightmap(Camera2D cam) {
         Glow(tile(18), tile(43) - 4, 30, 30, Color{ 50, 110, 140, 255 }, 0.7f);
         Glow(tile(5), tile(37), 40, 40, Color{ 90, 90, 110, 255 }, 0.6f);                                         // light down the stairs
     }
-    if (story.CarHere()) {
+    if (story.CarHere() && story.EngineOn()) {
         // headlights up the road, straight at the gate
         for (int k = 0; k < 2; ++k) { float hx = 20 * TS - 6 + (k ? 22.5f : 5.5f); Glow(hx, 31 * TS - 34.0f, 22, 56, Color{ 170, 160, 116, 255 }, 0.75f); Glow(hx, 31 * TS + 2.0f, 16, 14, Color{ 170, 160, 116, 255 }, 0.8f); }
         Glow(20 * TS + 8.0f, 33 * TS + 2.0f, 26, 14, Color{ 120, 20, 20, 255 }, 0.6f);
@@ -399,7 +422,7 @@ static void DrawGlows() {
         Glow(18 * TS + 12.0f, 4 * TS + 1.0f, 7, 6, Color{ 255, 226, 140, 255 }, 0.5f * inH);
     }
     Glow(27 * TS + 8.0f, 18 * TS + 9.0f, 13, 11, Color{ 255, 150, 60, 255 }, (0.4f + 0.3f * FireFlicker()) * inH);
-    if (story.CarHere()) {
+    if (story.CarHere() && story.EngineOn()) {   // v0.19: no key, no lights
         for (int k = 0; k < 2; ++k) {
             float hx = 20 * TS - 6 + (k ? 22.5f : 5.5f);
             Glow(hx, 31 * TS + 3.0f, 9, 8, Color{ 255, 250, 210, 255 }, 0.9f);
@@ -547,7 +570,7 @@ static void DrawWorld(Camera2D cam) {
             if (story.dadOnFloor && scene != SceneMode::DadRuns) DrawPersonDown(*d.a, dl, false); else DrawPerson(*d.a, dl);
         } break;
         case 4: if (story.doggoDead && doggoShownDead) DrawDoggoDead(*d.a); else DrawDoggo(*d.a); break;
-        case 5: if (story.visitorDowned) DrawPersonDown(*d.a, LookVisitor(), false); else DrawPerson(*d.a, LookVisitor()); break;   // v0.18: on the floor means on the floor
+        case 5: if (story.visitorDowned || innerFall) DrawPersonDown(*d.a, LookVisitor(), false); else DrawPerson(*d.a, LookVisitor()); break;   // v0.18: on the floor means on the floor
         case 6: DrawCar(); break;
         case 7: DrawBush(bushes[d.i].first, bushes[d.i].second); break;
         case 8: DrawHusky(); break;

@@ -256,6 +256,14 @@ public:
     bool hasTaser = false;                     // his own taser. One shot
     bool visitorDead = false;                  // you finished it, and somebody saw
     bool handlers = false;                     // answer 7: he's dead, they weren't on your side. They take over the hunt
+    // v0.19 per loop: before the knock (branches map, section 4). Fifty minutes to set the stage
+    std::set<int> barricades;                  // door keys with furniture pushed against them, from the room side
+    std::set<std::string> innerTraps;          // marbles at your door, tripwire at the living room door, paint can over the shed door
+    std::string carKey;                        // his car key: "" (in the car), "pocket", "snow" or "woodpile"
+    float falseTracksAt = 0;                   // when you finished the fake trail out the back (0 = never)
+    bool falseTracks = false;                  // the trail was still there at the knock
+    bool falseTrailWalked = false;             // he followed it all the way out to the fence
+    int kidX = 5, kidY = 5;                    // where you stood last tick (the knock wants to know)
 
     void NewGame();            // wipes progress, keeps the darkness
     void LoadSave(const std::string& s);
@@ -317,6 +325,17 @@ public:
     void OnDefend(const std::string& who);                // a turned parent runs at him
     void OnDefendDone(const std::string& who, int x, int y);   // they lost. Something is on the floor
     void OnParentCall(const std::string& who);            // a line while they look (bubble)
+    // v0.19: before the knock. The presentation runs the hunt, the story says what it means
+    bool Barricaded(int x, int y) const { return barricades.count(y * World::W + x) > 0; }
+    static Room BarricadeRoom(int x, int y);           // the room a barricade at this door shuts (Room::Outside = can't)
+    std::string InnerTrapAt(int x, int y) const;       // "" or the trap waiting in this doorway
+    static void InnerTrapDoor(const std::string& trap, int& x, int& y);
+    bool EngineOn() const { return carKey.empty(); }
+    void OnBarricadeHit(int x, int y);                 // he found furniture against a door
+    void OnBarricadeBroken(int x, int y, bool kidNear); // he's through. Close enough and you hear what he says
+    void OnInnerTrap(const std::string& trap, bool kidNear);   // he walked into one of the inside traps
+    void OnFalseTrail(bool arrived);                   // he follows your fake trail out the back (false), and gets to the end of it (true)
+    void OnBarricadeTold(const std::string& who);      // a parent can't get in, and tells him why
     // v0.17: the true ending. Once you start telling him the pieces, or once he's tied, he stays down
     bool HoldDown() const { return visitorDowned && (visitorTied || !toldPieces.empty()); }
     bool ParentsOut() const { return (!MomHere() || momOnFloor) && (!DadFree() || dadOnFloor); }   // answer 10: nobody else in the room
@@ -435,6 +454,10 @@ private:
     void StartHandlers();      // you finished him in front of them. They take over the hunt
     void HandlersEnding(bool caught);
     void LastTollEnding(bool killed);   // they were on your side and he's beaten. The bells ring anyway
+    // v0.19: before the knock
+    void NoKeyEnding();        // you threw his car key in the snow. You wait for the plough together
+    void Thirty();             // he followed your fake trail, and says what he did once, for real
+    void StageCheck();         // all four things from section 4, once
     bool UntouchedParent() const { return (MomHere() && !momOnFloor && !momTurned) || (DadFree() && !dadOnFloor && !dadTurned); }
     bool TurnedStanding() const { return (momTurned && MomHere() && !momOnFloor) || (dadTurned && DadFree() && !dadOnFloor); }
     bool Nag(const std::string& id);   // v0.16: asked the same thing again. True if the parent answered with that instead
