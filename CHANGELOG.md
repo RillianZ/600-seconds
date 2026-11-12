@@ -2,6 +2,30 @@
 
 Every version of the 600 Seconds prototype, newest first. Spoilers everywhere.
 
+## What's in v0.20.1
+New branch `claude-batch-v0.20.1-polish`, on top of v0.20.0. The leftovers from v0.20, done before the release by three parallel lanes. The story test now has 107 memories and 13 endings. Notes with every line and call: `docs/lanes/polish-*.md`.
+
+**Sound and look**
+- Thunder after every lightning flash. The closer the storm, the sooner it rolls in. Muffled indoors, softer with Calm flashes.
+- Soft speech blips while people talk, a different voice for each of them. From another room or behind a door they're quiet and muffled. Pause menu: Voice blips on/off.
+- The painted board behind the shed goes dark with the yard lamps at 16:50, and the satellite dish's battery light blinks red after.
+
+**Story and knife**
+- In the oh-seven reality everyone says 07, the radio too.
+- The photos and oh-seven each get a last beat on the way to the bells.
+- Hunt payoffs: in oh-seven he doesn't know your spots; out of marbles you can throw your watch once (he always goes to look); Small hands lets you slip out of your sweater the first time he grabs you; tell Dad about the knock and he's in the doorway with his wrench.
+- With his brakes cut, Screen Time crashes too.
+- Darkness 13: carve 06 into your door frame. Under the paint there are older lines. New memory Under the paint.
+- After a clean job with the knife, Mom asks what you're cutting instead of scolding.
+
+**Hunt and systems**
+- He hears your stuck window bang open. The quiet knife way stays quiet.
+- Mom and Dad sit on the couch for Kaptein Fjord.
+- The timeline is in time order.
+- Open a card on the rumor map (E) to read the memory, arrows to move between cards.
+- If they want him gone, Mom (or Dad) unlocks the locked front door and lets him in.
+- The nod across the yard follows his schedule, so it can happen when he comes early too.
+
 ## What's in v0.20.0
 New branch `claude-batch-v0.20-finish`, on top of v0.19.0. The finish sprint: the rest of the PRJ-039 task list, built by five parallel lanes and merged into one. The story test now has 106 memories and 13 endings. Every new line is Claude's, for Noah to react to. The full notes for each lane, with every line and every call, are in `docs/lanes/`.
 
