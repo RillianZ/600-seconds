@@ -230,13 +230,26 @@ static void LookHUD(float watchBottom) {
         Color hc = story.hasKnife ? Color{ 235, 90, 90, 255 } : story.hasKey ? GOLD : Color{ 210, 230, 250, 255 };
         UIText(hand.c_str(), rx - wHand - 2, y + 8, 5.5f, Fade(hc, 0.8f));
     }
-    // the fridge list, in the kitchen
+    // the fridge list, in the kitchen. Small from across the room, the whole list when you stand at the fridge
     Room r = story.world.RoomAt(TX(player.pos.x), TX(player.pos.y));
-    if (r == Room::Kitchen && !story.collection && !(beatActive && cur.type != BeatType::Say)) {
-        bool near = std::hypot(player.pos.x - (9 * TS + 8), player.pos.y - (13 * TS + 8)) < 3.2f * TS;
-        static float a = 0;
-        a += ((near ? 1.0f : 0.55f) - a) * std::min(1.0f, GetFrameTime() * 6);
-        LkChoreList(8, 36, a);
+    static float open = 0;
+    bool kitchen = r == Room::Kitchen && !story.collection && !(beatActive && cur.type != BeatType::Say);
+    bool near = kitchen && std::hypot(player.pos.x - (9 * TS + 8), player.pos.y - (13 * TS + 8)) < 3.2f * TS;
+    open += ((near ? 1.0f : 0.0f) - open) * std::min(1.0f, GetFrameTime() * 8);
+    if (!kitchen) { open = 0; return; }
+    if (open > 0.5f) LkChoreList(8, 26, std::min(1.0f, (open - 0.5f) * 2));
+    else {
+        // a corner of the note: five little boxes
+        float x = 8, y = 26, a = 0.8f;
+        DrawRectangle((int)((x + 1) * US), (int)((y + 1.5f) * US), (int)(56 * US), (int)(12 * US), Fade(BLACK, 0.3f * a));
+        DrawRectangle((int)(x * US), (int)(y * US), (int)(56 * US), (int)(12 * US), Fade(Color{ 252, 238, 150, 255 }, a));
+        UIText("CHORES", x + 3, y + 3.2f, 5.5f, Fade(Color{ 40, 50, 110, 255 }, a));
+        bool d[5] = { story.fed, story.trashDone, story.dishesDone, story.firewoodDone, story.roomClean };
+        for (int i = 0; i < 5; ++i) {
+            float bx = x + 27 + i * 5.5f;
+            DrawRectangleLines((int)(bx * US), (int)((y + 3.5f) * US), (int)(4 * US), (int)(4 * US), Fade(Color{ 40, 50, 110, 255 }, a));
+            if (d[i]) DrawRectangle((int)((bx + 1) * US), (int)((y + 4.5f) * US), (int)(2 * US), (int)(2 * US), Fade(Color{ 200, 50, 50, 255 }, a));
+        }
     }
 }
 

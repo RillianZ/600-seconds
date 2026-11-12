@@ -33,6 +33,8 @@
 //   goto X Y            send him to look at a tile (he walks there, kicking doors on the way)
 //   blind               he can't see you (to watch him from close by)
 //   bolt | sweep K | idle N   v0.20 look: lightning now, headlights K of the way across, the kid has stood still N seconds
+//   sister   this loop's reality: somebody in the bathroom
+//   journal TAB | newmem ID   the log open on a tab | a memory found this loop
 //   luse ID | lchoose ID   use / choose with the close-up hook
 //   ending ID | att mom|dad cold|scared|broken | say WHO TEXT   (WHO with _ for spaces, e.g. The_visitor)
 //   quit
@@ -119,6 +121,9 @@ static void ShotsStep() {
         // v0.20 look: stage the look on demand
         else if (c == "luse") { std::string id; ss >> id; LookOnInteract(id); story.Interact(id, px, py); if (!beatActive) StartNextBeat(); }   // use, with the close-up hook
         else if (c == "lchoose") { std::string id; ss >> id; beatActive = false; LookOnInteract(id); story.Choose(id, px, py); StartNextBeat(); }
+        else if (c == "journal") { journalOpen = true; ss >> journalTopic; journalScroll = 0; }   // the memory log, open on this tab
+        else if (c == "newmem") { std::string id; ss >> id; story.memory.insert(id); story.loopNew.push_back(id); }   // found this loop
+        else if (c == "sister") { story.shift = Shift::Sister; }                     // this loop is the one with somebody in the bathroom
         else if (c == "bolt") { lkBoltT = 0.02f; }                                     // lightning, now
         else if (c == "sweep") { float k = 0.4f; ss >> k; lkSweepAt = globalT - k * 3.2f; }   // his headlights, k of the way across
         else if (c == "idle") { float n = 5; ss >> n; lkIdleT = n; lkIdlePos = player.pos; }   // the kid has stood still for N seconds
