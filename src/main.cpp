@@ -3123,6 +3123,20 @@ static void UpdateDrawFrame() {
                     float dk = std::hypot(visitor.pos.x - player.pos.x, visitor.pos.y - player.pos.y);
                     auto hear = [&](Vector2 at, float wait) { vmode = VMode::Investigate; vNoise = at; vNoiseWait = wait; vNoiseT = 0; vPause = 0; vHunchSearch = false; };
                     vHearCD -= dt;
+                    // ---- v0.20.1 hunt-systems: banging your stuck window open. Like a slammed door, it carries through the house.
+                    // The knife opens it without a bang (Knife.inc sets windowBanged first), so climbBanged is false and he hears only the climb
+                    {
+                        static bool bangDone = false;
+                        if (!climbing || !climbBanged) bangDone = false;
+                        else if (!bangDone) {
+                            bangDone = true;
+                            AddRing(climbFrom, 1);
+                            if (!busy && !visitorBlind && std::hypot(visitor.pos.x - climbFrom.x, visitor.pos.y - climbFrom.y) < TS * 14) {
+                                hear(climbFrom, 1.6f);
+                                story.OnHeard("window"); StartNextBeat();
+                            }
+                        }
+                    }
                     if (!busy && !hidden && !visitorBlind) {
                         bool loudOut = IsOutsideT(TileAt(TX(player.pos.x), TX(player.pos.y + 6))) && story.Storm();
                         if ((kidRunning || climbing) && dk < TS * (loudOut ? 5.0f : 10.0f)) {

@@ -1312,6 +1312,52 @@ int main(int argc, char** argv) {
         std::printf("  %zu cards, %zu lines\n", AllRumorNodes().size(), AllRumorLinks().size());
     }
 
+    // v0.20.1 hunt-systems: he hears your stuck window, the Dark stance opens a locked front door, the nod when he comes early
+    Header("v0.20.1 hunt-systems: the window bang, a locked door in the Dark stance, the nod in an early loop");
+    {
+        auto said = [](const Story& m, const std::string& who, const std::string& bit) {
+            for (auto& b : m.beats) if ((b.type == BeatType::Say || b.type == BeatType::Bubble) && b.speaker == who && b.text.find(bit) != std::string::npos) return true;
+            return false;
+        };
+        // T1: the bang on your window, once per loop. The knife opens it without one
+        Story h; h.memory = {"loop"}; h.loop = 3; h.BeginLoop(); h.beats.clear(); h.collection = h.chase = true; h.t = 51 * 60;
+        h.OnHeard("window");
+        assert(said(h, "The visitor", "Still sticks") && h.Knows("he_hears"));
+        h.beats.clear(); h.OnHeard("window"); assert(!said(h, "The visitor", "Still sticks"));
+        Story q; q.memory = {"loop"}; q.loop = 3; q.BeginLoop(); q.beats.clear(); q.Hold(Item::Knife, true); q.t = 20 * 60;
+        assert(q.WindowSticks("window"));
+        q.Choose("kn_window:window", 6, 4);
+        bool climb = false; for (auto& b : q.beats) if (b.type == BeatType::Scene && b.id == "climb:window") climb = true;
+        assert(climb && !q.WindowSticks("window"));   // the presentation reads this when the climb starts: no bang, nothing to hear
+        // T5: the knock with the front door locked
+        auto knock = [](Story& m) { m.frontLocked = true; m.frontLockedAt = 49 * 60 + 55; m.t = 49 * 60 + 59; m.Tick(1.0f, false, 21, 17); assert(m.collection); };
+        auto fresh = [](Story& m, bool dark) { m.memory = {"loop"}; m.loop = 3; m.darkPoints = dark ? DARK_TAINT : 0; m.tainted = dark; m.BeginLoop(); m.beats.clear(); };
+        Story d; fresh(d, true); knock(d);
+        assert(d.stance == Stance::Dark && d.frontOpened && !d.frontLocked && !d.achievements.count("Fortress") && !d.Knows("fortress"));
+        assert(said(d, "Mom", "He locked it") && said(d, "You", "She just opened it") && d.Visitor().x == 20 && d.Visitor().y == 19);
+        Story n; fresh(n, false); knock(n);   // Normal: nobody opens, the living room window
+        assert(n.stance == Stance::Normal && !n.frontOpened && n.frontLocked && n.achievements.count("Fortress"));
+        Story b; fresh(b, false); b.fed = b.trashDone = b.roomClean = b.dishesDone = b.firewoodDone = true; knock(b);   // Befriended: the same
+        assert(b.stance == Stance::Befriended && !b.frontOpened && b.achievements.count("Fortress"));
+        Story a; fresh(a, true); a.momBathLocked = true; knock(a);   // hinge A: Mom in the bathroom, so Dad opens it. Then the bathroom door
+        assert(a.frontOpened && said(a, "Dad", "Sorry about the door") && a.huntStart == "bath");
+        Story e; fresh(e, true); e.momLocked = e.dadLocked = true; knock(e);   // nobody home: he goes round the back as before
+        assert(e.nobodyHome && !e.frontOpened && e.windowBanged);
+        // T6: tainted and very dark, he knocks at 16:48. He's back at his car before 16:44:40, so the nod comes at 16:43:40
+        gEarlyKnock = true;
+        Story y; y.memory = {"loop"}; y.loop = 3; y.darkPoints = DARK_EARLY; y.tainted = true; y.BeginLoop(); y.beats.clear();
+        bool nod = false; int nodT = 0;
+        while (y.t < 45 * 60 && !y.collection) {
+            y.Tick(0.5f, false, 13, 27);
+            for (auto& bt : y.beats) if (bt.type == BeatType::Achievement && bt.text == "A Nod Across the Yard" && !nod) { nod = true; nodT = (int)y.t; }
+            y.beats.clear();
+        }
+        assert(y.visitorTime == 48 * 60 && y.NodAt() == 43 * 60 + 40 && nod && nodT < 44 * 60 && y.SawEvent("flag44"));
+        gEarlyKnock = false;
+        Story z; z.memory = {"loop"}; z.loop = 3; z.BeginLoop(); assert(z.NodAt() == 44 * 60 + 40);   // a normal day: right after the box, as before
+        std::puts("  the bang carries, the knife doesn't. Dark: Mom (or Dad) opens it. Normal, Befriended, nobody home: as before. Early loop: the nod at 16:43:40");
+    }
+
     Header("Clean key route, the findable one: watch Dad at the flagpole at 16:44");
     {
         Story k; k.memory = {"loop"}; k.loop = 2;
