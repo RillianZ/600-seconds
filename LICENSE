@@ -1,0 +1,20 @@
+600 Seconds
+Copyright (c) 2026 Noah Sund / Sund Origin Studio. All rights reserved.
+
+This repository is public so people can look at how the game is made and
+play it. Looking is fine. Playing the free builds is fine.
+
+Everything else in this repository (the code, the story text, the art drawn
+in code, the music written as code, the name "600 Seconds", the ORIGIN watch
+and the Sund Origin Studio logo) may not be copied, changed, published or
+sold, in whole or in part, without written permission from Noah Sund.
+
+To ask for permission, contact Sund Origin Studio through sundorigin.org.
+
+Parts made by others keep their own licences:
+- raylib, by Ramon Santamaria and contributors: zlib licence (raylib.com).
+  It is not stored in this repository, it is linked in at build time.
+- Lora (assets/narrator.ttf), The Lora Project Authors:
+  SIL Open Font License 1.1, see assets/narrator-font-OFL.txt.
+- Poppins (assets/ui.ttf), The Poppins Project Authors:
+  SIL Open Font License 1.1, see assets/ui-font-OFL.txt.

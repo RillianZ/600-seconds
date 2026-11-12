@@ -6,6 +6,8 @@
 set -e
 RAYLIB_SRC=${RAYLIB_SRC:-../raylib/src}
 FLAGS="-std=c++17 -O2 -Wall -DPLATFORM_WEB -I$RAYLIB_SRC -Isrc"
+# v0.20 (T-107): PUBLIC=1 ./build_all.sh makes a release build without the debug panel, Shift+D or ?debug
+[ "$PUBLIC" = "1" ] && FLAGS="$FLAGS -DPUBLIC_BUILD"
 SRCS="src/main.cpp src/game/Story.cpp src/audio/Soundtrack.cpp $RAYLIB_SRC/libraylib.a"
 LINK="-sUSE_GLFW=3 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=67108864 -sEXPORTED_FUNCTIONS=_main,_OnResize,_malloc,_free -sEXPORTED_RUNTIME_METHODS=ccall,HEAPF32 --embed-file assets"
 mkdir -p build/web build/site build/single

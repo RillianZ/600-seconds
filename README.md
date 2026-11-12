@@ -94,4 +94,10 @@ Keep the `assets` folder next to the exe.
 
 ## Credits
 
-Code and writing: Noah Sund with Claude. Narrator font: Lora (SIL Open Font License, see `assets/narrator-font-OFL.txt`). UI font: Poppins (SIL Open Font License, see `assets/ui-font-OFL.txt`). Engine: raylib.
+Code and writing: Noah Sund with Claude. Narrator font: Lora (SIL Open Font License, see `assets/narrator-font-OFL.txt`). UI font: Poppins (SIL Open Font License, see `assets/ui-font-OFL.txt`). Engine: raylib. Logo: Sund Origin Studio, made by Noah with AI tools.
+
+## Licence
+
+All rights reserved, see [LICENSE](LICENSE). The repo is public so you can read it and play the builds. raylib and the two fonts keep their own licences.
+
+Public builds: `PUBLIC=1 ./build_all.sh` and `PUBLIC=1 ./package_play.sh` leave out the debug panel, Shift+D and `?debug`.

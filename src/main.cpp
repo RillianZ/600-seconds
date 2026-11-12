@@ -2499,10 +2499,12 @@ static void UpdateDrawFrame() {
     }
 
     if (screen == Screen::Title) {
+#if !defined(PUBLIC_BUILD)   // v0.20 release (T-107): public builds have no debug panel, no Shift+D and no ?debug
         if (!dbgOpen && IsKeyDown(KEY_LEFT_SHIFT) && IsKeyPressed(KEY_D)) {
             debugMode = !debugMode; // debug without the URL
             if (debugMode) LoadDebugCfg(); else { gShiftCfg = ShiftConfig(); visitorBlind = false; }
         }
+#endif
         if (hardResetArm > 0) hardResetArm -= GetFrameTime();
         if (debugMode && (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && IsKeyPressed(KEY_R)) {
             if (hardResetArm > 0) {
@@ -3487,7 +3489,9 @@ int main() {
         if (hasSave) story.LoadSave(sv);
     }
 #if defined(PLATFORM_WEB)
+#if !defined(PUBLIC_BUILD)
     debugMode = EM_ASM_INT({ return location.search.indexOf('debug') >= 0 ? 1 : 0; });
+#endif
 #endif
     if (debugMode) LoadDebugCfg();   // your playtest settings only apply in debug mode
 #if defined(PLATFORM_WEB)
