@@ -47,9 +47,12 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Big spoilers in
 src/game/World.h     map, rooms, objects, windows (plain C++). Rows go from World::TOP (-26, the backyard) to 45
 src/game/Story.h/.cpp all rules: clock, events, choices, memory log, saves (plain C++)
 src/audio/Soundtrack.h/.cpp every song, written as code (plain C++)
+src/audio/SfxV20.inc  v0.20 sound effects made in code (power cut, locks, phone, tape, trunk, kicks) and sounds placed in the house
+src/audio/MusicFiles.inc v0.20: assets/music/<name>.ogg plays instead of a code track, if the file is there
 src/main.cpp         raylib: drawing, input, sound, UI
 test/sim.cpp         plays scripted loops headless and checks every memory is reachable
 test/shots.inc       screenshot scripts for a virtual screen (build with -DSHOTS, never shipped)
+test/audio_check.cpp renders every code track offline: not silent, not clipping, no clicks
 web/index.html       itch.io friendly page shell
 ```
 
